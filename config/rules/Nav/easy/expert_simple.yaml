@@ -1,0 +1,86 @@
+Rules:
+  Sim:
+    - name: Stop
+      formula: |
+        Stop(entity) == Exists(
+          [dummyEntity],
+          Or(
+            And(
+              IsAtInter(entity),
+              IsInInter(dummyEntity),
+              HigherPri(dummyEntity, entity),
+            ),
+            And(
+              IsAtInter(entity),
+              IsAtInter(dummyEntity),
+              HigherPri(dummyEntity, entity),
+            ),
+            And(
+              CollidingClose(entity, dummyEntity),
+              HigherPri(dummyEntity, entity),
+            )
+          )
+        )
+      description: Stop if a higher-priority agent conflicts at/near intersection.
+  Task:
+    - name: Collision and Intersection
+      description: should not collide.
+      dead: true
+      reward: -10
+      formula: |
+        Implies(Exists(
+          [dummyEntity],
+            Or(
+              And(
+                IsAtInter(entity),
+                IsInInter(dummyEntity),
+                HigherPri(dummyEntity, entity),
+              ),
+              And(
+                IsAtInter(entity),
+                IsAtInter(dummyEntity),
+                HigherPri(dummyEntity, entity),
+              ),
+              And(
+                CollidingClose(entity, dummyEntity),
+                HigherPri(dummyEntity, entity),
+              )
+            )
+          ),
+          Stop(entity)
+        )
+  Expert:
+    - name: Stop
+      description: should not disobey rules.
+      formula: |
+        Stop(entity) == Exists(
+        [dummyEntity],
+          Or(
+            And(
+              IsAtInter(entity),
+              IsInInter(dummyEntity),
+              HigherPri(dummyEntity, entity),
+            ),
+            And(
+              IsAtInter(entity),
+              IsAtInter(dummyEntity),
+              HigherPri(dummyEntity, entity),
+            ),
+            And(
+              CollidingClose(entity, dummyEntity),
+              HigherPri(dummyEntity, entity),
+            )
+          )
+        )
+    - name: Slow
+      description: Never take slow action in the simple 4-action expert.
+      formula: |
+        Not(Slow(entity))
+    - name: Fast
+      description: Never take fast action in the simple 4-action expert.
+      formula: |
+        Not(Fast(entity))
+    - name: Normal
+      description: If not stop, then normal.
+      formula: |
+        Normal(entity) == Not(Stop(entity))

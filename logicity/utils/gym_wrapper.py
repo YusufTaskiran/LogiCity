@@ -1,9 +1,12 @@
+import os
 import gym
 import torch
 import numpy as np
+import pickle as pkl
 from gym.spaces import Box, Dict
 import torch.nn.functional as F
 from ..core.config import *
+from ..shields import PredicateSensorModel
 
 import logging
 logger = logging.getLogger(__name__)
@@ -60,23 +63,73 @@ class GymCityWrapper(gym.core.Env):
         self.t = 0
         self.current_episode_reward = 0
         self.current_episode_length = 0
+        self.require_route_intersection = env.rl_agent.get("require_route_intersection", False)
+        self.reset_attempts = env.rl_agent.get("reset_attempts", 20)
+        self.reset_all_agents = env.rl_agent.get("reset_all_agents", True)
+        self.randomize_all_car_priorities = env.rl_agent.get("randomize_all_car_priorities", False)
+        self.shield_config = env.rl_agent.get("shield")
+        self.observation_uncertainty_cfg = env.rl_agent.get("observation_uncertainty")
+        self.observation_sensor_model = PredicateSensorModel(self.observation_uncertainty_cfg)
+        self.observation_action_profile = (
+            self.observation_uncertainty_cfg.get("action_profile", "normal")
+            if self.observation_uncertainty_cfg
+            else "normal"
+        )
+        self.current_grounding_dic = None
+        self.training_episode_data_path = env.rl_agent.get("training_episode_data")
+        self.training_episode_data = None
+        self.training_episode_keys = []
+        if self.training_episode_data_path:
+            if not os.path.isfile(self.training_episode_data_path):
+                raise FileNotFoundError(f"Training episode data not found: {self.training_episode_data_path}")
+            with open(self.training_episode_data_path, "rb") as f:
+                self.training_episode_data = pkl.load(f)
+            self.training_episode_keys = list(self.training_episode_data.keys())
+            if len(self.training_episode_keys) == 0:
+                raise ValueError(f"Training episode data is empty: {self.training_episode_data_path}")
+            logger.info(
+                "Loaded %s cached training episodes from %s",
+                len(self.training_episode_keys),
+                self.training_episode_data_path,
+            )
+
+    def _macro_action_index(self, action):
+        if isinstance(action, (int, np.integer)):
+            return int(action)
+        if isinstance(action, torch.Tensor):
+            action = action.detach().cpu().numpy()
+        action = np.asarray(action)
+        for idx, macro_action in self.action_mapping.items():
+            macro_action = np.asarray(macro_action, dtype=np.float32)
+            if action.shape == macro_action.shape and np.any((action > 0) & (macro_action > 0)):
+                return int(idx)
+        raise ValueError(f"Could not map action {action} to a discrete macro action.")
 
     def full_action2index(self, action):
-        # see agents/car.py
-        if action[0] == 1:
-            return 0
-        elif action[4] == 1:
-            return 1
-        elif action[8] == 1:
-            return 2
-        else:
-            return 3
+        return self._macro_action_index(action)
     
+    def _apply_observation_uncertainty(self, grounding: np.ndarray) -> np.ndarray:
+        grounding = np.asarray(grounding, dtype=np.float32).copy()
+        if not self.observation_sensor_model.enabled:
+            return grounding
+        for pred_name, (start, end) in self.pred_grounding_index.items():
+            if not self.observation_sensor_model.is_uncertain(pred_name):
+                continue
+            for idx in range(start, end):
+                truth_value = bool(grounding[idx] > 0.5)
+                grounding[idx] = self.observation_sensor_model.sense_probability(
+                    pred_name,
+                    truth_value,
+                    action_name=self.observation_action_profile,
+                )
+        return grounding
+
     def _flatten_obs(self, obs_dict):
+        world_state = self._apply_observation_uncertainty(obs_dict["World_state"][0])
         if self.cat_length:
-            return np.concatenate([obs_dict["World_state"][0], [self.normed_path_length]], axis=0, dtype=np.float32)
+            return np.concatenate([world_state, [self.normed_path_length]], axis=0, dtype=np.float32)
         else:
-            return obs_dict["World_state"][0]
+            return world_state
                 
     def _get_reward(self, obs_dict):
         ''' Get the reward for the current step.
@@ -108,39 +161,85 @@ class GymCityWrapper(gym.core.Env):
         :param list action: the action list
         :return: the cost
         '''
-        if action[0] == 1:
-            # Slow
-            return self.action_cost[0]
-        elif action[4] == 1:
-            # Normal
-            return self.action_cost[1]
-        elif action[8] == 1:
-            # Fast
-            return self.action_cost[2]
+        action_idx = self._macro_action_index(action)
+        return self.action_cost[action_idx]
+
+    def _path_to_set(self, path):
+        return {tuple(int(v) for v in point.tolist()) for point in path}
+
+    def _routes_intersect(self):
+        car_path = self._path_to_set(self.agent.global_traj)
+        other_agents = [agent for agent in self.env.agents if agent.layer_id != self.agent.layer_id]
+        if not other_agents:
+            return True
+        for other_agent in other_agents:
+            other_path = self._path_to_set(other_agent.global_traj)
+            if car_path.intersection(other_path):
+                return True
+        return False
+
+    def _redraw_agent_layer(self, agent):
+        agent_code = self.type2label[agent.type]
+        agent_layer = torch.zeros((self.env.grid_size[0], self.env.grid_size[1]))
+        agent_layer[agent.start[0], agent.start[1]] = agent_code
+        agent_layer[agent.goal[0], agent.goal[1]] = agent_code + AGENT_GOAL_PLUS
+        for way_points in agent.global_traj[1:-1]:
+            if torch.all(way_points == agent.start) or torch.all(way_points == agent.goal):
+                continue
+            agent_layer[way_points[0], way_points[1]] = agent_code + AGENT_GLOBAL_PATH_PLUS
+        self.env.city_grid[agent.layer_id] = agent_layer
+
+    def _sample_episode_layout(self):
+        if self.reset_all_agents:
+            for scene_agent in self.env.agents:
+                scene_agent.init(self.env.city_grid)
         else:
-            # Stop
-            return self.action_cost[3]
-    
+            self.agent.init(self.env.city_grid)
+        if self.randomize_all_car_priorities:
+            for scene_agent in self.env.agents:
+                if hasattr(scene_agent, "reset_concepts") and scene_agent.type == "Car":
+                    scene_agent.reset_concepts(self.max_priority, self.reset_dist)
+        else:
+            if hasattr(self.agent, "reset_concepts"):
+                self.agent.reset_concepts(self.max_priority, self.reset_dist)
+        for scene_agent in self.env.agents:
+            self._redraw_agent_layer(scene_agent)
+
+    def _load_cached_episode_layout(self):
+        episode_key = np.random.choice(self.training_episode_keys)
+        episode_cache = self.training_episode_data[episode_key]
+        self.env.city_grid = episode_cache["city_grid"].clone()
+        for scene_agent in self.env.agents:
+            agent_name = f"{scene_agent.type}_{scene_agent.id}"
+            if agent_name not in episode_cache["agents"]:
+                raise KeyError(f"Agent {agent_name} missing from cached episode {episode_key}")
+            scene_agent.init(self.env.city_grid, init_info=episode_cache["agents"][agent_name])
+            scene_agent.reach_goal = False
+            scene_agent.reach_goal_buffer = 0
+            self._redraw_agent_layer(scene_agent)
+        logger.info("Reset from cached training episode %s.", episode_key)
+
     
     def reset(self, return_info=False):
         logger.info("***Reset RL Agent in Env***")
         self.t = 0
-        self.agent.init(self.env.city_grid)
-        self.agent.reset_concepts(self.max_priority, self.reset_dist)
+        if self.training_episode_data is not None:
+            self._load_cached_episode_layout()
+        else:
+            route_ok = False
+            for attempt in range(1, self.reset_attempts + 1):
+                self._sample_episode_layout()
+                route_ok = (not self.require_route_intersection) or self._routes_intersect()
+                if route_ok:
+                    logger.info("Accepted reset layout after %s attempt(s).", attempt)
+                    break
+            if not route_ok:
+                logger.info("Failed to satisfy route-intersection filter after %s attempt(s); using last sampled layout.", self.reset_attempts)
         logger.info("Agent reset priority to {}/{}".format(self.agent.priority, self.max_priority))
         logger.info("Agent reset concepts to {}".format(self.agent.concepts))
         self.path_length = len(self.agent.global_traj)*4
         self.normed_path_length = len(self.agent.global_traj)/(2*self.agent.region)
-        agent_code = self.type2label[self.agent_type]
         self.env.local_planner.reset()
-        # draw agent
-        # print('start: ', self.agent.start, 'pos: ', self.agent.pos)
-        agent_layer = torch.zeros((self.env.grid_size[0], self.env.grid_size[1]))
-        start = self.agent.start
-        goal = self.agent.goal
-        agent_layer[start[0], start[1]] = agent_code
-        agent_layer[goal[0], goal[1]] = agent_code + AGENT_GOAL_PLUS
-        self.env.city_grid[self.agent_layer_id] = agent_layer
         if return_info:
             episode = self.save_episode()
         ob_dict = self.env.update(self.agent_layer_id)
@@ -150,6 +249,7 @@ class GymCityWrapper(gym.core.Env):
         self.last_pos = None
         self.current_episode_reward = 0
         self.current_episode_length = 0
+        self.current_grounding_dic = ob_dict["Ground_dic"][0] if len(ob_dict["Ground_dic"]) > 0 else None
         if self.use_expert:
             self.expert_action = self.full_action2index(ob_dict["Expert_actions"][0])
             if return_info:
@@ -175,8 +275,9 @@ class GymCityWrapper(gym.core.Env):
         self.last_dist = -1
         self.last_pos = None
         self.current_obs = obs
+        self.current_grounding_dic = ob_dict["Ground_dic"][0] if len(ob_dict["Ground_dic"]) > 0 else None
         return self.current_obs
-    
+
     def step(self, action):
         self.t += 1
         info = {}
@@ -195,6 +296,7 @@ class GymCityWrapper(gym.core.Env):
         self.current_episode_length += 1
         obs = self._flatten_obs(new_ob_dict)
         self.current_obs = obs
+        self.current_grounding_dic = new_ob_dict["Ground_dic"][0] if len(new_ob_dict["Ground_dic"]) > 0 else None
         
         # offset the index by 3 layers 0,1,2 are static in world matrix
         done = self.agent.reach_goal
@@ -203,22 +305,19 @@ class GymCityWrapper(gym.core.Env):
         if done:
             info['episode'] = {'r': self.current_episode_reward, 'l': self.current_episode_length}
             info["is_success"] = True
-            logger.info("will reset agent by success")
-            self.reset()
+            logger.info("Episode ended by success.")
         
         if self.t >= self.horizon: 
             done = True
             rew += self.overtime_cost
             info["overtime"] = True
             info['episode'] = {'r': self.current_episode_reward, 'l': self.current_episode_length}
-            logger.info("Reset agent by overtime")
-            self.reset()
+            logger.info("Episode ended by overtime.")
             
         if info["Fail"][0]: 
             done = True
-            logger.info("Reset agent by failing")
             info['episode'] = {'r': self.current_episode_reward, 'l': self.current_episode_length}
-            self.reset()
+            logger.info("Episode ended by failure.")
 
         return self.current_obs, rew, done, info
     

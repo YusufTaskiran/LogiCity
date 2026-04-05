@@ -1,0 +1,91 @@
+TITLE DTAI
+
+
+Towards Safer Autonomous Navigation: Neurosymbolic Reinforcement Learning in LogiCity Simulator
+
+GUIDANCE
+
+ ●​ For more information, please contact:                        ying.jiao@kuleuven.be
+                                                                 bahare.salmanibarzoki@kuleuven.be
+
+ ●​ Promotor(s): (name)​                                         Luc de Raedt
+                                                                 Giuseppe Marra
+
+ ●​ Daily advisor                                                Ying Jiao
+                                                                 Bahare Salmani
+
+
+ ●​ Number of students                                           2
+
+CONTEXT
+
+
+
+
+Neurosymbolic Reinforcement Learning (RL) integrates standard deep RL with probabilistic logic shields [1].
+Probabilistic logic shields define safety constraints using probabilistic logic programming to evaluate and filter unsafe
+actions during the training process and yield safer policies. See an example of a probabilistic logic shield in the left
+figure defined as a probabilistic program. Incorporating shields into the RL agent’s learning process allows the shielded
+agent to explore and learn effectively while minimizing the risk of unsafe actions. The effectiveness of neurosymbolic
+RL with probabilistic logic shields has been recently shown in the MiniHack environments [2] (more info:
+https://dtai.cs.kuleuven.be/projects/nesy/minihack.html): the trained agents can reach their target destinations while
+avoiding the dangerous lava cliffs.
+
+Interestingly, the original paper [1] has won the best paper award at IJCAI 2023 and the demo paper [2] for mini-hack
+has won the best demonstration award at AAAI 2025.
+
+This thesis takes the existing MiniHack codebase as a starting point and aims to extend to an exciting urban simulator
+LogiCity [3] (right figure, more info: https://jaraxxus-me.github.io/LogiCity/). LogiCity combines first-order logic (FOL)
+and navigation in dynamic urban environments: the simulator provides a platform where agents (namely vehicles with
+different priorities e.g., ambulances, police cars, normal cars) must reason based on both (a) standard neural policies
+and (b) logical rules over logical predicates e.g., IsAmbulance(X) and IsClose(X, Y). Students will apply probabilistic logic
+shields to guarantee safe behaviors in a multi-agent urban scenario.
+
+
+
+
+GOAL
+
+
+
+         Thesis proposal form
+The goal of this thesis is to investigate how neuro-symbolic methods based on probabilistic logic shields can enhance
+cooperation and reasoning in dynamic, logic-driven environments with multiple agents.
+
+More specifically, the student is expected to:
+
+    -​   Get familiar with the LogiCity simulator. Design suitable rules and urban settings for this thesis.
+    -​   Extend the existing work on “probabilistic logic shields” [1] to coordinate multiple agents.
+    -​   Define a multi-agent task for the LogiCity environment, e.g., extending the “safe path planning” task. Evaluate
+         the performance of neurosymbolic RL with probabilistic logic shields and compare it to the fully neural RL
+         methods.
+
+The following research questions are of interest.
+
+(i) Does incorporating probabilistic logic shields improve the metric Trajectory Success Rate (TSR)?
+
+(ii) Does incorporating probabilistic logic shields reduce the number of training steps (the same way as it has been
+shown for mini-hack)?
+
+PROFILE/REQUIRED SKILLS (e.g. rather theoretical / rather practical implementation, required knowledge (courses,
+methods, computer language(s), etc.)
+
+
+The topic is suitable for students with a background in machine learning and reinforcement learning. Familiarity with
+standard RL tools such as stable-baselines is encouraged. Most of the programming work will be done in python.
+
+REFERENCES
+[1] WC Yang, G Marra, G Rens, L De Raedt. Safe Reinforcement Learning via Probabilistic Logic Shields. IJCAI 2023.
+
+[2] Debot, D., Venturato, G., Marra, G., & De Raedt, L. (2025, April). Neurosymbolic Reinforcement Learning: Playing
+MiniHack With Probabilistic Logic Shields. In Proceedings of the AAAI Conference on Artificial Intelligence (Vol. 39, No.
+28, pp. 29631-29633).
+
+[3] Li, B., Li, Z., Du, Q., Luo, J., Wang, W., Xie, Y., ... & Scherer, S. (2024). LogiCity: Advancing neuro-symbolic ai with
+abstract urban simulation. Advances in Neural Information Processing Systems, 37, 69840-69864.
+
+
+
+
+         Thesis proposal form
+

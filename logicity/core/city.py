@@ -103,9 +103,13 @@ class City:
         """Add a mid lanes to traffic to the city and mark its position on the grid."""
         assert len(self.buildings) > 0
         street_code = self.type2label['Traffic Street'] + MID_LINE_CODE_PLUS
-        for i in range(1, NUM_OF_BLOCKS+1):
+        block_ids = torch.unique(self.city_grid[BLOCK_ID]).to(torch.int64)
+        block_ids = block_ids[block_ids > 0].tolist()
+        for i in block_ids:
             current_block = self.city_grid[BLOCK_ID] == i
             pixels = torch.nonzero(current_block.float())
+            if pixels.numel() == 0:
+                continue
             rows = pixels[:, 0]
             cols = pixels[:, 1]
             left = torch.min(cols).item()
@@ -222,14 +226,17 @@ class City:
                                 assert rr.max()!=rr.min() and cc.max()!=cc.min()
                                 intersection_matrix[2, rr.min():rr.max()+1, cc.min():cc.max()+1] = True
                                 
-        # Label connected regions in the intersection matrix
-        # Check if the number of connected regions is correct, car lines, ped lines, and blocks
+        # Label connected regions in the intersection matrix.
+        # For custom maps, derive the counts from the map itself instead of using fixed 5x5 constants.
         _, num_line = label(intersection_matrix[0])
-        assert num_line == NUM_INTERSECTIONS_LINES, "Number of intersection lines for cars is not {}".format(NUM_INTERSECTIONS_LINES)
-        _, num_line = label(intersection_matrix[1])
+        _, num_line_ped = label(intersection_matrix[1])
         labeled_matrix_block, num_block = label(intersection_matrix[2])
-        assert num_block == NUM_INTERSECTIONS_BLOCKS, "Number of intersection blocks is not {}".format(NUM_INTERSECTIONS_BLOCKS)
-        assert num_line == NUM_INTERSECTIONS_BLOCKS, "Number of intersection lines for peds is not {}".format(NUM_INTERSECTIONS_BLOCKS)
+        logger.info(
+            "Derived intersections for current map: car_lines=%s ped_lines=%s blocks=%s",
+            num_line,
+            num_line_ped,
+            num_block,
+        )
         # Label the intersection matrix, they share the same ID
         labeled_matrix_line = intersection_matrix[0].numpy().astype(labeled_matrix_block.dtype) * labeled_matrix_block
         labeled_matrix_line_ped = intersection_matrix[1].numpy().astype(labeled_matrix_block.dtype) * labeled_matrix_block

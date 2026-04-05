@@ -1,0 +1,780 @@
+                                                          Safe Reinforcement Learning via Probabilistic Logic Shields
+
+                                                         Wen-Chi Yang1 , Giuseppe Marra1 , Gavin Rens and Luc De Raedt1,2
+                                                                             1
+                                                                               Leuven AI, KU Leuven, Belgium
+                                                       2
+                                                         Centre for Applied Autonomous Sensor Systems, Örebro University, Sweden.
+                                                      {wenchi.yang, giuseppe.marra, luc.deradet}@kuleuven.be, gavin.rens@gmail.com
+
+
+                                                                  Abstract                                   by such rejection-based shields. In fact, it is often assumed
+arXiv:2303.03226v1 [cs.AI] 6 Mar 2023
+
+
+
+
+                                                                                                             that agents have perfect sensors [Giacobbe et al., 2021;
+                                             Safe Reinforcement learning (Safe RL) aims at                   Hunt et al., 2021], which is unrealistic. By working with
+                                             learning optimal policies while staying safe. A                 probabilistic rather than deterministic shields, we will be able
+                                             popular solution to Safe RL is shielding, which                 to cope with such uncertainties and risks.
+                                             uses a logical safety specification to prevent an RL
+                                                                                                                Moreover, even when given perfect safety information in
+                                             agent from taking unsafe actions. However, tra-
+                                                                                                             all states, rejection-based shielding may fail to learn an op-
+                                             ditional shielding techniques are difficult to inte-
+                                                                                                             timal policy [Ray et al., 2019; Hunt et al., 2021; Anderson
+                                             grate with continuous, end-to-end deep RL meth-
+                                                                                                             et al., 2020]. This is due to the way the shield and the agent
+                                             ods. To this end, we introduce Probabilistic Logic
+                                                                                                             interact as the learning agent is not aware of the rejected ac-
+                                             Policy Gradient (PLPG). PLPG is a model-based
+                                                                                                             tions and continues to update its policy as if all safe actions
+                                             Safe RL technique that uses probabilistic logic pro-
+                                                                                                             were sampled directly from its safety-agnostic policy instead
+                                             gramming to model logical safety constraints as
+                                                                                                             of through the shield. By eliminating the mismatch between
+                                             differentiable functions. Therefore, PLPG can be
+                                                                                                             the shield and the policy, we will be able to guarantee con-
+                                             seamlessly applied to any policy gradient algorithm
+                                                                                                             vergence towards an optimal policy if it exists.
+                                             while still providing the same convergence guar-
+                                             antees. In our experiments, we show that PLPG                      We introduce probabilistic shields as an alternative to the
+                                             learns safer and more rewarding policies compared               deterministic rejection-based shields. Essentially, probabilis-
+                                             to other state-of-the-art shielding techniques.                 tic shields take the original policy and noisy sensor readings
+                                                                                                             to produce a safer policy, as demonstrated in Fig. 2 (right). By
+                                                                                                             explicitly connecting action safety to probabilistic semantics,
+                                        1   Introduction                                                     probabilistic shields provides a realistic and principled way
+                                        Shielding is a popular Safe Reinforcement Learning (Safe             to balance return and safety. This also allows for shielding
+                                        RL) technique that aims at finding an optimal policy while           to be applied at the level of the policy instead of at the level
+                                        staying safe [Jansen et al., 2020]. To do so, it relies on           of individual actions, which is typically done in the literature
+                                        a shield, a logical component that monitors the agent’s ac-          [Hunt et al., 2021; Jansen et al., 2020].
+                                        tions and rejects those that violate the given safety con-              We propose the concept of Probabilistic Logic Shields
+                                        straint. These rejection-based shields are typically based           (PLS) and its implementation in probabilistic logic programs.
+                                        on formal verification, offering strong safety guarantees            Probabilistic logic shields are probabilistic shields that mod-
+                                        compared to other safe exploration techniques [Garcı́a and           els safety through the use of logic. The safety specification is
+                                        Fernández, 2015]. While early shielding techniques oper-            expressed as background knowledge and its interaction with
+                                        ate completely on symbolic state spaces [Jansen et al., 2020;        the learning agent and the noisy sensors is encoded in a prob-
+                                        Alshiekh et al., 2018; Bastani et al., 2018], more recent ones       abilistic logic program, which is an elegant and effective way
+                                        have incorporated a neural policy learner to handle continu-         of defining a shield. Furthermore, PLS can be automatically
+                                        ous state spaces [Hunt et al., 2021; Anderson et al., 2020;          compiled into a differentiable structure, allowing for the opti-
+                                        Harris and Schaub, 2020]. In this paper, we will also focus          mization of a single loss function through the shield, enforc-
+                                        on integrating shielding with neural policy learners.                ing safety directly in the policy. Probabilistic logic shields
+                                           In current shielding approaches, the shields are determin-        have several benefits:
+                                        istic, that is, an action is either safe or unsafe in a particular       • A Realistic Safety Function. PLS models a more realis-
+                                        state. This is an unrealistic assumption as the world is in-               tic, probabilistic evaluation of safety instead of a deter-
+                                        herently uncertain and safety is a matter of degree and risk               ministic one, it allows to balance safety and reward, and
+                                        rather than something absolute. For example, Fig. 1 demon-                 in this way control the risk.
+                                        strates a scenario in which a car must detect obstacles from             • A Simpler Model. PLS do not require for knowl-
+                                        visual input and the sensor readings are noisy. The uncer-                 edge of the underlying MDP, but instead use a sim-
+                                        tainty arising from noisy sensors cannot be directly exploited             pler safety model that only represents internal safety-
+      related properties. This is less demanding than requir-              MDP A Markov decision process (MDP) is a tuple M =
+      ing the full MDP be known required by many model-                    hS, A, T, R, γi where S and A are state and action spaces,
+      based approaches [Jansen et al., 2020; Hunt et al., 2021;            respectively. T (s, a, s0 ) = P (s0 |s, a) defines the probability
+      Carr et al., 2022].                                                  of being in s0 after executing a in s. R(s, a, s0 ) defines the
+    • End-to-end Deep RL. By being differentiable, PLS al-                 immediate reward of executing a in s resulting in s0 . γ ∈
+      lows for seamless application of probabilistic logic                 [0, 1] is the discount factor. A policy π : S × A → [0, 1]
+      shields to any model-free reinforcement learning agent               defines the probability of taking an action in a state. We use
+      such as PPO [Schulman et al., 2018], TRPO [Schulman                  π(a|s) to denote the probability of action a in state s under
+      et al., 2015], A2C [Mnih et al., 2016], etc.                         policy π and π(s) for the probability distribution over all the
+    • Convergence. Using PLS in deep RL comes with con-                    actions in state s.
+      vergence guarantees unlike the use of rejection-based                Shielding A shield is a reactive system that guarantees
+      shields.                                                             safety of the learning agent by preventing it from selecting
+                                                                           any unsafe action at run time [Jansen et al., 2020]. Usually,
+2    Preliminaries                                                         a shield is provided as a Markov model and a temporal logi-
+Probabilistic Logic Programming We will introduce                          cal formula, jointly defining a safety specification. The shield
+probabilistic logic programming (PLP) using the syntax of                  constrains the agent’s exploration by only allowing it to take
+the ProbLog system [De Raedt and Kimmig, 2015]. An atom                    actions that satisfy the given safety specification. For exam-
+is a predicate symbol followed by a tuple of logical vari-                 ple, when there is a car driving in front and the agent proposes
+ables and/or constants. A literal is an atom or its negation.              to accelerate, a standard shield (Fig. 2, left) will reject the ac-
+A ProbLog theory (or program) T consists of a finite set of                tion as the agent may crash.
+probabilistic facts F and a finite set of clauses BK. A prob-              Policy Gradients The objective of a RL agent is to find a
+abilistic fact is an expression of the form pi :: fi where pi              policy πθ (parameterized by θ) that maximizes the total ex-
+denotes the probability of the fact fi being true. It is assumed           pected return along the trajectory, formally,
+that the probabilistic facts are independent of one other (akin                                              ∞
+to the nodes with parents in Bayesian networks) and the de-                                                 X
+pendencies are specified by clauses (or rules). For instance,                                   J(θ) = Eπθ [   γ t rt ]
+                                                                                                              t=0
+0.8 :: obstc(front). states that the probability of having an
+obstacle in front is 0.8. A clause is a universally quantified             J(θ) is assumed to be finite for all policies. An important
+expression of the form h :−b1 , ..., bn where h is a literal and           class of RL algorithms, particularly relevant in the setting of
+b1 , ..., bn is a conjunction of literals, stating that h is true if all   shielding, is based on policy gradients, which maximize J(θ)
+bi are true. The clause defining safe in Fig. 1 states that it is          by repeatedly estimating the gradient ∇θ J(θ). The general
+safe when there is no crash. Each truth value assignment of                form of policy gradient methods is:
+all probabilistic facts F, denoted by Fk , induces a possible                                         ∞
+world wk where all ground facts in wk are true and all that
+                                                                                                     X
+                                                                                      ∇θ J(θ) = Eπθ [   Ψt ∇θ log πθ (st , at )]          (2)
+are not in wk are false. Formally, the probability of a possible
+                                                                                                       t=0
+world wk is defined as follows.
+                             Y         Y                                   where Ψt is an empirical expectation of the return [Schulman
+                  P (wk ) =        pi        (1 − pi ).             (1)    et al., 2018]. The expected value is usually computed using
+                           fi ∈wk     fi 6∈wk                              Monte Carlo methods, requiring efficient sampling from πθ .
+ProbLog allows for annotated disjunctions (ADs). An
+AD is a clause with multiple heads hi that are mu-                         3     Probabilistic Logic Shields
+tually exclusive to one another, meaning that exactly                      3.1    Probabilistic Shielding
+one head is true when the body is true, and the
+                                                                           To reason about safety, we will assume that we have a safety-
+choice of the head is governed by a probability distri-
+                                                                           aware probabilistic model P(safe|a, s), indicating the prob-
+bution. An AD has the form of p1 :: h1 ; P         · · · ; pm :: hm
+                                                       m                   ability that an action a is safe to execute in a state s. We
+where each hi is the head of a clause and              i=1 pi ≤            use bold P to distinguish it from the underlying probabil-
+1 [De Raedt and Kimmig, 2015; Fierens et al., 2015].
+                                                                           ity distributions P (·) of the MDP. Our safety-aware prob-
+For instance, {0.1 :: act(nothing); 0.5 :: act(accel);
+                                                                           abilistic model does not require that the underlying MDP
+0.1 :: act(brake); 0.1 :: act(left); 0.2 :: act(right)} is
+                                                                           is known. However, it needs to represent internally safe
+an AD (with no conditions), stating the probability with
+                                                                           relevant-dynamics as the safety specification. Therefore, the
+which each action will be taken. The success probability
+                                                                           safety-aware model P is not a full representation of the MDP,
+of an atom q given a theory T is the sum of the proba-
+                                                                           it is limited to safety-related properties.
+bilities of the possiblePworlds that entail q. Formally, it is
+                                                                               Notice that for traditional logical shields actions are either
+defined as P (q) :=       wk |=q P (wk ). Given a set of atoms             safe or unsafe, which implies that P(safe|a, s) = 1 or 0. We
+E as evidence, the conditional probability of a query q is                 are interested in the safety of policies, that is, in
+P(q|E) = PP(q,E)(E) . For instance, in Fig. 1, the probability                                          X
+of being safe in the next state given that the agent accelerates                       Pπ (safe|s) =         P(safe|s, a)π(a|s).          (3)
+is P(safe|act(accel)) = 0.14   0.5 = 0.28.
+                                                                                                       a∈A
+Figure 1: A motivation example of Probabilistic Logic Shields. We encode the interaction between the base policy π, the state-abstraction H
+and the safety specification using a ProbLog program T . This provides a uniform language to express many aspects of the shielding process.
+The shielded policy π + (s) decreases the probability of unsafe actions, e.g. acceleration and increases the likelihood of being safe.
+
+
+   By marginalizing out actions according to their probability             • action safety in s: P(safe|s, a) = PT (safe|a)
+under π, the probability Pπ measures how likely it is to take              • policy safety in s: Pπ (safe|s) = PT (safe)
+a safe action in s according to π.                                         • the shielded policy in s: Pπ (a|s, safe) = PT (a|safe)
+Definition 3.1. Probabilistic Shielding Given a base policy            Notice that these three distributions can be obtained by query-
+π and a probabilistic safety model P(safe|s, a), the shielded          ing the same identical program ProbLog program T .
+policy is                                                                 It is important to realize that although we are using the
+                                                                       probabilistic logic programming language ProbLog to reason
+                                     P(safe|s, a)                      about safety, we could also have used alternative represen-
+      π + (a|s) = Pπ (a|s, safe) =                π(a|s)       (4)
+                                     Pπ (safe|s)                       tations such as Bayesian networks, or other StarAI models
+   Intuitively, a shielded policy is a re-normalization of the         [De Raedt et al., 2016]. The ProbLog representation is how-
+base policy that increases (resp. decreases) the probabilities         ever convenient because it allows to easily model planning
+of the actions that are safer (resp. less safe) than average.          domains, it is Turing equivalent and it is differentiable. At
+                                                                       the same time, it is important to note that the safety model
+Proposition 1. A shielded policy is always safer than its base
+                                                                       in ProbLog is an abstraction, using possibly a different repre-
+policy in all states, i.e. Pπ+ (safe|s) ≥ Pπ (safe|s) for all s
+                                                                       sentation than that of the underlying MDP.
+and π. (A proof is in Appendix B)
+                                                                       Perception Through Neural Predicates The probabilities
+3.2     Shielding with Probabilistic Logics                            of both Πs and Hs depend on the current state s. We com-
+In this paper, we focus on probabilistic shields implemented           pute these probabilities using two neural networks π and H
+through probabilistic logic programs. The ProbLog program              operating on real valued inputs (i.e. images or sensors). We
+defining probabilistic safety consists of three parts.                 feed then the probabilities to the ProbLog program. As we
+    First, an annotated disjunction Πs , which represents the          depicted in Fig. 1, both these functions take a state represen-
+policy π(a|s) in the logic program. For example, in                    tation s as input (e.g. an image) and they output the probabil-
+Fig. 1, the policy π(a|s) is represented as the annotated dis-         ities the facts representing, respectively, the actions and the
+junction Πs = {0.1 :: act(nothing); 0.5 :: act(accel);                 safe-relevant abstraction of the state. This feature is closely
+0.1 :: act(brake); 0.1 :: act(left); 0.2 :: act(right)}.               related to the notion of neural predicate, which can — for the
+    The second component of the program is a set of prob-              purposes of this paper — be regarded as encapsulated neural
+abilistic facts Hs representing an abstraction of the current          networks inside logic. Since ProbLog programs are differ-
+state. Such abstraction should contain information needed              entiable with respect to the probabilities in Πs and Hs , the
+to reason about the safety of actions in that state. There-            gradients can be seamlessly backpropagated to network pa-
+fore, it should not be a fair representation of the entire state       rameters during learning.
+s. For example, in Fig. 1, the abstraction is represented as
+the set of probabilistic facts: Hs = { 0.8 :: obstc(front).            4    Probabilistic Logic Policy Gradient
+0.2 :: obstc(left). 0.5 :: obstc(right).}
+    The third component of the program is a safety specifi-            In this section, we demonstrate how to use probabilistic logic
+cation BK, which is a set of clauses and ADs represent-                shields with a deep reinforcement learning method. We will
+ing knowledge about safety. In our example, the predicates             focus on real-vector states (such as images), but the safety
+crash and safe are defined using clauses. The first clause             constraint is specified symbolically and logically. Under this
+for crash states that the probability of having a crash is 0.9         setting, our goal is to find an optimal policy in the safe policy
+if the agent accelerates when there is an obstacle in front of         space Πsafe = {π ∈ Π|Pπ (safe|s) = 1, ∀s ∈ S}. Notice
+it. The clause for safe states that it is safe if no crash occurs.     that it is possible that no optimal policies exist in the safe
+    Therefore, we obtain a ProbLog program T (s) = BK ∪                policy space. In this case, our aim will be to find a policy that
+Hs ∪ Πs , inducing a probabilistic measure PT . By query-              it as safe as possible.
+ing this program, we can reason about safety of policies and              We propose a new safe policy gradient technique, which
+actions. More specifically, we can use T (s) to obtain:                we call Probabilistic Logic Policy Gradient (PLPG). PLPG
+                                                                              Both gradients in PLPG are essential. The shielded pol-
+                                                                           icy gradient forbids the agent from immediate danger and the
+                                                                           safety gradient penalizes unsafe behavior. The interaction be-
+                                                                           tween shielded and loss-based gradients is still a very new
+                                                                           topic, nonetheless, recent advances in neuro-symbolic learn-
+                                                                           ing have shown that both are important [Ahmed et al., 2022].
+                                                                           Our experiments shows that having only one but not both is
+Figure 2: A comparison between a traditional rejection-based shield        practically insufficient.
+(SHLD) and a Probabilistic Logic Shield (PLS). Both shields take a
+policy π and a set of noisy sensor readings Hs to compute a safe           4.2   Probabilistic vs Rejection-based Shielding
+action. Left: The policy must keep sampling actions until a safe
+action is accepted by the rejection-based shield. This requires an         The problem of finding a policy in the safe policy space can-
+assumption that an action is either completely safe or unsafe. Right:      not be solved by rejection-based shielding (cf. Fig. 2, left)
+We replace SHLD with PLS that proposes a safer policy π + on the           without strong assumptions, such as that a state-action pair is
+policy level without imposing the assumption.                              either completely safe or unsafe. It is in fact often assumed
+                                                                           that a set of safe state-action pairs SAsafe is given. To im-
+                                                                           plement a rejection-based shield, the agent must keep sam-
+applies probabilistic logic shields and is guaranteed to con-              pling from the base policy until an action a is accepted. This
+verge to a safe and optimal policy if it exists.                           approach implicitly conditions through very inefficient rejec-
+                                                                           tion sampling schemes as below, which has an unclear link to
+4.1       PLPG for Probabilistic Shielding                                 probabilistic semantics [Robert et al., 1999].
+To integrate PLS with policy gradient, we simply replace
+the base policy in Eq. (2) with the shielded policy obtained                                             1[(s,a)∈SAsafe ] π(a|s)
+                                                                                      π + (a|s) = P                                       (8)
+through Eq. (4). We call this a shielded policy gradient.                                                  1[(s,a0 )∈SAsafe ] π(a0 |s)
+                             ∞                                                                      a0 ∈A
+                             X
+                     Eπ+ [         Ψt ∇θ log πθ+ (at |st )]          (5)   Convergence Under Perfect Safety Information
+                        θ
+                             t=0
+                                                                           It is common for existing shielding approaches to integrate
+This requires the shield to be differentiable and cannot be                policy gradients with a rejection-based shield, e.g. Eq. (8),
+done using rejection-based shields. The gradient encourages                resulting in the following policy gradient.
+policies π + that are more rewarding, i.e. that has a large Ψ,                                       ∞
+in the same way of a standard policy gradient. It does so by                                        X
+                                                                                     ∇θ J(θ) = Eπ+ [   Ψt ∇θ log πθ (st , at )]           (9)
+assuming that unsafe actions have been filtered by the shield.                                       θ
+                                                                                                         t=0
+However, when the safety definition is uncertain, unsafe ac-
+tions may still be taken and such a gradient may still end up                 It is a known problem that this approach may result
+encouraging unsafe but rewarding policies.                                 in sub-optimal policies, even though the agent has perfect
+   For this reason, we introduce a safety loss to penalize un-             safety information [Kalweit et al., 2020; Ray et al., 2019;
+safe policies. Intuitively, a safe policy should have a small              Hunt et al., 2021; Anderson et al., 2020]. This is due to a
+safety loss, and the loss of a completely safe policy should               policy mismatch between π + and π in Eq. (9). More specif-
+be zero. The loss can be expressed by interpreting the policy              ically, Eq. (9) is an off-policy algorithm, meaning that the
+safety as the probability that π + satisfies the safety constraint         policy used to explore (i.e. π + ) is different from the policy
+(using the semantic loss of [Xu et al., 2018]); more formally,             that is updated (i.e. π)1 . For any off-policy policy gradient
+Ls := − log Pπ+ (safe|s). Then, the corresponding safety                   method to converge to an optimal policy (even in the tabular
+gradient is as follows.                                                    case), the behavior policy (to explore) and the target policy
+                                                                           (to be updated) must appropriately visit the same state-action
+                     −Eπ+ [∇θ log Pπ+ (safe|s)]                      (6)
+                             θ                                             space, i.e., if π(a|s) > 0 then π + (a|s) > 0 [Sutton and Barto,
+Notice that the safety gradient is not a shielding mechanism               2018]. This requirement is violated by Eq. (9).
+but a regret due to its loss-based nature. By combining the                   PLPG, on the other hand, reduces to Eq. (5) when given
+shielded policy gradient and the safety gradient, we obtain a              perfect sensor information of the state. Since it has the same
+new Safe RL technique.                                                     form as the standard policy gradient (Eq. 9), PLPG is guaran-
+                                                                           teed to converge to an optimal policy according to the Policy
+Definition 4.1. (PLPG) The probabilistic logic policy gradi-               Gradient Theorem [Sutton et al., 2000].
+ent ∇θ J(θ) is
+           ∞
+                                                                           Proposition 2. PLPG, i.e. Eq. (7), converges to an optimal
+   Eπ+ [
+           X
+                 Ψt ∇θ log πθ+ (at |st ) − α∇θ log Pπ+ (safe|st )]   (7)   policy given perfect safety information in all states.
+      θ                                                  θ
+           t=0                                                                It should be noted that the base policy learnt by PLPG is
+where α is the safety coefficient that indicates the weight of             unlikely to be equivalent to the policy that would have been
+the safety gradient.                                                       learnt without a shield, all other things being equal. That is,
+   We introduce the safety coefficient α, a hyperparameter                     1
+                                                                                 A well-known off-policy technique is Q-learning as the behav-
+that controls the combination of the two gradients.                        ior policy is -greedy compared to the target policy.
+in general, πθ in Eq. (9) will not tend to be the same as πθ in              • -VSRL a new risk-taking variant of VSRL that has a
+Eq. (7) as learning continues. This is because the parameters                  small  probability of accepting any action, akin to -
+θ in Eq. (7) depend on πθ+ instead of πθ , and πθ is learnt in a               greedy [Fernández and Veloso, 2006] As -VSRL simu-
+way to make π + optimal given safety imposed by the shield.                    lates an artificial noise/distrust in the sensors, we expect
+                                                                               that it improves VSRL’s ability to cope with noise.
+Learning From Unsafe Actions                                                In order to have a fair comparison, VSRL, -VSRL and
+PLPG has a significant advantage over a rejection-based                  PLPG agents have identical safety sensors and safety con-
+shield by learning not only from the actions accepted by the             straints, and PPO does not have any safety sensors. We do
+shield but also from the ones that would have been rejected.             not compare to shielding approaches that require a full model
+This is a result of the use of ProbLog programs that computes            of the environment since they are not applicable here. We
+the safety of all available actions in the current state, allow-         train all agents in all domains using 600k learning steps and
+ing us to update the base policy in terms of safety without              all experiments are repeated using five different seeds.
+having to actually execute the other actions.                               In our experiments, we answer the following questions :
+                                                                          Q1 Does PLPG produce safer and more rewarding policies
+Leveraging Probabilistic Logic Programming                                     than its competitors?
+                                                                          Q2 What is the effect of the hyper-parameters α and ?
+Probabilistic logic programs can, just like Bayesian networks,            Q3 Does the shielded policy gradient or the safety gradient
+be compiled into circuits using knowledge compilation [Dar-                    have more impact on safety in PLPG?
+wiche, 2003]. Although probabilistic inference is hard (#P-               Q4 What are the performance and the computational cost of
+complete), once the circuit is obtained, inference is linear                   a multi-step safety look-ahead PLS?
+in the size of the circuit [De Raedt and Kimmig, 2015;
+Fierens et al., 2015]. Furthermore, the circuits can be used             Metrics We compare all agents in terms of two metrics:
+to compute gradients and the safety model only needs to be               (1) average normalized return, i.e. the standard per-episode
+compiled once. We show a compiled program in Appendix C.                 normalized return averaged over the last 100 episodes; (2) cu-
+Our PLP language is still restricted to discrete actions, al-            mulative normalized violation, i.e. the accumulated number
+though it should be possible to model continuous actions us-             of constraint violations from the start of learning. The abso-
+ing extensions thereof in future work [Nitti et al., 2016].              lute numbers are listed in Appendix D.
+                                                                         Probabilistic Safety via Noisy Sensor Values We consider
+5     Experiments                                                        a set of noisy sensors around the agent for safety purposes.
+Now, we present an empirical evaluation of PLPG, when                    For instance, the four fire sensor readings in Fig. 3 (left) might
+compared to other baselines in terms of return and safety.               {0.6 :: fire(0, 1). 0.1 :: fire(0, −1). 0.1 :: fire(−1, 0).
+                                                                         0.4 :: fire(1, 0).} These sensors provide to the shield only
+Experimental Setup Experiments are run in three environ-                 local information of the learning agent. PLPG agents are able
+ments. (1) Stars, the agent must collect as many stars as pos-           to directly use the noisy sensor values. However, as VSRL
+sible without going into a stationary fire; (2) Pacman, the              and -VSRL agents require 0/1 sensor values to apply for-
+agent must collect stars without getting caught by the fire              mal verification, noisy sensor readings must be discretized
+ghosts that can move around, and (3) Car Racing, the agent               to {0, 1}. For example, the above fire sensor readings be-
+must go around the track without driving into the grass area.            come {1 :: fire(0, 1). 0 :: fire(0, −1). 0 :: fire(−1, 0).
+We use two configurations for each domain. A detailed de-                0 :: fire(1, 0).} For all domains, the noisy sensors are stan-
+scription is in Appendix A.                                              dard, pre-trained neural approximators of an accuracy higher
+                                                                         than 99%. The training details are presented in Appendix A.
+                                                                         Even with such accurate sensors, we will show that discretiz-
+                                                                         ing the sensor values, as in VSRL, is harmful for safety. De-
+                                                                         tails of the pre-training procedure are in Appendix A.
+
+                                                                         Q1: Lower Violation and Higher Return
+                                                                         We evaluate how much safer and more rewarding PLPG is
+                                                                         compared to baselines by measuring the cumulative safety
+Figure 3: The domains of Stars, Pacman and Car Racing. The dif-          violation and the average episodic return during the learn-
+ference between Stars and Pacman is that fires in Stars are stable and   ing process. Before doing so, we must select appropri-
+the ones in Pacman move around.                                          ate hyperparameters for PLPG and VSRL agents. Since
+                                                                         our goal is to find an optimal policy in the safe pol-
+    We compare PLPG to three RL baselines.                               icy space, we select the α ∈ {0, 0.1, 0.5, 1, 5} and  ∈
+    • PPO, a standard safety-agnostic agent that starts with a           {0, 0.005, 0.01, 0.05, 0.1, 0.2, 0.5, 1.0} values that result in
+      random initial policy [Schulman et al., 2017].                     the lowest violation in each domain. The hyperparameter
+    • VSRL, an agent augmented with a deterministic                      choices are listed in Appendix D. These values are fixed for
+      rejection-based shield [Hunt et al., 2021]. Its structure          the rest of the experiments (except for Q2 where we explic-
+      is shown in Fig. 2 (left).                                         itly analyze their effects). We show that PLPG achieves the
+Figure 4: Trade-off between Violation (x-axis) and Return (y-             Figure 5: The episodic return and cumulative constraint violation of
+axis). Each small data point is an agent’s policy and the large data      VSRL (left) and PLPG (right) agents in noisy environments. Left:
+points are the average of five seeds. An ideal policy should lie in the   The effect of  is not significant. Right: Increasing α gives a convex
+upper-left corner.                                                        trend in both return and violation. The absolute numbers are listed
+                                                                          in Appendix D.
+
+lowest violation while having a comparable return to other
+agents.                                                                   ments. Specifically, we measure the episodic return and cu-
+   The results are plotted in Fig. 4 where each data point is a           mulative constraint violation. The results are plotted in Fig. 5.
+policy trained for 600k steps. Fig. 4 clearly shows that PLPG                The effect of different values of α to PLPG agents is clear.
+is the safest in most tested domains. When augmented with                 Increasing α gives a convex trend in both the return and the
+perfect sensors, PLPG’s violation is lower than PPO by 50.2%              violation counts. The optimal value of α is generally between
+and lower than VSRL by 25.7%. When augmented with noisy                   0.1 and 1, where the cumulative constraint violation and the
+sensors, PLPG’s violation is lower than PPO by 51.3%, lower               return are optimal. This illustrates the benefit of combining
+than VSRL by 24.5% and lower than -VSRL by 13.5%. Fig. 4                 the shielded policy gradient and the safety gradient. On the
+also illustrates that PLPG achieves a comparable (or slightly             contrary, the effect of  to VSRL agents is not significant. In-
+higher) return while having the lowest violation. When aug-               creasing  generally improves return but worsens constraint
+mented with perfect sensors, PLPG’s return is higher than                 violation. This illustrates that simply randomizing the pol-
+PPO by 0.5% and higher than VSRL by 4.8%. When aug-                       icy is not effective in improving the ability of handling noisy
+mented with noisy sensors, PLPG’s return is higher than PPO               environments. Notice that there is no one-to-one mapping
+by 4.5%, higher than VSRL by 6.5% and higher than -VSRL                  between the two hyper-parameters, as α controls the combi-
+by 6.7%.                                                                  nation of the gradients and  controls the degree of unsafe
+   Car Racing has complex and continuous action effects                   exploration.
+compared to the other domains. In CR, safety sensor read-
+ings alone are not sufficient for the car to avoid driving into           Q3: PLPG Gradient Analysis
+the grass as they do not capture the inertia of the car, which            We analyze how the shielded policy gradient and the safety
+involves the velocity and the underlying physical mechanism               gradient interact with one another. To do this, we introduce
+such as friction. In domains where safety sensors are not suf-            two ablated agents, one uses only safety gradients (Eq. (5))
+ficient, the agent must be able to act a little unsafe to learn, as       and the other uses only policy gradients (Eq. (6)). The results
+PPO, -VSRL and PLPG can do, instead of completely rely-                  are plotted in Fig. 6 where each data point is a policy trained
+ing on sensors such as VSRL. Hence, compared to the safety-               for 600k steps.
+agnostic baseline PPO, while -VSRL and PLPG respectively                    Fig. 6 illustrates that combining both gradients is safer
+reduce violations by 37.8% and 50.2%, VSRL causes 18%                     than using only one gradient. When augmented with per-
+more violations even when given perfect safety sensors. Note              fect sensors, the use of both gradients has a violation that
+that we measure the actual violations instead of policy safety            is lower than using only safety or policy gradient by 24.7%
+Pπ (safe|s). The policy safety during the learning process is             and 10.8%, respectively. When augmented with noisy sen-
+plotted in Appendix D.                                                    sors, using both gradients has a violation that is lower than
+                                                                          using only safety or policy gradient by 25.5% and 15.5%, re-
+Q2: Selection of Hyperparameters α and                                   spectively. Nonetheless, the importance of policy and safety
+We analyze how the hyper-parameters α and  respectively                  gradients varies among domains. In Stars and Pacman, using
+affect the performance of PLPG and VSRL in noisy environ-                 only policy gradients causes fewer violations than using only
+                                                                           et al., 2017; Moldovan and Abbeel, 2012], maximize safety
+                                                                           constraint satisfiability through a loss function [Xu et al.,
+                                                                           2018], add a penalty to the agent when the constraint is vi-
+                                                                           olated [Pham et al., 2018; Tessler et al., 2019; Memarian
+                                                                           et al., 2021], or construct a more complex reward struc-
+                                                                           ture using temporal logic [De Giacomo et al., 2021; Cama-
+                                                                           cho et al., 2019; Jiang et al., 2021; Hasanbeig et al., 2019;
+                                                                           Den Hengst et al., 2022]. These approaches express safety
+                                                                           as a loss, while our method directly prevents the agent from
+                                                                           taking actions that can potentially lead to safety violation.
+                                                                           Probabilistic Shields. Shielding is a safe reinforcement
+                                                                           learning approach that aims to completely avoid unsafe ac-
+                                                                           tions during the learning process [Alshiekh et al., 2018;
+                                                                           Jansen et al., 2020]. Previous shielding approaches have been
+                                                                           limited to symbolic state spaces and are not suitable for noisy
+                                                                           environments [Jansen et al., 2020; Harris and Schaub, 2020;
+                                                                           Hunt et al., 2021; Anderson et al., 2020]. To address uncer-
+                                                                           tainty, some methods incorporate randomization, e.g. sim-
+Figure 6: Trade-off between Violation (x-axis) and Return (y-              ulating future states in an emulator to estimate risk [Li and
+axis). Each data point is an agent’s policy and the big data points        Bastani, 2020; Giacobbe et al., 2021], using -greedy ex-
+are the average of five seeds.                                             ploration that permits unsafe actions [Garcı́a and Fernández,
+                                                                           2019], or randomizing the policy based on the current be-
+Safety horizon           1 step       2 steps       3 steps      4 steps
+                                                                           lief state [Karkus et al., 2017]. To integrate shielding with
+                                                                           neural policies, one can translate a neural policy to a sym-
+     #sensors              4             12            24          40      bolic one that can be formally verified [Bastani et al., 2018;
+    Circuit size          116          1073          8246        373676    Verma et al., 2019]. However, these methods rely on sam-
+                                                                           pling and do not have a clear connection to uncertainty
+Compilation (s)           0.29          0.70          1.70       15.94
+                                                                           present in the environment while our method directly ex-
+Evaluation (s)            0.01          0.08          0.66       27.39     ploits such uncertainty through the use of PLP principles. Be-
+     Ret./Vio.         0.81 / 0.82   0.85 / 0.65   0.86 / 0.57      -      lief states can capture uncertainty but require an environment
+                                                                           model to to keep track of the agent’s belief state, which is
+                   Table 1: Multi-step Safety Look-ahead                   a stronger assumption than our method [Junges et al., 2021;
+                                                                           Carr et al., 2022].
+                                                                           Differentiable layers for neural policies. The use of dif-
+safety gradients. In CR, however, using only safety gradients              ferentiable shields has gain some attention in the field. One
+causes fewer violations. This is a consequence of the iner-                popular approach is to add a differentiable layer to the pol-
+tia of the car not being fully captured by safety sensors, as              icy network to prevent constraint violations. Most of these
+discussed in Q1.                                                           methods focus on smooth physical rules [Dalal et al., 2018;
+                                                                           Pham et al., 2018; Cheng et al., 2019] and only a few involve
+Q4: Multi-step Safety Look-ahead
+                                                                           logical constraints. In [Kimura et al., 2021], an optimization
+We analyze the behaviour of PLPG when we use probabilistic                 layer is used to transform a state-value function into a policy
+logic shields for multi-step safety look-ahead. In this case, the          encoded as a logical neural network. [Ahmed et al., 2022]
+safety program requires more sensors around the agent for po-              encode differentiable and hard logical constraints for neural
+tential danger over a larger horizon in the future. In Pacman,             networks using PLP. While being similar, this last model fo-
+for example, new sensors are required to detect whether there              cuses on prediction tasks and do not consider a trade-off be-
+is a ghost N units away where N is the safety horizon. We an-              tween return and constraint satisfiability.
+alyze the behavior/performance in terms of return/violation
+and computational cost. The results are shown in Table 1.                  7   Conclusion
+Increasing the horizon causes an exponential growth in the
+compiled circuit size and the corresponding inference time.                We introduced Probabilistic Logic Shields, a proof of con-
+However, we can considerably improve both safety and re-                   cept of a novel class of end-to-end differentiable shield-
+turn, especially when moving from one to two steps.                        ing techniques. PLPG enable efficient training of safe-by-
+                                                                           construction neural policies. This is done by using a proba-
+                                                                           bilistic logic programming layer on top of the standard neural
+6     Related Work                                                         policy. PLPG is a generalization of classical shielding [Hunt
+Safe RL. Safe RL aims to avoid unsafe consequences                         et al., 2021] that allows for both deterministic and probabilis-
+through the use of various safety representations [Garcı́a                 tic safety specifications. Future work will be dedicated to ex-
+and Fernández, 2015]. There are several ways to achieve                   tending PLS to be used with a larger class of RL algorithms
+this goal. One could constrain the expected cost [Achiam                   such as the ones with continuous policies.
+References                                                       restraining specifications. Proceedings of the Interna-
+[Achiam et al., 2017] Joshua Achiam, David Held, Aviv            tional Conference on Automated Planning and Scheduling,
+                                                                 29(1):128–136, 2021.
+  Tamar, and Pieter Abbeel. Constrained policy optimiza-
+  tion. In Proceedings of the 34th International Conference    [De Raedt and Kimmig, 2015] Luc De Raedt and Angelika
+  on Machine Learning - Volume 70, ICML’17, page 22–31.          Kimmig. Probabilistic (logic) programming concepts.
+  JMLR.org, 2017.                                                Mach. Learn., 100(1):5–47, 2015.
+[Ahmed et al., 2022] Kareem Ahmed, Stefano Teso, Kai-          [De Raedt et al., 2016] Luc De Raedt, Kristian Kersting, Sri-
+  Wei Chang, Guy Van den Broeck, and Antonio Vergari.            raam Natarajan, and David Poole. Statistical Relational
+  Semantic probabilistic layers for neuro-symbolic learning.     Artificial Intelligence: Logic, Probability, and Computa-
+  In Advances in Neural Information Processing Systems,          tion, volume 32 of Synthesis Lectures on Artificial Intelli-
+  2022.                                                          gence and Machine Learning. Morgan & Claypool, 2016.
+[Alshiekh et al., 2018] Mohammed Alshiekh, Roderick            [Den Hengst et al., 2022] Floris Den Hengst, Vincent
+  Bloem, Rüdiger Ehlers, Bettina Könighofer, Scott             François-Lavet, Mark Hoogendoorn, and Frank van
+  Niekum, and Ufuk Topcu. Safe reinforcement learning            Harmelen. Planning for potential: Efficient safe rein-
+  via shielding. AAAI’18/IAAI’18/EAAI’18. AAAI Press,            forcement learning. Mach. Learn., 111(6):2255–2274,
+  2018.                                                          2022.
+[Anderson et al., 2020] Greg Anderson, Abhinav Verma, Isil     [Fernández and Veloso, 2006] Fernando Fernández and
+  Dillig, and Swarat Chaudhuri. Neurosymbolic reinforce-          Manuela Veloso. Probabilistic policy reuse in a rein-
+  ment learning with formally verified exploration. In Pro-       forcement learning agent. AAMAS ’06. Association for
+  ceedings of the 34th International Conference on Neural         Computing Machinery, 2006.
+  Information Processing Systems, NIPS’20, 2020.
+                                                               [Fierens et al., 2015] Daan Fierens, Guy Van den Broeck,
+[Bastani et al., 2018] Osbert Bastani, Yewen Pu, and Ar-          Joris Renkens, Dimitar Shterionov, Bernd Gutmann, Ingo
+  mando Solar-Lezama. Verifiable reinforcement learning           Thon, Gerda Janssens, and Luc De Raedt. Inference and
+  via policy extraction. In Proceedings of the 32nd Interna-      learning in probabilistic logic programs using weighted
+  tional Conference on Neural Information Processing Sys-         Boolean formulas. Theory and Practice of Logic Program-
+  tems, NIPS’18, page 2499–2509. Curran Associates Inc.,          ming, 15:358–401, 5 2015.
+  2018.
+                                                               [Garcı́a and Fernández, 2015] Javier Garcı́a and Fernando
+[Brockman et al., 2016] Greg Brockman, Vicki Cheung,             Fernández. A comprehensive survey on safe reinforce-
+  Ludwig Pettersson, Jonas Schneider, John Schulman, Jie         ment learning. Journal of Machine Learning Research,
+  Tang, and Wojciech Zaremba. Openai gym, 2016.                  16:1437–1480, 2015.
+[Camacho et al., 2019] Alberto       Camacho,       Rodrigo    [Garcı́a and Fernández, 2019] Javier Garcı́a and Fernando
+  Toro Icarte, Toryn Q. Klassen, Richard Valenzano,              Fernández. Probabilistic policy reuse for safe reinforce-
+  and Sheila A. McIlraith.       Ltl and beyond: Formal          ment learning. ACM Trans. Auton. Adapt. Syst., 13(3),
+  languages for reward function specification in reinforce-      2019.
+  ment learning. In Proceedings of the Twenty-Eighth
+  International Joint Conference on Artificial Intelligence,   [Giacobbe et al., 2021] Mirco Giacobbe, Mohammadhosein
+  IJCAI-19, 7 2019.                                              Hasanbeig, Daniel Kroening, and Hjalmar Wijk. Shielding
+                                                                 atari games with bounded prescience. In Proceedings of
+[Carr et al., 2022] Steven Carr, Nils Jansen, Sebastian          the 20th International Conference on Autonomous Agents
+  Junges, and Ufuk Topcu. Safe reinforcement learning via        and MultiAgent Systems, AAMAS ’21, 2021.
+  shielding under partial observability, 2022.
+                                                               [Harris and Schaub, 2020] Andrew Harris and Hanspeter
+[Cheng et al., 2019] Richard Cheng,         Gábor Orosz,        Schaub. Spacecraft command and control with safety guar-
+  Richard M. Murray, and Joel W. Burdick.               End-     antees using shielded deep reinforcement learning. AIAA
+  to-end safe reinforcement learning through barrier             Scitech 2020 Forum, 1 PartF, 2020.
+  functions for safety-critical continuous control tasks.
+  AAAI’19/IAAI’19/EAAI’19. AAAI Press, 2019.                   [Hasanbeig et al., 2019] M. Hasanbeig, Y. Kantaros,
+                                                                 A. Abate, D. Kroening, G. J. Pappas, and I. Lee. Rein-
+[Dalal et al., 2018] Gal Dalal, Krishnamurthy Dvijotham,
+                                                                 forcement learning for temporal logic control synthesis
+  Matej Vecerik, Todd Hester, Cosmin Paduraru, and Yuval         with probabilistic satisfaction guarantees. In 2019 IEEE
+  Tassa. Safe exploration in continuous action spaces, 2018.     58th Conference on Decision and Control (CDC), 2019.
+[Darwiche, 2003] Adnan Darwiche.          A differential ap-   [Hill et al., 2018] Ashley Hill, Antonin Raffin, Maximilian
+  proach to inference in bayesian networks. J. ACM,              Ernestus, Adam Gleave, Anssi Kanervisto, Rene Traore,
+  50(3):280–305, may 2003.                                       Prafulla Dhariwal, Christopher Hesse, Oleg Klimov, Alex
+[De Giacomo et al., 2021] Giuseppe De Giacomo, Luca Ioc-         Nichol, Matthias Plappert, Alec Radford, John Schulman,
+  chi, Marco Favorito, and Fabio Patrizi. Foundations for        Szymon Sidor, and Yuhuai Wu. Stable baselines. https:
+  restraining bolts: Reinforcement learning with ltlf/ldlf       //github.com/hill-a/stable-baselines, 2018.
+[Hunt et al., 2021] Nathan Hunt, Nathan Fulton, Sara Magli-          optimization for deep reinforcement learning in the real
+   acane, Trong Nghia Hoang, Subhro Das, and Armando                 world.      In 2018 IEEE International Conference on
+   Solar-Lezama. Verifiably safe exploration for end-to-end          Robotics and Automation (ICRA), pages 6236–6243, 2018.
+   reinforcement learning. In Proceedings of the 24th Inter-      [Pishro-Nik, 2014] H. Pishro-Nik. Introduction to Probabil-
+   national Conference on Hybrid Systems: Computation and            ity, Statistics, and Random Processes. Kappa Research,
+   Control, HSCC ’21, 2021.                                          LLC, 2014.
+[Jansen et al., 2020] Nils Jansen, Bettina Könighofer, Sebas-    [Ray et al., 2019] Alex Ray, Joshua Achiam, and Dario
+   tian Junges, Alex Serban, and Roderick Bloem. Safe re-            Amodei. Benchmarking Safe Exploration in Deep Rein-
+   inforcement learning using probabilistic shields. In 31st         forcement Learning. arXiv preprint, pages S. 1–6, 2019.
+   International Conference on Concurrency Theory, CON-
+   CUR 2020, 2020.                                                [Robert et al., 1999] Christian P Robert, George Casella, and
+                                                                     George Casella. Monte Carlo statistical methods, vol-
+[Jiang et al., 2021] Yuqian Jiang, Suda Bharadwaj, Bo Wu,
+                                                                     ume 2. Springer, 1999.
+   Rishi Shah, Ufuk Topcu, and Peter Stone. Temporal-logic-
+   based reward shaping for continuing reinforcement learn-       [Schulman et al., 2015] John Schulman, Sergey Levine,
+   ing tasks. Proceedings of the AAAI Conference on Artifi-          Pieter Abbeel, Michael Jordan, and Philipp Moritz. Trust
+   cial Intelligence, 35(9):7995–8003, 2021.                         region policy optimization. In Proceedings of the 32nd
+                                                                     International Conference on Machine Learning, Proceed-
+[Junges et al., 2021] Sebastian Junges, Nils Jansen, and San-
+                                                                     ings of Machine Learning Research. PMLR, 2015.
+   jit A. Seshia. Enforcing almost-sure reachability in
+   pomdps. In Computer Aided Verification. Springer Inter-        [Schulman et al., 2017] John Schulman, Filip Wolski, Pra-
+   national Publishing, 2021.                                        fulla Dhariwal, Alec Radford, and Oleg Klimov. Proximal
+                                                                     policy optimization algorithms, 2017.
+[Kalweit et al., 2020] Gabriel Kalweit, Maria Huegle,
+   Moritz Werling, and Joschka Boedecker. Deep Con-               [Schulman et al., 2018] John Schulman, Philipp Moritz,
+   strained Q-learning. 2020.                                        Sergey Levine, Michael Jordan, and Pieter Abbeel. High-
+                                                                     dimensional continuous control using generalized advan-
+[Karkus et al., 2017] Peter Karkus, David Hsu, and Wee Sun
+                                                                     tage estimation, 2018.
+   Lee. Qmdp-net: Deep learning for planning under par-
+   tial observability. In Proceedings of the 31st International   [Sutton and Barto, 2018] Richard S. Sutton and Andrew G.
+   Conference on Neural Information Processing Systems,              Barto. Reinforcement Learning: An Introduction. A Brad-
+   NIPS’17. Curran Associates Inc., 2017.                            ford Book, 2018.
+[Kimura et al., 2021] Daiki Kimura, Subhajit Chaudhury,           [Sutton et al., 2000] Richard S Sutton, David McAllester,
+   Akifumi Wachi, Ryosuke Kohita, Asim Munawar, Michi-               Satinder Singh, and Yishay Mansour. Policy gradient
+   aki Tatsubori, and Alexander Gray. Reinforcement Learn-           methods for reinforcement learning with function approx-
+   ing with External Knowledge by using Logical Neural               imation. In Advances in Neural Information Processing
+   Networks. 2021.                                                   Systems, volume 12. MIT Press, 2000.
+[Li and Bastani, 2020] Shuo Li and Osbert Bastani. Robust         [Tessler et al., 2019] Chen Tessler, Daniel J. Mankowitz, and
+   Model Predictive Shielding for Safe Reinforcement Learn-          Shie Mannor. Reward constrained policy optimization.
+   ing with Stochastic Dynamics. Proceedings - IEEE Inter-           In 7th International Conference on Learning Representa-
+   national Conference on Robotics and Automation, 2020.             tions, ICLR. OpenReview.net, 2019.
+[Memarian et al., 2021] Farzan Memarian, Wonjoon Goo,             [Verma et al., 2019] Abhinav Verma, Hoang M. Le, Yisong
+   Rudolf Lioutikov, Ufuk Topcu, and Scott Niekum. Self-             Yue, and Swarat Chaudhuri. Imitation-projected program-
+   Supervised Online Reward Shaping in Sparse-Reward En-             matic reinforcement learning. In Proceedings of the 33rd
+   vironments. 2021.                                                 International Conference on Neural Information Process-
+[Mnih et al., 2016] Volodymyr Mnih, Adrià Puigdomènech             ing Systems, 2019.
+   Badia, Mehdi Mirza, Alex Graves, Timothy P. Lillicrap,         [Xu et al., 2018] Jingyi Xu, Zilu Zhang, Tal Friedman, Yitao
+   Tim Harley, David Silver, and Koray Kavukcuoglu. Asyn-            Liang, and Guy Van den Broeck. A semantic loss func-
+   chronous methods for deep reinforcement learning. 2016.           tion for deep learning with symbolic knowledge. In Pro-
+[Moldovan and Abbeel, 2012] Teodor Mihai Moldovan and                ceedings of the 35th International Conference on Machine
+                                                                     Learning, ICML’18. PMLR, 2018.
+   Pieter Abbeel. Safe exploration in markov decision pro-
+   cesses. In Proceedings of the 29th International Cofer-
+   ence on International Conference on Machine Learning,
+   ICML’12. Omnipress, 2012.
+[Nitti et al., 2016] Davide Nitti, Tinne De Laet, and Luc
+   De Raedt. Probabilistic logic programming for hybrid re-
+   lational domains. Machine Learning, 103:407–449, 2016.
+[Pham et al., 2018] Tu-Hoa Pham, Giovanni De Magistris,
+   and Ryuki Tachibana. Optlayer - practical constrained
+A        Experiment settings                                        % SAFETY LOOKAHEAD
+Experiments are run on machines that consist of Intel(R)            xagent(stay, 0, 0).             xagent(left,-1, 0).
+Xeon(R) E3-1225 CPU cores and 32Gb memory. All en-                  xagent(right,1, 0).             xagent(up,   0, 1).
+vironments in this work are available on GitHub under the           xagent(down, 0,-1).
+MIT license. The measurements are obtained by taking the
+average of five seeds. All agents are trained using PPO             % SAFETY CONSTRAINT
+in stable-baselines [Hill et al., 2018] with batch                  crash:- act(A),
+size=512, n epochs=15, n steps=2048, clip range=0.1, learn-                 xagent(A, X, Y), fire(X, Y).
+ing rate=0.0001. All policy networks and value networks             safe:- not(crash).
+have two hidden layers of size 64. All the other hyperparam-        A.2   Pacman
+eters are set to default as in stable-baselines [Hill et
+al., 2018]. The source code will be available upon publication      Pacman is more complicated than the Stars in that the fire
+of the paper.                                                       ghosts can move around and their transition models are un-
+                                                                    known. All the other environmental parameters are the same
+A.1        Stars                                                    as Stars.
+                                                                       We use the following probabilistic logic shield to perform
+                                                                    a two-step look-ahead. The agent has 12 sensors to detect
+                                                                    whether there is a fire ghost one or two units away. The agent
+                                                                    is assumed to follow the policy at T = 0 and then do nothing
+                                                                    at T = 1. The fire ghosts are assumed to be able to move
+                                                                    to any immediate neighboring cells at T = 0 and T = 1. A
+                                                                    crash can occur at T = 0 or T = 1.
+                                                                    % BASE POLICY
+                                                                    a0::act(stay); a1::act(up);
+Figure 7: Left: A Stars image. Middle: A Stars state (downsampled   a2::act(down); a3::act(left);
+from the left). Right: A example to pre-train noisy sensors.
+                                                                    a4::act(right).
+
+   We build the Stars environments using Berkeley’s Pac-Man         % SENSORS
+Project 2 . Our environment is a 15 by 15 grid world contain-       f0:: fire(0, 0, 1). f1:: fire(0, 0,-1).
+ing stars and fires, e.g. Fig. 7, where the agent can move          f2:: fire(0,-1, 0). f3:: fire(0, 1, 0).
+around using five discrete, deterministic actions: stay, up,        f4:: fire(0, 0, 2). f5:: fire(0, 0,-2).
+down, left, right. Each action costs a negative reward of −0.1.     f6:: fire(0,-2, 0). f7:: fire(0, 2, 0).
+The task of the agent is to collect all stars in the environment.   f8:: fire(0, 1, 1). f9:: fire(0, 1,-1).
+Collecting one star yields a reward of 1. When the agent finds      f10::fire(0,-1, 1). f11::fire(0,-1,-1).
+all stars, the episode ends with a reward of 10. If the agent
+crashes into fire or has taken 200 steps (maximum episode           % SAFETY LOOKAHEAD
+length), the episode ends with no rewards. Each state is a          fire(T, X, Y):-
+downsampled, grayscale image where each pixel is a value                fire(T-1, PrevX, PrevY),
+between -1 and 1, e.g. Fig. 7 (right).                                  move(PrevX, PrevY, _, X, Y).
+   We use the following probabilistic logic shield. The act/1
+predicates represent the base policy and the fire/2 predi-          agent(1, X, Y):-
+cates represent whether there is fire in an immediate neigh-            action(A), move(0, 0, A, X, Y).
+boring grid. These predicates are neural predicates, mean-
+ing that all probabilities ai (resp. fi will be substituted         agent(2, X, Y):- agent(1, X, Y).
+by real values in [0, 1], produced by the underlying base
+policy (resp. perfect or noisy sensors). In Fig. 7 (right),         move(X, Y, stay, X,    Y).
+the sensors may produce {0 :: fire(0, 1), 0 :: fire(0, −1),         move(X, Y, left, X-1, Y).
+1 :: fire(−1, 0), 0 :: fire(1, 0)}.                                 move(X, Y, right, X+1, Y).
+% BASE POLICY                                                       move(X, Y, up,    X,   Y+1).
+a0::act(stay); a1::act(up);                                         move(X, Y, down, X,    Y-1).
+a2::act(down); a3::act(left);
+a4::act(right).                                                     % SAFETY CONSTRAINT
+                                                                    crash:- fire(T, X, Y), agent(T, X, Y).
+% SENSORS                                                           safe:- not(crash).
+f0::fire( 0, 1).                 f1::fire( 0,-1).                   A.3   Car Racing
+f2::fire(-1, 0).                 f3::fire( 1, 0).
+                                                                    We simplify Gym’s Car Racing environment [Brockman et
+                                                                    al., 2016]. Our environment is a randomly generated car
+    2
+        http://ai.berkeley.edu/project overview.html                track, e.g. Fig. 8 (left). At the beginning, the agent will be
+                                                                   layers with respectively 8,16,32,64 (5x5) filters and relu ac-
+                                                                   tivations. The output is computed by a dense layer with sig-
+                                                                   moid activation function. The number of output neurons de-
+                                                                   pends on the ProbLog program for that experiment (see Ap-
+                                                                   pendix A.1). We pre-train the networks and then we fix them
+                                                                   during the reinforcement learning process. The pre-training
+                                                                   strategy is the following. We generated randomly 3k images
+                                                                   for Stars and Pacman with 30 fires and 30 stars, e.g. Fig. 7
+Figure 8: Left: A lap in Car Racing (Configuration 1). Middle: A   (right), and 2k images for Car Racing, e.g. Fig. 8 (right).
+CR image. We mark the sensors around the agent white but they      We selected the size of the pre-training datasets in order to
+not visible in training. Right: A CR state (downsampled from the   achieve an accuracy higher than 99% on a validation set of
+middle).                                                           100 examples.
+
+put on the track, e.g. Fig. 8 (middle). The task of the agent is   B    Safety Guarantees of Probabilistic Logic
+to drive around the track (i.e. to finish one lap) within 1000          Shield
+frames. In each frame, the agent takes a discrete action: do-      In Definition 3.1, a shielded policy π + is always safer than its
+nothing, accelerate, brake, turn-left or turn-right. Each action   base policy π for all s and π, i.e.
+costs a negative reward of −0.1. The agent gets a small re-
+ward if it continues to follow the track. The agent does not get        Pπ+ (safe|s) ≥ Pπ (safe|s) ∀π ∈ Π and ∀s ∈ S
+a penalty for driving on the grass, however, if the car drives
+outside of the map (i.e. the black part in Fig. 8, left), the      Proof.
+episode ends with a negative reward of −100. Each state is                Pπ+ (safe|s)                                    . Eq. (3)
+a downsampled, grayscale image where each pixel is a value                X
+between −1 and 1, e.g. Fig. 8 (right).                                  =     π + (a|s)P(safe|s, a)                       . Eq. (4)
+   The original environment has a continuous action space                   a∈A
+that consists of three parameters: steering, gas and break                       1        X
+with the minimum values [−1, 0, 0] and the maximum val-                 =               [   π(a|s)P(safe|s, a)2 ]
+                                                                            Pπ (safe|s)
+ues [+1, +1, +1]. In this paper, all agents use five discrete                            a∈A
+actions: do-nothing ([0, 0, 0]), accelerate ([0, 1, 0]), brake                                        . Jensen’s inequality
+([0, 0, 0.8]), turn-left ([−1, 0, 0]), turn-right ([1, 0, 0]).                 1        X
+   We use the following probabilistic logic shield. The act/1           ≥             [   π(a|s)P(safe|s, a)]2    . Eq. (3)
+                                                                          Pπ (safe|s)
+                                                                                         a∈A
+predicates represent the base policy and the grass/1 predi-
+cates represent whether there is grass in front, on the left or         =Pπ (safe|s)
+right hand side of the agent. In Fig. 8 (middle), the sensors
+                                                                   The inequality comes from Jensen’s inequality [Pishro-Nik,
+may produce {0 :: grass(0), 0 :: grass(1) 0 :: grass(2)}.
+                                                                   2014], which states that E[g(X)] ≥ g(E[X]) for any convex
+% BASE POLICY                                                      function g(X). In this proof, g(X) = X 2 .
+a0::act(dn);    a1::act(accel);
+a2::act(brake);                                                    C    A Compiled Circuit
+a3::act(left); a4::act(right).
+                                                                   The following program is compiled to the circuit in Fig. 9.
+% SENSORS                                                          0.2::act(dn); 0.6::act(left);
+g0::grass(front).            g1::grass(left).                      0.2::act(right).
+g2::grass(right).                                                  0.8::ghost(left). 0.1::ghost(right).
+                                                                   crash:- act(left), ghost(left).
+% SAFETY LOOKAHEAD                                                 crash:- act(right), ghost(right).
+ingrass:-
+    grass(left), not(grass(right)),
+    (act(left); act(accel)).
+ingrass:-
+    not(grass(left)), grass(right),
+    (act(right); act(accel)).
+
+% SAFETY CONSTRAINT
+safe:- not(ingrass).
+
+A.4    Approximating Noisy Sensors
+We approximate noisy sensors using convolutional neural
+networks. In all the environments, we use 4 convolutional
+                                                                                       Perfect Sensors   Noisy Sensors
+                             Description          Return Range      Violation Range
+                                                                                              α                   α
+           Stars1       Deterministic actions                                               0.5          0.005     1
+                                                         [0, 45]        [0, 15k]
+           Stars2         Stochastic actions                                                 1           0.01      1
+          Pacman1             One ghost                                  [0, 7k]            0.1          0.05     0.5
+                                                         [0, 40]
+          Pacman2            Two ghosts                                 [0, 15k]            0.5          0.005    0.1
+        Car Racing1        Smoother track                                                   0.5           0.5      1
+                                                     [0, 900]            [0, 1]
+        Car Racing2          Curlier track                                                  0.1           0.5     0.5
+
+                                                 Table 2: Summary of configurations.
+
+
+                                                                    curves are smoothed by taking the exponential moving aver-
+                                                                    age with the coefficient of 0.05.
+
+
+
+
+          Figure 9: A circuit compiled from a program.
+
+
+D    Experiment Details
+We run two configurations for each domain. The second con-
+figuration is more challenging than the first one. The config-
+urations may have different normalization ranges and hyper-
+parameters. We select the hyperparameters that result in the
+lowest violations in each configuration. Table 2 lists a sum-
+mary of all configurations and all other tables follows this
+table if not explicitly specified.
+   We train all agents in all configurations using 600k learn-
+ing steps and all experiments are repeated using five differ-
+ent seeds. The following tables list the normalized, aver-
+age return and violation values of the five runs. Table 3
+lists the return/violation results of all agents (cf. the large
+data points in Fig. 4). Table 4 lists the return/violation
+results for PLPG gradient analysis (cf. the large data
+points in Fig. 6). Tables 5 and 6 respectively list the re-
+turn/violation results for α ∈ {0, 0.1, 0.5, 1, 5} and  ∈
+{0, 0.005, 0.01, 0.05, 0.1, 0.2, 0.5, 1.0} (cf. Fig. 5).
+   We plot episodic return, cumulative violation and step-
+wise policy safety in the learning process for all agents
+(Pπ+ (safe|s) for shielded agents and Pπ (safe|s) for PPO).
+Fig. 11 plots these curves for the agents augmented with per-
+fect sensors and Fig. 10 for the ones with noisy sensors. PPO
+agents are plotted in both figures as a baseline but they are
+not augmented with any sensors. The return and policy safety
+                                      No Safety            Perfect Sensors                             Noisy Sensors
+              Return/Violation
+                                         PPO             VSRL             PLPG            VSRL            -VSRL             PLPG
+                    Stars1            0.68 / 0.90      0.57 / 0.00     0.71 / 0.00     0.61 / 0.00       0.64 / 0.03       0.74 / 0.01
+                    Stars2            0.50 / 0.89      0.43 / 0.58     0.44 / 0.42     0.43 / 0.59       0.46 / 0.52       0.46 / 0.35
+                   Pacman1            0.74 / 0.92      0.72 / 0.74     0.85 / 0.65     0.71 / 0.72       0.75 / 0.65       0.71 / 0.65
+                   Pacman2            0.56 / 0.82      0.56 / 0.62     0.59 / 0.58     0.46 / 0.67       0.51 / 0.62       0.62 / 0.59
+                Car Racing1           0.77 / 0.60      0.74 / 0.84     0.62 / 0.21     0.83 / 0.82       0.88 / 0.47       0.83 / 0.18
+                Car Racing2           0.58 / 0.55      0.55 / 0.67     0.65 / 0.17     0.67 / 0.51       0.70 / 0.45       0.74 / 0.17
+
+                        Table 3: Normalized return and violation for all agents (cf. the large data points in Fig. 4).
+
+
+
+                                           Perfect Sensors                                                   Noisy Sensors
+Return/Violation
+                     Only Safety Grad         Only Policy Grad            Both         Only Safety Grad         Only Policy Grad              Both
+     Stars1             0.63 / 0.52              0.66 / 0.00           0.71 / 0.00        0.61 / 0.47                0.95 / 0.29           0.74 / 0.01
+     Stars2             0.43 / 0.60              0.51 / 0.53           0.44 / 0.42        0.44 / 0.62                0.46 / 0.62           0.46 / 0.35
+   Pacman1              0.72 / 0.89              0.87 / 0.65           0.85 / 0.65        0.54 / 0.88                0.84 / 0.64           0.71 / 0.65
+   Pacman2              0.51 / 0.79              0.66 / 0.58           0.59 / 0.58        0.39 / 0.78                0.60 / 0.58           0.62 / 0.59
+  Car Racing1           1.00 / 0.14              0.91 / 0.58           0.62 / 0.21        0.86 / 0.25                0.93 / 0.42           0.83 / 0.18
+  Car Racing2           0.67 / 0.20              0.76 / 0.32           0.65 / 0.17        0.56 / 0.29                0.70 / 0.39           0.74 / 0.17
+
+                                   Table 4: Analysis of PLPG gradients (cf. the large data points in Fig. 6).
+
+
+
+                               α                 0             0.1               0.5               1                 5
+                             Stars1        0.95 / 0.29      0.68 / 0.01     0.68 / 0.01     0.74 / 0.01       0.17 / 0.50
+                             Stars2        0.46 / 0.62      0.53 / 0.44     0.51 / 0.45     0.46 / 0.35       0.34 / 0.37
+                          Pacman1          0.84 / 0.64      0.79 / 0.66     0.71 / 0.65     0.56 / 0.69       0.31 / 0.77
+                          Pacman2          0.60 / 0.58      0.62 / 0.59     0.50 / 0.62     0.43 / 0.62       0.27 / 0.67
+                        Car Racing1        0.93 / 0.42      0.99 / 0.19     0.82 / 0.19     0.83 / 0.18       0.47 / 0.52
+                        Car Racing2        0.70 / 0.39      0.84 / 0.21     0.74 / 0.17     0.60 / 0.34       0.21 / 0.77
+
+                        Table 5: The return and violation of different α values in noisy environments (cf. Fig. 5).
+
+
+
+                  0 (VSRL)           0.005             0.01            0.05            0.1               0.2               0.5           1 (PPO)
+     Stars1        0.61 / 0.00     0.64 / 0.03       0.69 / 0.07     0.76 / 0.30     0.69 / 0.54       0.76 / 0.65       0.68 / 0.80     0.68 / 0.90
+     Stars2        0.43 / 0.59     0.46 / 0.59       0.46 / 0.52     0.46 / 0.62     0.48 / 0.67       0.47 / 0.78       0.49 / 0.85     0.50 / 0.89
+   Pacman1         0.71 / 0.72     0.64 / 0.81       0.66 / 0.80     0.75 / 0.65     0.66 / 0.86       0.72 / 0.71       0.77 / 0.84     0.74 / 0.92
+   Pacman2         0.46 / 0.67     0.51 / 0.62       0.48 / 0.67     0.52 / 0.65     0.51 / 0.68       0.53 / 0.70       0.54 / 0.74     0.56 / 0.82
+  Car Racing1      0.83 / 0.82     0.65 / 0.65       0.61 / 0.84     0.67 / 0.80     0.75 / 0.72       0.66 / 0.73       0.88 / 0.47     0.77 / 0.60
+  Car Racing2      0.67 / 0.51     0.36 / 0.62       0.67 / 0.75     0.43 / 0.86     0.63 / 0.57       0.52 / 0.95       0.70 / 0.45     0.58 / 0.55
+
+                        Table 6: The return and violation of different  values in noisy environments (cf. Fig. 5).
+Figure 10: Performance of agents augmented with perfect sensors. Left: The average episodic return. Middle: The cumulative episodic
+constraint violation. Right: The step-wise policy safety, i.e. Pπ (safe|s).
+Figure 11: Performance of agents augmented with noisy sensors. Left: The average episodic return. Middle: The cumulative episodic
+constraint violation. Right: The step-wise policy safety, i.e. Pπ (safe|s).
+

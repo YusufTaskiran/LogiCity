@@ -1,0 +1,16 @@
+agents:
+- class: Private_car
+  id: 1
+  size: 2
+  gplanner: A*vg
+  concepts:
+    type: Car
+    priority: 1
+
+- class: Pedestrian
+  id: 1
+  size: 1
+  gplanner: A*
+  concepts:
+    type: Pedestrian
+    priority: 0

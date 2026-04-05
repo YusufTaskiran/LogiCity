@@ -93,7 +93,7 @@ class Car(Agent):
         logger.info("{}_{} initialization done!".format(self.type, self.id))
 
     def reset_concepts(self, max_priority, concepts_dist=None):
-        self.priority = np.random.randint(1, max_priority)
+        self.priority = np.random.randint(1, max_priority + 1)
         if concepts_dist is not None:
             self.concepts = {
                 "type": "Car"

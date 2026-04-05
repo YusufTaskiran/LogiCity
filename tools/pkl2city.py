@@ -67,7 +67,7 @@ def resize_with_aspect_ratio(image, base_size):
     
     return resized_img
 
-def gridmap2img_static(gridmap, icon_dict, ego_id):
+def gridmap2img_static(gridmap, icon_dict, ego_ids):
     # step 1: get the size of the gridmap, create a blank image with size*SCALE
     height, width = gridmap.shape[1], gridmap.shape[2]
     img = np.ones((height*SCALE, width*SCALE, 3), np.uint8) * 255  # assuming white background
@@ -144,17 +144,36 @@ def gridmap2img_static(gridmap, icon_dict, ego_id):
             icon_mask = np.sum(icon > 1, axis=2) > 0
             img[bottom-icon.shape[0]:bottom, left:left+icon.shape[1]][icon_mask] = icon[icon_mask]
 
-    # add ego agent start and goal
-    if ego_id > 0:
+    if ego_ids is None:
+        ego_ids = []
+    if isinstance(ego_ids, int):
+        ego_ids = [ego_ids]
+    marker_colors = [
+        ((255, 0, 0), (0, 0, 255)),
+        ((0, 180, 0), (255, 140, 0)),
+        ((180, 0, 180), (0, 180, 180)),
+        ((80, 80, 255), (255, 80, 80)),
+    ]
+    # add ego agent start and goal for each requested RL agent
+    for idx, ego_id in enumerate(ego_ids):
+        if ego_id <= 0 or ego_id >= gridmap.shape[0]:
+            continue
         ego_map = gridmap[ego_id]
+        if np.max(ego_map) <= 0:
+            continue
         goal_pos = np.where(ego_map == ego_map.max())
+        if len(goal_pos[0]) == 0:
+            continue
         goal_x, goal_y = goal_pos[0][0]*SCALE, goal_pos[1][0]*SCALE
         int_mask = ego_map == ego_map.astype(np.int64)
         filtered_mask = int_mask * (ego_map != 0)
         start_pos = np.where(filtered_mask)
+        if len(start_pos[0]) == 0:
+            continue
         start_x, start_y = start_pos[0][0]*SCALE, start_pos[1][0]*SCALE
-        cv2.drawMarker(img, (goal_y, goal_x), (255, 0, 0), markerType=cv2.MARKER_STAR, markerSize=30, thickness=5)
-        cv2.drawMarker(img, (start_y, start_x), (0, 0, 255), markerType=cv2.MARKER_STAR, markerSize=30, thickness=5)
+        goal_color, start_color = marker_colors[idx % len(marker_colors)]
+        cv2.drawMarker(img, (goal_y, goal_x), goal_color, markerType=cv2.MARKER_STAR, markerSize=30, thickness=5)
+        cv2.drawMarker(img, (start_y, start_x), start_color, markerType=cv2.MARKER_STAR, markerSize=30, thickness=5)
 
     return img
 
@@ -211,10 +230,16 @@ def create_custom_mask(image, threshold=0.1):
     
 def get_steet_type(gridmap, position):
     l, t, r, b = position
-    partial_grid_horizontal = gridmap[2, t, l-10:l+10]
+    if gridmap.shape[0] <= STREET_ID:
+        return None
+    h_start = max(l - 10, 0)
+    h_end = min(l + 10, gridmap.shape[2])
+    v_start = max(t - 10, 0)
+    v_end = min(t + 10, gridmap.shape[1])
+    partial_grid_horizontal = gridmap[STREET_ID, t, h_start:h_end]
     if np.sum(partial_grid_horizontal == TYPE_MAP["Mid Lane"]) > 0:
         return "v"
-    partial_grid_vertical = gridmap[2, t-10:t+10, l]
+    partial_grid_vertical = gridmap[STREET_ID, v_start:v_end, l]
     if np.sum(partial_grid_vertical == TYPE_MAP["Mid Lane"]) > 0:
         return "h"
     return None
@@ -301,6 +326,7 @@ def paste_car_on_map(map_image, car_image, position, direction, type, position_l
 def gridmap2img_agents(gridmap, gridmap_, icon_dict, static_map, last_icons=None, agents=None):
     current_map = static_map.copy()
     current_map = Image.fromarray(current_map)
+    resized_full_grid = np.repeat(np.repeat(gridmap, SCALE, axis=1), SCALE, axis=2)
     agent_layer = gridmap[BASIC_LAYER:]
     resized_grid = np.repeat(np.repeat(agent_layer, SCALE, axis=1), SCALE, axis=2)
     agent_layer_ = gridmap_[BASIC_LAYER:]
@@ -379,7 +405,7 @@ def gridmap2img_agents(gridmap, gridmap_, icon_dict, static_map, last_icons=None
             icon = icon_list[icon_id]
 
         if agent_type == "Car":
-            street_type = get_steet_type(resized_grid, pos)
+            street_type = get_steet_type(resized_full_grid, pos)
         else:
             street_type = None    
 
@@ -390,13 +416,17 @@ def gridmap2img_agents(gridmap, gridmap_, icon_dict, static_map, last_icons=None
                 icon, current_map, last_position = paste_car_on_map(current_map, icon, pos, direction, agent_type, position, street_type)
             else:
                 icon = last_icons["icon"]["{}_{}".format(agent_type, i)][0]
-                icon, current_map, last_position = paste_car_on_map(current_map, icon, pos, direction, agent_type, street_type)
+                icon, current_map, last_position = paste_car_on_map(
+                    current_map, icon, pos, direction, agent_type, None, street_type
+                )
             last_icons["icon"]["{}_{}".format(agent_type, i)][1] = icon
             last_icons["pos"]["{}_{}".format(agent_type, i)] = last_position
         else:
             icon_img = Image.fromarray(icon) 
             icon_dict_local["icon"]["{}_{}".format(agent_type, i)] = [icon_img]
-            current_icon, current_map, last_position = paste_car_on_map(current_map, icon_img, pos, direction, agent_type, street_type)
+            current_icon, current_map, last_position = paste_car_on_map(
+                current_map, icon_img, pos, direction, agent_type, None, street_type
+            )
             icon_dict_local["icon"]["{}_{}".format(agent_type, i)].append(current_icon)
             icon_dict_local["pos"]["{}_{}".format(agent_type, i)] = last_position
 
@@ -405,7 +435,7 @@ def gridmap2img_agents(gridmap, gridmap_, icon_dict, static_map, last_icons=None
     else:
         return current_map, icon_dict_local
 
-def main(pkl_path, ego_id, output_folder):
+def main(pkl_path, ego_ids, output_folder):
     icon_dict = {}
     os.path.exists(output_folder) or os.makedirs(output_folder)
     for key in PATH_DICT.keys():
@@ -426,7 +456,7 @@ def main(pkl_path, ego_id, output_folder):
     print(obs.keys())
     time_steps = list(obs.keys())
     time_steps.sort()
-    static_map = gridmap2img_static(obs[time_steps[0]]["World"].numpy(), icon_dict, ego_id)
+    static_map = gridmap2img_static(obs[time_steps[0]]["World"].numpy(), icon_dict, ego_ids)
     static_map_img = Image.fromarray(static_map)
     # static_map_img.save("{}/static_layout.png".format(output_folder))
     last_icons = None
@@ -457,7 +487,7 @@ def main(pkl_path, ego_id, output_folder):
 
         # Save the image
         output_path = "{}/step_{}.png".format(output_folder, key)
-        img.crop((0, 0, 1190, 1190)).save(output_path)
+        img.save(output_path)
     cv2.destroyAllWindows()
 
     return
@@ -466,10 +496,16 @@ if __name__ == "__main__":
     # Parse command line arguments
     parser = argparse.ArgumentParser(description="Create an animated GIF from a sequence of images.")
     parser.add_argument("--pkl", default='log_rl/oracle_test_train_hard_1.pkl', help="Path to the folder containing image files.")
-    parser.add_argument("--ego_id", type=int, default=3, help="which agent is ego agent. Visualize the ego agent's start and goal. This is layer_id")
+    parser.add_argument("--ego_id", type=int, default=None, help="Single agent layer id to mark.")
+    parser.add_argument("--ego_ids", type=str, default=None, help="Comma-separated agent layer ids to mark, e.g. '3,4'.")
     parser.add_argument("--output_folder", default="vis", help="Output folder.")
     
     args = parser.parse_args()
 
     # Call the function with provided arguments
-    main(args.pkl, args.ego_id, args.output_folder)
+    ego_ids = None
+    if args.ego_ids is not None:
+        ego_ids = [int(x) for x in args.ego_ids.split(",") if x.strip()]
+    elif args.ego_id is not None:
+        ego_ids = [int(args.ego_id)]
+    main(args.pkl, ego_ids, args.output_folder)

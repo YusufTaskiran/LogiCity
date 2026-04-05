@@ -1,6 +1,7 @@
 import os
 import copy
 import time
+import csv
 import yaml
 import torch
 import argparse
@@ -40,6 +41,23 @@ def load_config(config_path):
     with open(config_path, 'r') as file:
         return yaml.safe_load(file)
 
+def attach_shield_config(config):
+    shield_cfg = config.get("shield")
+    if shield_cfg is None:
+        return config
+    config = copy.deepcopy(config)
+    config["simulation"] = copy.deepcopy(config["simulation"])
+    config["simulation"]["rl_agent"] = copy.deepcopy(config["simulation"]["rl_agent"])
+    config["simulation"]["rl_agent"]["shield"] = copy.deepcopy(shield_cfg)
+    if "eval_checkpoint" in config and "simulation_config" in config["eval_checkpoint"]:
+        config["eval_checkpoint"] = copy.deepcopy(config["eval_checkpoint"])
+        config["eval_checkpoint"]["simulation_config"] = copy.deepcopy(config["eval_checkpoint"]["simulation_config"])
+        config["eval_checkpoint"]["simulation_config"]["rl_agent"] = copy.deepcopy(
+            config["eval_checkpoint"]["simulation_config"]["rl_agent"]
+        )
+        config["eval_checkpoint"]["simulation_config"]["rl_agent"]["shield"] = copy.deepcopy(shield_cfg)
+    return config
+
 def dynamic_import(module_name, class_name):
     module = importlib.import_module(module_name)
     return getattr(module, class_name)
@@ -70,7 +88,7 @@ def make_envs(simulation_config, rank):
 def main_collect(args, logger):
     torch.manual_seed(args.seed)
     np.random.seed(args.seed)
-    config = load_config(args.config)
+    config = attach_shield_config(load_config(args.config))
     simulation_config = config["simulation"]
     logger.info("Simulation config: {}".format(simulation_config))
     collection_config = config['collecting_config']
@@ -96,7 +114,7 @@ def main_collect(args, logger):
                 pkl.dump(full_world[ts], f)
 
 def main(args, logger):
-    config = load_config(args.config)
+    config = attach_shield_config(load_config(args.config))
     # simulation config
     simulation_config = config["simulation"]
     logger.info("Simulation config: {}".format(simulation_config))
@@ -126,7 +144,7 @@ def main(args, logger):
 def main_gym(args, logger): 
     torch.manual_seed(args.seed)
     np.random.seed(args.seed)
-    config = load_config(args.config)
+    config = attach_shield_config(load_config(args.config))
     # simulation config
     simulation_config = config["simulation"]
     logger.info("Simulation config: {}".format(simulation_config))
@@ -159,6 +177,15 @@ def main_gym(args, logger):
     
     # model training
     if train: 
+        eval_checkpoint_config = copy.deepcopy(eval_checkpoint_config)
+        base_save_path = eval_checkpoint_config.get("save_path", "./checkpoints/")
+        run_save_path = os.path.join(base_save_path, args.exp)
+        eval_checkpoint_config["save_path"] = run_save_path
+        if "name_prefix" in eval_checkpoint_config:
+            eval_checkpoint_config["name_prefix"] = os.path.join(
+                run_save_path, eval_checkpoint_config["name_prefix"]
+            )
+        os.makedirs(run_save_path, exist_ok=True)
         num_envs = rl_config["num_envs"]
         total_timesteps = rl_config["total_timesteps"]
         if num_envs > 1:
@@ -196,6 +223,10 @@ def main_gym(args, logger):
         logger.info("Testing the trained model on episode data {}".format(rl_config["episode_data"]))
         assert "eval_actions" in rl_config
         logger.info("Evaluating the model with actions/id: {}".format(rl_config["eval_actions"]))
+        result_dir = os.path.join("results", args.exp)
+        os.makedirs(result_dir, exist_ok=True)
+        test_csv_path = os.path.join(result_dir, "test_metrics.csv")
+        eval_start_time = time.time()
         # RL testing mode
         with open(rl_config["episode_data"], "rb") as f:
             episode_data = pkl.load(f)
@@ -205,6 +236,18 @@ def main_gym(args, logger):
         success = []
         decision_step = {}
         succ_decision = {}
+        fail_episodes = 0
+        timeout_episodes = 0
+        truncated_episodes = 0
+        stop_action_id = int(rl_config["eval_actions"].get("Stop", next(iter(rl_config["eval_actions"].values()))))
+        policy_action_hist = {}
+        expert_action_hist = {}
+        predicted_stop_total = 0
+        expert_stop_total = 0
+        matched_stop_total = 0
+        ppo_steps = []
+        oracle_steps = []
+        per_episode_rows = []
         for action, id in rl_config["eval_actions"].items():
             decision_step[id] = 0
             succ_decision[id] = 0
@@ -222,6 +265,8 @@ def main_gym(args, logger):
             max_steps = 10000
             if "label_info" in episode_cache:
                 logger.info("Episode label: {}".format(episode_cache["label_info"]))
+                if "oracle_step" in episode_cache["label_info"]:
+                    oracle_steps.append(int(episode_cache["label_info"]["oracle_step"]))
             if not args.save_steps:
                 assert "oracle_step" in episode_cache["label_info"], "Need oracle step for evaluation."
                 max_steps = episode_cache["label_info"]["oracle_step"] * 2
@@ -248,21 +293,31 @@ def main_gym(args, logger):
                     model = algorithm_class.load(rl_config["checkpoint_path"], \
                                     eval_env, **hyperparameters, policy_kwargs=policy_kwargs_use)
             logger.info("Loaded model from {}".format(rl_config["checkpoint_path"]))
+            if hasattr(model, "reset_shield_metrics"):
+                model.reset_shield_metrics()
             o = eval_env.init()
             rew = 0    
             step = 0   
             local_decision_step = {}
             local_succ_decision = {}
+            local_policy_action_hist = {}
+            local_expert_action_hist = {}
+            local_predicted_stop = 0
+            local_expert_stop = 0
+            local_matched_stop = 0
             for acc, id in rl_config["eval_actions"].items():
                 local_decision_step[id] = 0
-                local_succ_decision[id] = 1
+                local_succ_decision[id] = 0
             d = False
+            termination_reason = "unknown"
             if rl_config["algorithm"] == 'Dreamer':
                 prev_rssmstate = model.policy.RSSM._init_rssm_state(1)
                 prev_action = torch.zeros(1, model.action_size).to(model.device)
                 while (not d) and (step < max_steps):
                     step += 1
                     oracle_action = eval_env.expert_action
+                    local_expert_action_hist[oracle_action] = local_expert_action_hist.get(oracle_action, 0) + 1
+                    expert_action_hist[oracle_action] = expert_action_hist.get(oracle_action, 0) + 1
                     with torch.no_grad():
                         embed = model.policy.ObsEncoder(torch.tensor(o, dtype=torch.float32).unsqueeze(0).to(model.device))    
                         _, posterior_rssm_state = model.policy.RSSM.rssm_observe(embed, prev_action, not d, prev_rssmstate)
@@ -271,12 +326,23 @@ def main_gym(args, logger):
                         prev_rssmstate = posterior_rssm_state
                         prev_action = action
                     env_action = torch.argmax(action, dim=-1).cpu().numpy()
+                    action_int = int(env_action)
+                    local_policy_action_hist[action_int] = local_policy_action_hist.get(action_int, 0) + 1
+                    policy_action_hist[action_int] = policy_action_hist.get(action_int, 0) + 1
                     if oracle_action in local_decision_step.keys():
-                        local_decision_step[oracle_action] = 1
-                        if int(env_action) != oracle_action:
-                            local_succ_decision[oracle_action] = 0
-                    o, r, d, i = eval_env.step(int(env_action))
+                        local_decision_step[oracle_action] += 1
+                        expert_stop_total += 1
+                        local_expert_stop += 1
+                        if action_int == oracle_action:
+                            local_succ_decision[oracle_action] += 1
+                            matched_stop_total += 1
+                            local_matched_stop += 1
+                    if action_int in local_decision_step.keys():
+                        predicted_stop_total += 1
+                        local_predicted_stop += 1
+                    o, r, d, i = eval_env.step(action_int)
                     if i["Fail"][0]:
+                        termination_reason = "fail"
                         rew += r
                         break
                     rew += r
@@ -285,29 +351,50 @@ def main_gym(args, logger):
                     step += 1
                     oracle_action = eval_env.expert_action
                     action, _ = model.predict(o, deterministic=True)
+                    action_int = int(action)
+                    local_expert_action_hist[oracle_action] = local_expert_action_hist.get(oracle_action, 0) + 1
+                    expert_action_hist[oracle_action] = expert_action_hist.get(oracle_action, 0) + 1
+                    local_policy_action_hist[action_int] = local_policy_action_hist.get(action_int, 0) + 1
+                    policy_action_hist[action_int] = policy_action_hist.get(action_int, 0) + 1
                     # save step_wise decision succ per trajectory
                     if oracle_action in local_decision_step.keys():
-                        local_decision_step[oracle_action] = 1
-                        if int(action) != oracle_action:
-                            local_succ_decision[oracle_action] = 0
-                    o, r, d, i = eval_env.step(int(action))
+                        local_decision_step[oracle_action] += 1
+                        expert_stop_total += 1
+                        local_expert_stop += 1
+                        if action_int == oracle_action:
+                            local_succ_decision[oracle_action] += 1
+                            matched_stop_total += 1
+                            local_matched_stop += 1
+                    if action_int in local_decision_step.keys():
+                        predicted_stop_total += 1
+                        local_predicted_stop += 1
+                    o, r, d, i = eval_env.step(action_int)
                     if (ts in vis_id) or (-1 in vis_id):
                         cached_observation["Time_Obs"][step] = i
                     if i["Fail"][0]:
+                        termination_reason = "fail"
                         rew += r
                         break
                     rew += r
+            ppo_steps.append(step)
             if i["is_success"]:
+                termination_reason = "success"
                 success.append(1)
             else:
                 success.append(0)
+                if i.get("overtime", False):
+                    termination_reason = "overtime"
+                    timeout_episodes += 1
+                elif termination_reason != "fail":
+                    termination_reason = "failed"
+                if termination_reason == "fail":
+                    fail_episodes += 1
             for acc, id in rl_config["eval_actions"].items():
-                if local_decision_step[id] == 0:
-                    local_succ_decision[id] = 0
                 decision_step[id] += local_decision_step[id]
                 succ_decision[id] += local_succ_decision[id]
             if step >= max_steps:
                 rew -= 3
+                truncated_episodes += 1
             rew_list.append(rew)
             if args.save_steps:
                 episode_cache["label_info"]['oracle_step'] = step
@@ -316,6 +403,41 @@ def main_gym(args, logger):
             logger.info("Episode {} Success: {}".format(ts, success[-1]))
             logger.info("Episode {} Decision Step: {}".format(ts, local_decision_step))
             logger.info("Episode {} Success Decision: {}".format(ts, local_succ_decision))
+            shield_metrics = {
+                "shield_intervention_count": 0,
+                "shield_intervention_rate": 0.0,
+            }
+            if hasattr(model, "get_shield_metrics"):
+                shield_metrics.update(model.get_shield_metrics())
+            per_episode_rows.append({
+                "row_type": "episode",
+                "episode": ts,
+                "tsr": success[-1],
+                "dsr": (
+                    local_succ_decision.get(stop_action_id, 0) / local_decision_step.get(stop_action_id, 0)
+                    if local_decision_step.get(stop_action_id, 0) > 0
+                    else None
+                ),
+                "mean_reward": rew,
+                "termination_reason": termination_reason,
+                "fail": int(termination_reason == "fail"),
+                "timeout": int(termination_reason == "overtime"),
+                "truncated": int(step >= max_steps),
+                "policy_stop_count": local_predicted_stop,
+                "expert_stop_count": local_expert_stop,
+                "matched_stop_count": local_matched_stop,
+                "policy_action_hist_0": local_policy_action_hist.get(0, 0),
+                "policy_action_hist_1": local_policy_action_hist.get(1, 0),
+                "policy_action_hist_2": local_policy_action_hist.get(2, 0),
+                "policy_action_hist_3": local_policy_action_hist.get(3, 0),
+                "expert_action_hist_0": local_expert_action_hist.get(0, 0),
+                "expert_action_hist_1": local_expert_action_hist.get(1, 0),
+                "expert_action_hist_2": local_expert_action_hist.get(2, 0),
+                "expert_action_hist_3": local_expert_action_hist.get(3, 0),
+                "shield_intervention_count": shield_metrics["shield_intervention_count"],
+                "shield_intervention_rate": shield_metrics["shield_intervention_rate"],
+                "eval_wall_clock_seconds": 0.0,
+            })
             if (ts in vis_id) or (-1 in vis_id):
                 # worlds[ts] = cached_observation
                 with open(os.path.join(args.log_dir, "{}_{}.pkl".format(args.exp, ts)), "wb") as f:
@@ -329,6 +451,44 @@ def main_gym(args, logger):
         logger.info("Mean Decision Succ: {}".format(mSuccD))
         logger.info("Average Decision Succ: {}".format(aSuccD))
         logger.info("Decision Succ for each action: {}".format(SuccDAct))
+        logger.info("Test metrics CSV: {}".format(test_csv_path))
+        summary_row = {
+            "row_type": "summary",
+            "episode": "all",
+            "tsr": sr,
+            "dsr": SuccDAct.get(stop_action_id, 0.0) if decision_step.get(stop_action_id, 0) > 0 else None,
+            "mean_reward": mean_reward,
+            "fail": fail_episodes,
+            "timeout": timeout_episodes,
+            "truncated": truncated_episodes,
+            "policy_stop_count": predicted_stop_total,
+            "expert_stop_count": expert_stop_total,
+            "matched_stop_count": matched_stop_total,
+            "policy_action_hist_0": policy_action_hist.get(0, 0),
+            "policy_action_hist_1": policy_action_hist.get(1, 0),
+            "policy_action_hist_2": policy_action_hist.get(2, 0),
+            "policy_action_hist_3": policy_action_hist.get(3, 0),
+            "expert_action_hist_0": expert_action_hist.get(0, 0),
+            "expert_action_hist_1": expert_action_hist.get(1, 0),
+            "expert_action_hist_2": expert_action_hist.get(2, 0),
+            "expert_action_hist_3": expert_action_hist.get(3, 0),
+            "shield_intervention_count": 0,
+            "shield_intervention_rate": 0.0,
+            "eval_wall_clock_seconds": float(time.time() - eval_start_time),
+        }
+        if 'model' in locals() and hasattr(model, "get_shield_metrics"):
+            summary_row.update(model.get_shield_metrics())
+        fieldnames = list(summary_row.keys())
+        for row in per_episode_rows:
+            for key in row.keys():
+                if key not in fieldnames:
+                    fieldnames.append(key)
+        with open(test_csv_path, "w", newline="") as csvfile:
+            writer = csv.DictWriter(csvfile, fieldnames=fieldnames)
+            writer.writeheader()
+            for row in per_episode_rows:
+                writer.writerow(row)
+            writer.writerow(summary_row)
         if args.save_steps:
             with open(os.path.join(args.log_dir, "{}_steps.pkl".format(args.exp)), "wb") as f:
                 pkl.dump(episode_data, f)

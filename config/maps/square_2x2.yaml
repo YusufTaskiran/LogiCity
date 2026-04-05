@@ -1,0 +1,325 @@
+buildings:
+- block: 1
+  height: 24
+  position:
+  - 16
+  - 16
+  size:
+  - 10
+  - 10
+  type: Office
+- block: 1
+  height: 16
+  position:
+  - 16
+  - 31
+  size:
+  - 10
+  - 10
+  type: Store
+- block: 1
+  height: 20
+  position:
+  - 31
+  - 16
+  size:
+  - 10
+  - 10
+  type: Gas Station
+- block: 1
+  height: 13
+  position:
+  - 31
+  - 31
+  size:
+  - 10
+  - 10
+  type: Garage
+- block: 2
+  height: 12
+  position:
+  - 16
+  - 62
+  size:
+  - 10
+  - 10
+  type: House
+- block: 2
+  height: 11
+  position:
+  - 16
+  - 77
+  size:
+  - 10
+  - 10
+  type: House
+- block: 2
+  height: 15
+  position:
+  - 31
+  - 62
+  size:
+  - 10
+  - 10
+  type: Store
+- block: 2
+  height: 10
+  position:
+  - 31
+  - 77
+  size:
+  - 10
+  - 10
+  type: House
+- block: 3
+  height: 21
+  position:
+  - 62
+  - 16
+  size:
+  - 10
+  - 10
+  type: Store
+- block: 3
+  height: 24
+  position:
+  - 62
+  - 31
+  size:
+  - 10
+  - 10
+  type: Garage
+- block: 3
+  height: 26
+  position:
+  - 77
+  - 16
+  size:
+  - 10
+  - 10
+  type: House
+- block: 3
+  height: 17
+  position:
+  - 77
+  - 31
+  size:
+  - 10
+  - 10
+  type: Office
+- block: 4
+  height: 15
+  position:
+  - 62
+  - 62
+  size:
+  - 10
+  - 10
+  type: Store
+- block: 4
+  height: 13
+  position:
+  - 62
+  - 77
+  size:
+  - 10
+  - 10
+  type: Office
+- block: 4
+  height: 27
+  position:
+  - 77
+  - 62
+  size:
+  - 10
+  - 10
+  type: House
+- block: 4
+  height: 11
+  position:
+  - 77
+  - 77
+  size:
+  - 10
+  - 10
+  type: Store
+grid_size:
+- 103
+- 103
+streets:
+- directions: 2
+  length: 103
+  orientation: vertical
+  position:
+  - 0
+  - 0
+  type: Traffic Street
+  width: 11
+- directions: 2
+  length: 103
+  orientation: horizontal
+  position:
+  - 0
+  - 0
+  type: Traffic Street
+  width: 11
+- directions: 2
+  length: 103
+  orientation: vertical
+  position:
+  - 0
+  - 46
+  type: Traffic Street
+  width: 11
+- directions: 2
+  length: 103
+  orientation: horizontal
+  position:
+  - 46
+  - 0
+  type: Traffic Street
+  width: 11
+- directions: 2
+  length: 103
+  orientation: vertical
+  position:
+  - 0
+  - 92
+  type: Traffic Street
+  width: 11
+- directions: 2
+  length: 103
+  orientation: horizontal
+  position:
+  - 92
+  - 0
+  type: Traffic Street
+  width: 11
+- directions: 2
+  length: 81
+  orientation: vertical
+  position:
+  - 11
+  - 11
+  type: Walking Street
+  width: 5
+- directions: 2
+  length: 81
+  orientation: vertical
+  position:
+  - 11
+  - 41
+  type: Walking Street
+  width: 5
+- directions: 2
+  length: 81
+  orientation: horizontal
+  position:
+  - 11
+  - 11
+  type: Walking Street
+  width: 5
+- directions: 2
+  length: 81
+  orientation: horizontal
+  position:
+  - 41
+  - 11
+  type: Walking Street
+  width: 5
+- directions: 2
+  length: 81
+  orientation: vertical
+  position:
+  - 11
+  - 57
+  type: Walking Street
+  width: 5
+- directions: 2
+  length: 81
+  orientation: vertical
+  position:
+  - 11
+  - 87
+  type: Walking Street
+  width: 5
+- directions: 2
+  length: 81
+  orientation: horizontal
+  position:
+  - 57
+  - 11
+  type: Walking Street
+  width: 5
+- directions: 2
+  length: 81
+  orientation: horizontal
+  position:
+  - 87
+  - 11
+  type: Walking Street
+  width: 5
+- directions: 2
+  length: 25
+  orientation: vertical
+  position:
+  - 16
+  - 26
+  type: Walking Street
+  width: 5
+- directions: 2
+  length: 25
+  orientation: horizontal
+  position:
+  - 26
+  - 16
+  type: Walking Street
+  width: 5
+- directions: 2
+  length: 25
+  orientation: vertical
+  position:
+  - 16
+  - 72
+  type: Walking Street
+  width: 5
+- directions: 2
+  length: 25
+  orientation: horizontal
+  position:
+  - 26
+  - 62
+  type: Walking Street
+  width: 5
+- directions: 2
+  length: 25
+  orientation: vertical
+  position:
+  - 62
+  - 26
+  type: Walking Street
+  width: 5
+- directions: 2
+  length: 25
+  orientation: horizontal
+  position:
+  - 72
+  - 16
+  type: Walking Street
+  width: 5
+- directions: 2
+  length: 25
+  orientation: vertical
+  position:
+  - 62
+  - 72
+  type: Walking Street
+  width: 5
+- directions: 2
+  length: 25
+  orientation: horizontal
+  position:
+  - 72
+  - 62
+  type: Walking Street
+  width: 5

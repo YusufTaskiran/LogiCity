@@ -1,5 +1,7 @@
 # vanilla RL
 from stable_baselines3 import PPO
+from .dls_ppo import DLSPPO
+from .pls_ppo import PLSPPO
 from stable_baselines3 import DQN
 from stable_baselines3 import A2C
 from stable_baselines3 import TD3
