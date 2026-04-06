@@ -12,6 +12,20 @@ The task contains four agents in total. `Car_1` is the main ego vehicle in singl
 
 The observation setting uses `fov_entities.Entity = 4`, so the observation dimensionality is kept fixed across single-agent and shared-policy evaluation.
 
+### Multi-Agent Requirement From the Thesis Assignment
+
+The thesis assignment explicitly targets **dynamic, logic-driven environments with multiple agents** and asks for an extension of probabilistic logic shields to **coordinate multiple agents**. In the current thesis design, this requirement is addressed in two complementary ways:
+
+- the environment itself is always multi-agent:
+  - multiple vehicles are present simultaneously
+  - one pedestrian is also present
+  - logical predicates and safety constraints depend on interactions between agents
+- the final evaluation explicitly includes a shared-policy multi-agent setting:
+  - the same learned policy is used for both `Car_1` and `Car_2`
+  - this is therefore a required final evaluation mode, not merely an optional add-on
+
+This means the thesis does **not** implement full multi-agent RL training with multiple simultaneously learning agents. Instead, it uses single-agent training inside a genuinely multi-agent urban environment and then tests whether the resulting learned policy and shielding mechanism generalize to a setting where **two RL-controlled cars must act together in the same environment**. For the current thesis scope, this is the intended interpretation of the assignment’s multi-agent requirement.
+
 ### Action Space
 
 The thesis uses a discrete 4-action control space:
@@ -70,11 +84,27 @@ In the current implementation, DLS no longer uses a single undifferentiated safe
 
 This change was introduced to reduce the earlier tendency of shielded methods to collapse into `slow + stop` behaviour.
 
+The resulting deterministic shielded distribution is:
+
+`pi_plus(a|s) propto P(safe|s,a) * pi(a|s)`
+
+with:
+
+`P(safe|s,a) in {0,1}`
+
+So DLS performs hard masking. Unsafe actions are assigned probability `0`, safe actions retain their PPO probability mass, and the remaining distribution is renormalized.
+
 ### Probabilistic Logic Shield
 
 The probabilistic logic shield is implemented in `logicity/shields/pls.py`. PLS uses the same observation information as DLS, but it does not threshold uncertain predicate values into booleans. Instead, it keeps them as probabilities and computes a soft conflict probability. This conflict estimate is then used to assign soft safety scores to `slow`, `normal`, `fast`, and `stop`, after which the PPO policy is renormalized into the shielded policy.
 
-The current implementation is aligned with the core policy-level idea of the PLS literature, namely that shielding should operate through a shielded distribution rather than through a purely post-hoc action override. However, the implementation is still simplified relative to the original papers. It does not use ProbLog or differentiable circuit compilation, and it does not implement the full PLPG objective. Instead, it uses a hand-designed probabilistic safety model constructed from the logical predicates and the uncertain observations. This limitation should be stated explicitly in the thesis.
+The current implementation now includes a PLPG-style training objective in `logicity/rl_agent/alg/pls_ppo.py`. Concretely, PPO training uses:
+
+- a shielded policy gradient through the shielded policy `pi_plus`
+- an additional safety loss term based on `-log P_{pi_plus}(safe | s)`
+- a safety coefficient `alpha` that weights this extra safety term
+
+So the current training procedure is substantially closer to the PLPG formulation in the paper than the earlier simplified PLS implementation.
 
 In the current implementation, PLS is also shaped so that action preference depends on the risk regime:
 
@@ -84,6 +114,65 @@ In the current implementation, PLS is also shaped so that action preference depe
 - high risk: `stop` should dominate
 
 This was introduced because earlier shielded runs tended to overuse `slow` and underuse `normal`.
+
+The resulting probabilistic shielded distribution is again:
+
+`pi_plus(a|s) propto P(safe|s,a) * pi(a|s)`
+
+but now:
+
+`P(safe|s,a) in [0,1]`
+
+So PLS performs soft multiplicative reweighting rather than hard masking. Risky actions are downweighted, safer actions are upweighted, and the final action distribution is renormalized.
+
+### Exact Remaining Differences Between the Current PLS and the Papers
+
+Even after adding the PLPG-style safety term, the current implementation still differs from the papers in several specific ways.
+
+#### 1. No ProbLog-based probabilistic logic program
+
+In the papers, the safety probability is derived from a probabilistic logic representation of the domain. In the current implementation, there is no ProbLog program and no external probabilistic logic engine. Instead, the safety model is implemented directly in Python inside `logicity/shields/pls.py`.
+
+#### 2. No differentiable logic circuit compilation
+
+The papers describe probabilistic shielding in a form that supports differentiable reasoning over the probabilistic logic structure. The current implementation does not compile the logic into a differentiable probabilistic circuit. Instead, it computes conflict probabilities through hand-written numerical formulas over the uncertain predicate values.
+
+#### 3. Hand-crafted `P(safe | s, a)` model
+
+In the papers, `P(safe | s, a)` follows from the probabilistic logic semantics. In the current implementation, `P(safe | s, a)` is manually engineered from the task predicates:
+
+- `IsAtInter`
+- `IsInInter`
+- `HigherPri`
+- `CollidingClose`
+
+These are combined into a custom conflict probability and then mapped into custom action-specific safety weights for `slow`, `normal`, `fast`, and `stop`.
+
+#### 4. Task-specific action-safety shaping
+
+The current implementation uses explicit heuristic shaping so that:
+
+- very low risk can favour `fast`
+- low to moderate risk should favour `normal`
+- elevated risk should favour `slow`
+- high risk should favour `stop`
+
+This is useful for the LogiCity thesis task, but it is more hand-crafted and task-specific than the generic formulation in the paper.
+
+#### 5. Current alpha handling
+
+The current PLPG-style implementation includes a safety coefficient `alpha` through the shield configuration and uses it during PPO training. However, the exact optimization pipeline remains an implementation-specific adaptation of SB3 PPO rather than a line-by-line reproduction of the original paper codebase.
+
+### Honest Thesis Description
+
+The most accurate description of the current method is:
+
+- it implements the key PLPG training structure
+  - shielded policy gradient
+  - plus a safety gradient term weighted by `alpha`
+- but it still uses a hand-designed probabilistic safety model instead of a full ProbLog-based differentiable probabilistic logic system
+
+So it should be described as a PLPG-style implementation that is structurally aligned with the papers, but not a full low-level reproduction of their probabilistic logic machinery.
 
 ### Sensor Scenarios
 
@@ -135,6 +224,8 @@ For `CollidingClose`, the default profiles are:
 
 This uncertainty model is intentionally simple and controllable. It is not meant to be a full geometric perception simulator, but rather a compact and reproducible way to introduce realistic sensing errors and to create a meaningful distinction between deterministic and probabilistic shielding.
 
+The current uncertainty level should be viewed as moderate rather than extreme. `slow` and `stop` remain fairly reliable, `normal` is still reasonably informative, and `fast` is the most uncertain, especially for `CollidingClose`. So the uncertain-sensor scenario introduces meaningful sensing degradation without making the task unrealistically noisy.
+
 Under the current uncertain-sensor setup, the shielded methods do not re-query perfect simulator truth for risk estimation. Instead:
 
 - PPO uses the noisy observation vector directly
@@ -165,14 +256,14 @@ The shared-policy multi-agent evaluation configs are:
 
 The current final training protocol is standardized to:
 
-- `100000` total training timesteps
-- evaluation every `2000` timesteps
-- checkpoint saving every `10000` timesteps
+- `40000` total training timesteps
+- evaluation every `1000` timesteps
+- checkpoint saving every `1000` timesteps
 - `max_horizon = 200`
 
 This same overall setup is used across methods so that the comparison remains controlled.
 
-At the current stage, the `100000`-timestep budget is treated as an exploratory upper bound rather than a guaranteed final choice. The purpose of these exploratory runs is to identify approximately where each method stabilizes. After that convergence analysis, the final reported experiments should use a single chosen timestep budget and repeat each method multiple times.
+The final common budget is set to `40000` timesteps. This value was chosen after exploratory runs suggested that the main learning gains for the simplified thesis setup occur well before `100000` timesteps, while a larger budget would mainly increase runtime and make the repeated multi-seed experiments unnecessarily expensive.
 
 ### Repeated Runs and Averaging
 

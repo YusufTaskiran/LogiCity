@@ -120,8 +120,9 @@ class ProbabilisticLogicShield:
             risk *= (1.0 - float(conflict))
         return float(1.0 - risk)
 
-    def safety_probs(self, obs: Any) -> np.ndarray:
-        self.total_calls += 1
+    def _compute_safety_probs(self, obs: Any, track_metrics: bool) -> np.ndarray:
+        if track_metrics:
+            self.total_calls += 1
         safe = np.ones(self.num_actions, dtype=np.float32)
         intervention = False
         risk_by_action = {}
@@ -158,9 +159,15 @@ class ProbabilisticLogicShield:
 
         combined_risk = max(slow_risk, normal_risk, fast_risk)
         safe[self.stop_action] = float(np.clip(0.18 + 1.05 * combined_risk, 0.18, self.stop_safety))
-        if intervention:
+        if intervention and track_metrics:
             self.intervention_count += 1
         return safe
+
+    def safety_probs(self, obs: Any) -> np.ndarray:
+        return self._compute_safety_probs(obs, track_metrics=True)
+
+    def safety_probs_no_metrics(self, obs: Any) -> np.ndarray:
+        return self._compute_safety_probs(obs, track_metrics=False)
 
     def shield_probs(self, obs: Any, base_probs: Any) -> np.ndarray:
         base_probs = np.asarray(base_probs, dtype=np.float32)

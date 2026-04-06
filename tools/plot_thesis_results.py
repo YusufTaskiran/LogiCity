@@ -73,6 +73,21 @@ def parse_named_paths(items: list[str] | None) -> list[tuple[str | None, str]]:
     return result
 
 
+def parse_named_groups(items: list[str] | None) -> list[tuple[str, list[str]]]:
+    if not items:
+        return []
+    result = []
+    for item in items:
+        if "=" not in item:
+            raise ValueError(f"Expected LABEL=path1,path2,... format, got: {item}")
+        label, paths_str = item.split("=", 1)
+        paths = [path.strip() for path in paths_str.split(",") if path.strip()]
+        if not paths:
+            raise ValueError(f"No paths provided for grouped input: {item}")
+        result.append((label.strip(), paths))
+    return result
+
+
 def autodiscover_training() -> list[tuple[str, str]]:
     patterns = [
         ("PPO", "checkpoints/thesis_uncertain_ppo_single/thesis_uncertain_ppo_single_metrics.csv"),
@@ -95,6 +110,24 @@ def load_training_series(path: str, metric: str, label: str | None = None) -> Se
     return Series(series_label, points, infer_color(series_label))
 
 
+def average_series(paths: list[str], metric: str, label: str) -> Series:
+    by_step: dict[float, list[float]] = {}
+    for path in paths:
+        rows = read_csv_rows(path)
+        for row in rows:
+            step = to_float(row.get("step"))
+            value = to_float(row.get(metric))
+            if step is None or value is None:
+                continue
+            by_step.setdefault(step, []).append(value)
+    points = []
+    for step in sorted(by_step.keys()):
+        values = by_step[step]
+        if values:
+            points.append((step, sum(values) / len(values)))
+    return Series(label, points, infer_color(label))
+
+
 def load_latest_training_row(path: str, label: str | None = None) -> dict[str, float | str | None]:
     rows = read_csv_rows(path)
     if not rows:
@@ -109,6 +142,22 @@ def load_latest_training_row(path: str, label: str | None = None) -> dict[str, f
         "train_timeout": to_float(latest.get("train_timeout")),
         "train_success": to_float(latest.get("train_success")),
     }
+
+
+def average_latest_training_rows(paths: list[str], label: str) -> dict[str, float | str | None]:
+    rows = [load_latest_training_row(path, label) for path in paths]
+    metrics = [
+        "elapsed_wall_clock_seconds",
+        "seconds_per_1k_timesteps",
+        "train_fail",
+        "train_timeout",
+        "train_success",
+    ]
+    averaged: dict[str, float | str | None] = {"label": label}
+    for metric in metrics:
+        values = [row[metric] for row in rows if row.get(metric) is not None]
+        averaged[metric] = (sum(float(v) for v in values) / len(values)) if values else None
+    return averaged
 
 
 def load_test_summary(path: str, label: str | None = None) -> dict[str, float | str | None]:
@@ -132,6 +181,16 @@ def load_test_summary(path: str, label: str | None = None) -> dict[str, float | 
         "mean_reward": to_float(summary.get("mean_reward")),
         "eval_wall_clock_seconds": to_float(summary.get("eval_wall_clock_seconds")),
     }
+
+
+def average_test_summaries(paths: list[str], label: str) -> dict[str, float | str | None]:
+    rows = [load_test_summary(path, label) for path in paths]
+    metrics = ["tsr", "dsr", "fail", "timeout", "mean_reward", "eval_wall_clock_seconds"]
+    averaged: dict[str, float | str | None] = {"label": label}
+    for metric in metrics:
+        values = [row[metric] for row in rows if row.get(metric) is not None]
+        averaged[metric] = (sum(float(v) for v in values) / len(values)) if values else None
+    return averaged
 
 
 def save_line_plot(series_list: list[Series], title: str, ylabel: str, output_path: str) -> None:
@@ -202,6 +261,16 @@ def main() -> None:
         help="Single-agent final test CSV input as LABEL=path or just path. Can be passed multiple times.",
     )
     parser.add_argument(
+        "--avg-training",
+        action="append",
+        help="Grouped training CSVs as LABEL=path1,path2,path3. Produces averaged method curves.",
+    )
+    parser.add_argument(
+        "--avg-single-test",
+        action="append",
+        help="Grouped single-agent test CSVs as LABEL=path1,path2,path3. Produces averaged method summaries.",
+    )
+    parser.add_argument(
         "--output-dir",
         default="vis/thesis_results",
         help="Directory where plots and summaries are written.",
@@ -211,15 +280,24 @@ def main() -> None:
     os.makedirs(args.output_dir, exist_ok=True)
 
     training_inputs = parse_named_paths(args.training)
-    if not training_inputs:
+    avg_training_inputs = parse_named_groups(args.avg_training)
+    if not training_inputs and not avg_training_inputs:
         training_inputs = autodiscover_training()
 
-    tsr_series = [load_training_series(path, "tsr", label) for label, path in training_inputs]
-    dsr_series = [load_training_series(path, "dsr", label) for label, path in training_inputs]
-    reward_series = [load_training_series(path, "mean_reward", label) for label, path in training_inputs]
-    train_fail_series = [load_training_series(path, "train_fail", label) for label, path in training_inputs]
-    train_fail_delta_series = [load_training_series(path, "train_fail_since_last_eval", label) for label, path in training_inputs]
-    runtime_rows = [load_latest_training_row(path, label) for label, path in training_inputs]
+    if avg_training_inputs:
+        tsr_series = [average_series(paths, "tsr", label) for label, paths in avg_training_inputs]
+        dsr_series = [average_series(paths, "dsr", label) for label, paths in avg_training_inputs]
+        reward_series = [average_series(paths, "mean_reward", label) for label, paths in avg_training_inputs]
+        train_fail_series = [average_series(paths, "train_fail", label) for label, paths in avg_training_inputs]
+        train_fail_delta_series = [average_series(paths, "train_fail_since_last_eval", label) for label, paths in avg_training_inputs]
+        runtime_rows = [average_latest_training_rows(paths, label) for label, paths in avg_training_inputs]
+    else:
+        tsr_series = [load_training_series(path, "tsr", label) for label, path in training_inputs]
+        dsr_series = [load_training_series(path, "dsr", label) for label, path in training_inputs]
+        reward_series = [load_training_series(path, "mean_reward", label) for label, path in training_inputs]
+        train_fail_series = [load_training_series(path, "train_fail", label) for label, path in training_inputs]
+        train_fail_delta_series = [load_training_series(path, "train_fail_since_last_eval", label) for label, path in training_inputs]
+        runtime_rows = [load_latest_training_row(path, label) for label, path in training_inputs]
 
     save_line_plot(tsr_series, "TSR Learning Curve", "TSR", os.path.join(args.output_dir, "tsr_learning_curve.png"))
     save_line_plot(dsr_series, "DSR Learning Curve", "DSR", os.path.join(args.output_dir, "dsr_learning_curve.png"))
@@ -235,7 +313,17 @@ def main() -> None:
     save_summary_csv(os.path.join(args.output_dir, "training_runtime_summary.csv"), runtime_rows)
 
     single_test_inputs = parse_named_paths(args.single_test)
-    if single_test_inputs:
+    avg_single_test_inputs = parse_named_groups(args.avg_single_test)
+    if avg_single_test_inputs:
+        single_test_rows = [average_test_summaries(paths, label) for label, paths in avg_single_test_inputs]
+        save_grouped_bar_chart(
+            single_test_rows,
+            ["tsr", "dsr", "fail", "timeout", "mean_reward"],
+            "Final Single-Agent Test Summary (3-Seed Average)",
+            os.path.join(args.output_dir, "single_agent_test_summary.png"),
+        )
+        save_summary_csv(os.path.join(args.output_dir, "single_agent_test_summary.csv"), single_test_rows)
+    elif single_test_inputs:
         single_test_rows = [load_test_summary(path, label) for label, path in single_test_inputs]
         save_grouped_bar_chart(
             single_test_rows,

@@ -3,8 +3,10 @@ from typing import Any
 
 import numpy as np
 import torch as th
+import torch.nn.functional as F
 from gymnasium import spaces
 from stable_baselines3 import PPO as SB3PPO
+from stable_baselines3.common.utils import explained_variance
 from stable_baselines3.common.utils import obs_as_tensor
 
 from ...shields import ProbabilisticLogicShield
@@ -33,6 +35,7 @@ class PLSPPO(SB3PPO):
         self._pls_pred_grounding_index = None
         self._shield_cfg = None
         self._shield = None
+        self._safety_coefficient = 0.1
         self._init_pls_from_env()
 
     def _init_pls_from_env(self) -> None:
@@ -47,6 +50,7 @@ class PLSPPO(SB3PPO):
             self._pls_enabled = True
             self._pls_pred_grounding_index = copy.deepcopy(pred_grounding_index)
             self._shield_cfg = copy.deepcopy(shield_cfg)
+            self._safety_coefficient = float(self._shield_cfg.get("safety_coefficient", self._shield_cfg.get("alpha", 0.1)))
             stop_action = int(getattr(self.action_space, "n", 4) - 1)
             self._shield = ProbabilisticLogicShield(
                 self._pls_pred_grounding_index,
@@ -77,6 +81,7 @@ class PLSPPO(SB3PPO):
         self._pls_pred_grounding_index = copy.deepcopy(pred_grounding_index)
         if shield_cfg is not None:
             self._shield_cfg = copy.deepcopy(shield_cfg)
+        self._safety_coefficient = float((self._shield_cfg or {}).get("safety_coefficient", (self._shield_cfg or {}).get("alpha", 0.1)))
         stop_action = int(getattr(self.action_space, "n", 4) - 1)
         self._shield = ProbabilisticLogicShield(
             self._pls_pred_grounding_index,
@@ -100,22 +105,36 @@ class PLSPPO(SB3PPO):
             }
         return self._shield.get_metrics()
 
-    def _shield_probs_tensor(self, observation: np.ndarray, base_probs: th.Tensor) -> th.Tensor:
+    def _safe_probs_tensor(self, observation: np.ndarray, base_probs: th.Tensor, track_metrics: bool = False) -> th.Tensor:
         self._ensure_shield()
         if (not self._pls_enabled) or self._shield is None:
-            return base_probs
-
-        base_probs_np = base_probs.detach().cpu().numpy()
+            return th.ones_like(base_probs)
         obs_np = np.asarray(observation, dtype=np.float32)
         if obs_np.ndim == 1:
-            shielded = self._shield.shield_probs(obs_np, base_probs_np[0])
-            shielded = np.expand_dims(shielded, axis=0)
+            safe = self._shield.safety_probs(obs_np) if track_metrics else self._shield.safety_probs_no_metrics(obs_np)
+            safe = np.expand_dims(safe, axis=0)
         else:
-            shielded = np.stack(
-                [self._shield.shield_probs(obs_np[idx], base_probs_np[idx]) for idx in range(obs_np.shape[0])],
+            safe = np.stack(
+                [
+                    self._shield.safety_probs(obs_np[idx]) if track_metrics else self._shield.safety_probs_no_metrics(obs_np[idx])
+                    for idx in range(obs_np.shape[0])
+                ],
                 axis=0,
             )
-        return th.as_tensor(shielded, device=base_probs.device, dtype=base_probs.dtype)
+        return th.as_tensor(safe, device=base_probs.device, dtype=base_probs.dtype)
+
+    def _shield_probs_tensor(self, observation: np.ndarray, base_probs: th.Tensor, track_metrics: bool = False) -> th.Tensor:
+        safe_probs = self._safe_probs_tensor(observation, base_probs, track_metrics=track_metrics)
+        weighted = base_probs * safe_probs
+        denom = weighted.sum(dim=1, keepdim=True)
+        fallback = th.zeros_like(weighted)
+        fallback[:, -1] = 1.0
+        normalized = weighted / denom.clamp(min=1e-8)
+        return th.where(denom > 1e-8, normalized, fallback)
+
+    def _safety_probability_tensor(self, observation: np.ndarray, shielded_probs: th.Tensor) -> th.Tensor:
+        safe_probs = self._safe_probs_tensor(observation, shielded_probs, track_metrics=False)
+        return (shielded_probs * safe_probs).sum(dim=1).clamp(min=1e-8, max=1.0)
 
     def predict(self, observation, state=None, episode_start=None, deterministic=False):
         self._ensure_shield()
@@ -127,7 +146,7 @@ class PLSPPO(SB3PPO):
             distribution = self.policy.get_distribution(obs_tensor)
             base_dist = getattr(distribution, "distribution", distribution)
             base_probs = base_dist.probs
-            shielded_probs = self._shield_probs_tensor(observation, base_probs)
+            shielded_probs = self._shield_probs_tensor(observation, base_probs, track_metrics=True)
 
         if deterministic:
             actions_tensor = th.argmax(shielded_probs, dim=1)
@@ -162,7 +181,7 @@ class PLSPPO(SB3PPO):
                 distribution = self.policy.get_distribution(obs_tensor)
                 base_dist = getattr(distribution, "distribution", distribution)
                 base_probs = base_dist.probs
-                shielded_probs = self._shield_probs_tensor(self._last_obs, base_probs)
+                shielded_probs = self._shield_probs_tensor(self._last_obs, base_probs, track_metrics=True)
                 actions_tensor = th.distributions.Categorical(probs=shielded_probs).sample()
                 chosen_probs = shielded_probs.gather(1, actions_tensor.unsqueeze(1)).squeeze(1)
                 log_probs = th.log(chosen_probs + 1e-8)
@@ -196,3 +215,110 @@ class PLSPPO(SB3PPO):
         rollout_buffer.compute_returns_and_advantage(last_values=values, dones=dones)
         callback.on_rollout_end()
         return True
+
+    def train(self) -> None:
+        self.policy.set_training_mode(True)
+        self._update_learning_rate(self.policy.optimizer)
+        clip_range = self.clip_range(self._current_progress_remaining)
+        clip_range_vf = None
+        if self.clip_range_vf is not None:
+            clip_range_vf = self.clip_range_vf(self._current_progress_remaining)
+
+        entropy_losses = []
+        pg_losses, value_losses, clip_fractions, safety_losses = [], [], [], []
+        continue_training = True
+
+        for epoch in range(self.n_epochs):
+            approx_kl_divs = []
+            for rollout_data in self.rollout_buffer.get(self.batch_size):
+                actions = rollout_data.actions
+                if isinstance(self.action_space, spaces.Discrete):
+                    actions = rollout_data.actions.long().flatten()
+
+                obs_tensor = rollout_data.observations
+                obs_np = obs_tensor.detach().cpu().numpy()
+
+                distribution = self.policy.get_distribution(obs_tensor)
+                base_dist = getattr(distribution, "distribution", distribution)
+                base_probs = base_dist.probs
+                shielded_probs = self._shield_probs_tensor(obs_np, base_probs, track_metrics=False)
+                shielded_dist = th.distributions.Categorical(probs=shielded_probs)
+                log_prob = shielded_dist.log_prob(actions)
+                entropy = shielded_dist.entropy()
+                values = self.policy.predict_values(obs_tensor).flatten()
+
+                advantages = rollout_data.advantages
+                if self.normalize_advantage and len(advantages) > 1:
+                    advantages = (advantages - advantages.mean()) / (advantages.std() + 1e-8)
+
+                ratio = th.exp(log_prob - rollout_data.old_log_prob)
+
+                policy_loss_1 = advantages * ratio
+                policy_loss_2 = advantages * th.clamp(ratio, 1 - clip_range, 1 + clip_range)
+                policy_loss = -th.min(policy_loss_1, policy_loss_2).mean()
+
+                pg_losses.append(policy_loss.item())
+                clip_fraction = th.mean((th.abs(ratio - 1) > clip_range).float()).item()
+                clip_fractions.append(clip_fraction)
+
+                if clip_range_vf is None:
+                    values_pred = values
+                else:
+                    values_pred = rollout_data.old_values + th.clamp(
+                        values - rollout_data.old_values,
+                        -clip_range_vf,
+                        clip_range_vf,
+                    )
+                value_loss = F.mse_loss(rollout_data.returns, values_pred)
+                value_losses.append(value_loss.item())
+
+                if entropy is None:
+                    entropy_loss = -th.mean(-log_prob)
+                else:
+                    entropy_loss = -th.mean(entropy)
+                entropy_losses.append(entropy_loss.item())
+
+                # PLPG safety term: -alpha * log P_{pi+}(safe | s)
+                safety_prob = self._safety_probability_tensor(obs_np, shielded_probs)
+                safety_loss = -th.log(safety_prob).mean()
+                safety_losses.append(safety_loss.item())
+
+                loss = policy_loss + self.ent_coef * entropy_loss + self.vf_coef * value_loss + self._safety_coefficient * safety_loss
+
+                with th.no_grad():
+                    log_ratio = log_prob - rollout_data.old_log_prob
+                    approx_kl_div = th.mean((th.exp(log_ratio) - 1) - log_ratio).cpu().numpy()
+                    approx_kl_divs.append(approx_kl_div)
+
+                if self.target_kl is not None and approx_kl_div > 1.5 * self.target_kl:
+                    continue_training = False
+                    if self.verbose >= 1:
+                        print(f"Early stopping at step {epoch} due to reaching max kl: {approx_kl_div:.2f}")
+                    break
+
+                self.policy.optimizer.zero_grad()
+                loss.backward()
+                th.nn.utils.clip_grad_norm_(self.policy.parameters(), self.max_grad_norm)
+                self.policy.optimizer.step()
+
+            self._n_updates += 1
+            if not continue_training:
+                break
+
+        explained_var = explained_variance(self.rollout_buffer.values.flatten(), self.rollout_buffer.returns.flatten())
+
+        self.logger.record("train/entropy_loss", np.mean(entropy_losses))
+        self.logger.record("train/policy_gradient_loss", np.mean(pg_losses))
+        self.logger.record("train/value_loss", np.mean(value_losses))
+        self.logger.record("train/safety_loss", np.mean(safety_losses))
+        self.logger.record("train/approx_kl", np.mean(approx_kl_divs) if len(approx_kl_divs) > 0 else 0.0)
+        self.logger.record("train/clip_fraction", np.mean(clip_fractions))
+        self.logger.record("train/loss", loss.item())
+        self.logger.record("train/explained_variance", explained_var)
+        if hasattr(self.policy, "log_std"):
+            self.logger.record("train/std", th.exp(self.policy.log_std).mean().item())
+        self.logger.record("train/n_updates", self._n_updates, exclude="tensorboard")
+        self.logger.record("train/clip_range", clip_range)
+        if clip_range_vf is not None:
+            self.logger.record("train/clip_range_vf", clip_range_vf)
+        self.logger.record("train/safety_coefficient", self._safety_coefficient)

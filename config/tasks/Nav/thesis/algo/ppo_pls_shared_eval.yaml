@@ -68,6 +68,7 @@ shield:
   train_time: true
   test_time: true
   method: "probabilistic_logic_shield"
+  safety_coefficient: 0.1
   use_observation_probabilities: true
   action_space: ["slow", "normal", "fast", "stop"]
   unsafe_action: "fast"

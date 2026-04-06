@@ -43,8 +43,8 @@ simulation:
     overtime_cost: -6
 
 eval_checkpoint:
-  eval_freq: 2000
-  save_freq: 10000
+  eval_freq: 1000
+  save_freq: 1000
   save_path: "./checkpoints/"
   name_prefix: "thesis_ppo_dls_single"
   episode_data: "dataset/thesis/main_3cars_1ped/val_20_episodes.pkl"
@@ -109,7 +109,7 @@ stable_baselines:
   train: true
   checkpoint_path: ""
   num_envs: 1
-  total_timesteps: 100000
+  total_timesteps: 40000
 
 shield:
   enabled: true

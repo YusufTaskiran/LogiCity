@@ -43,8 +43,8 @@ simulation:
     overtime_cost: -6
 
 eval_checkpoint:
-  eval_freq: 2000
-  save_freq: 10000
+  eval_freq: 1000
+  save_freq: 1000
   save_path: "./checkpoints/"
   name_prefix: "thesis_ppo_pls_single"
   episode_data: "dataset/thesis/main_3cars_1ped/val_20_episodes.pkl"
@@ -109,13 +109,14 @@ stable_baselines:
   train: true
   checkpoint_path: ""
   num_envs: 1
-  total_timesteps: 100000
+  total_timesteps: 40000
 
 shield:
   enabled: true
   train_time: true
   test_time: true
   method: "probabilistic_logic_shield"
+  safety_coefficient: 0.1
   use_observation_probabilities: true
   action_space: ["slow", "normal", "fast", "stop"]
   unsafe_action: "fast"
@@ -131,4 +132,4 @@ shield:
       IsAtInter: {tpr: 0.9, fpr: 0.1}
       IsInInter: {tpr: 0.9, fpr: 0.1}
       CollidingClose: {tpr: 0.85, fpr: 0.15}
-  notes: "Placeholder thesis config for shielded PPO training; requires code integration."
+  notes: "Thesis PLPG training config for probabilistic shielded PPO."
