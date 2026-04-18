@@ -70,14 +70,4 @@ shield:
   type: "dls"
   deterministic: true
   use_observation_probabilities: true
-  sensor_uncertainty:
-    enabled: true
-    mode: "confusion_matrix"
-    threshold: 0.5
-    positive_confidence: 0.9
-    negative_confidence: 0.1
-    predicates:
-      IsAtInter: {tpr: 0.9, fpr: 0.1}
-      IsInInter: {tpr: 0.9, fpr: 0.1}
-      CollidingClose: {tpr: 0.85, fpr: 0.15}
   notes: "Placeholder thesis config for deterministic logic shield shared-policy evaluation; requires code integration."

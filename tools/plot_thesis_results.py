@@ -11,6 +11,8 @@ class Series:
     label: str
     points: list[tuple[float, float]]
     color: str
+    linestyle: str = "-"
+    marker: str = "o"
 
 
 PALETTE = {
@@ -18,6 +20,24 @@ PALETTE = {
     "dls": "#d62728",
     "pls": "#2ca02c",
     "expert": "#9467bd",
+}
+
+SEED_COLORS = {
+    "s1": "#1f77b4",
+    "s2": "#ff7f0e",
+    "s3": "#2ca02c",
+}
+
+SEED_LINESTYLES = {
+    "s1": "-",
+    "s2": "--",
+    "s3": "-.",
+}
+
+SEED_MARKERS = {
+    "s1": "o",
+    "s2": "s",
+    "s3": "^",
 }
 
 
@@ -34,6 +54,9 @@ def infer_method_label(path: str) -> str:
 
 def infer_color(label: str) -> str:
     lowered = label.lower()
+    for seed, color in SEED_COLORS.items():
+        if seed in lowered:
+            return color
     if "pls" in lowered:
         return PALETTE["pls"]
     if "dls" in lowered:
@@ -41,6 +64,22 @@ def infer_color(label: str) -> str:
     if "expert" in lowered:
         return PALETTE["expert"]
     return PALETTE["ppo"]
+
+
+def infer_linestyle(label: str) -> str:
+    lowered = label.lower()
+    for seed, linestyle in SEED_LINESTYLES.items():
+        if seed in lowered:
+            return linestyle
+    return "-"
+
+
+def infer_marker(label: str) -> str:
+    lowered = label.lower()
+    for seed, marker in SEED_MARKERS.items():
+        if seed in lowered:
+            return marker
+    return "o"
 
 
 def read_csv_rows(path: str) -> list[dict[str, str]]:
@@ -107,7 +146,13 @@ def load_training_series(path: str, metric: str, label: str | None = None) -> Se
             continue
         points.append((step, value))
     series_label = label or infer_method_label(path)
-    return Series(series_label, points, infer_color(series_label))
+    return Series(
+        series_label,
+        points,
+        infer_color(series_label),
+        infer_linestyle(series_label),
+        infer_marker(series_label),
+    )
 
 
 def average_series(paths: list[str], metric: str, label: str) -> Series:
@@ -125,7 +170,7 @@ def average_series(paths: list[str], metric: str, label: str) -> Series:
         values = by_step[step]
         if values:
             points.append((step, sum(values) / len(values)))
-    return Series(label, points, infer_color(label))
+    return Series(label, points, infer_color(label), "-", "o")
 
 
 def load_latest_training_row(path: str, label: str | None = None) -> dict[str, float | str | None]:
@@ -193,6 +238,48 @@ def average_test_summaries(paths: list[str], label: str) -> dict[str, float | st
     return averaged
 
 
+def load_shared_test_summary(path: str, label: str | None = None) -> dict[str, float | str | None]:
+    rows = read_csv_rows(path)
+    if not rows:
+        raise ValueError(f"No rows found in {path}")
+    summary = rows[-1]
+    series_label = label or infer_method_label(path)
+    return {
+        "label": series_label,
+        "joint_tsr": to_float(summary.get("joint_tsr")),
+        "joint_dsr": to_float(summary.get("joint_dsr")),
+        "car_1_tsr": to_float(summary.get("car_1_tsr")),
+        "car_1_dsr": to_float(summary.get("car_1_dsr")),
+        "car_2_tsr": to_float(summary.get("car_2_tsr")),
+        "car_2_dsr": to_float(summary.get("car_2_dsr")),
+        "fail": to_float(summary.get("fail") or summary.get("fail_episodes")),
+        "timeout": to_float(summary.get("timeout") or summary.get("timeout_episodes")),
+        "mean_reward": to_float(summary.get("mean_reward")),
+        "eval_wall_clock_seconds": to_float(summary.get("eval_wall_clock_seconds")),
+    }
+
+
+def average_shared_test_summaries(paths: list[str], label: str) -> dict[str, float | str | None]:
+    rows = [load_shared_test_summary(path, label) for path in paths]
+    metrics = [
+        "joint_tsr",
+        "joint_dsr",
+        "car_1_tsr",
+        "car_1_dsr",
+        "car_2_tsr",
+        "car_2_dsr",
+        "fail",
+        "timeout",
+        "mean_reward",
+        "eval_wall_clock_seconds",
+    ]
+    averaged: dict[str, float | str | None] = {"label": label}
+    for metric in metrics:
+        values = [row[metric] for row in rows if row.get(metric) is not None]
+        averaged[metric] = (sum(float(v) for v in values) / len(values)) if values else None
+    return averaged
+
+
 def save_line_plot(series_list: list[Series], title: str, ylabel: str, output_path: str) -> None:
     series_list = [series for series in series_list if series.points]
     if not series_list:
@@ -201,7 +288,16 @@ def save_line_plot(series_list: list[Series], title: str, ylabel: str, output_pa
     for series in series_list:
         xs = [x for x, _ in series.points]
         ys = [y for _, y in series.points]
-        plt.plot(xs, ys, marker="o", linewidth=2, markersize=4, label=series.label, color=series.color)
+        plt.plot(
+            xs,
+            ys,
+            marker=series.marker,
+            linestyle=series.linestyle,
+            linewidth=2,
+            markersize=4,
+            label=series.label,
+            color=series.color,
+        )
     plt.title(title)
     plt.xlabel("Training timesteps")
     plt.ylabel(ylabel)
@@ -261,6 +357,11 @@ def main() -> None:
         help="Single-agent final test CSV input as LABEL=path or just path. Can be passed multiple times.",
     )
     parser.add_argument(
+        "--shared-test",
+        action="append",
+        help="Shared-policy final test CSV input as LABEL=path or just path. Can be passed multiple times.",
+    )
+    parser.add_argument(
         "--avg-training",
         action="append",
         help="Grouped training CSVs as LABEL=path1,path2,path3. Produces averaged method curves.",
@@ -269,6 +370,11 @@ def main() -> None:
         "--avg-single-test",
         action="append",
         help="Grouped single-agent test CSVs as LABEL=path1,path2,path3. Produces averaged method summaries.",
+    )
+    parser.add_argument(
+        "--avg-shared-test",
+        action="append",
+        help="Grouped shared-policy test CSVs as LABEL=path1,path2,path3. Produces averaged method summaries.",
     )
     parser.add_argument(
         "--output-dir",
@@ -332,6 +438,27 @@ def main() -> None:
             os.path.join(args.output_dir, "single_agent_test_summary.png"),
         )
         save_summary_csv(os.path.join(args.output_dir, "single_agent_test_summary.csv"), single_test_rows)
+
+    shared_test_inputs = parse_named_paths(args.shared_test)
+    avg_shared_test_inputs = parse_named_groups(args.avg_shared_test)
+    if avg_shared_test_inputs:
+        shared_test_rows = [average_shared_test_summaries(paths, label) for label, paths in avg_shared_test_inputs]
+        save_grouped_bar_chart(
+            shared_test_rows,
+            ["joint_tsr", "joint_dsr", "car_1_tsr", "car_1_dsr", "car_2_tsr", "car_2_dsr", "fail", "timeout", "mean_reward"],
+            "Final Shared-Policy Test Summary (3-Seed Average)",
+            os.path.join(args.output_dir, "shared_policy_test_summary.png"),
+        )
+        save_summary_csv(os.path.join(args.output_dir, "shared_policy_test_summary.csv"), shared_test_rows)
+    elif shared_test_inputs:
+        shared_test_rows = [load_shared_test_summary(path, label) for label, path in shared_test_inputs]
+        save_grouped_bar_chart(
+            shared_test_rows,
+            ["joint_tsr", "joint_dsr", "car_1_tsr", "car_1_dsr", "car_2_tsr", "car_2_dsr", "fail", "timeout", "mean_reward"],
+            "Final Shared-Policy Test Summary",
+            os.path.join(args.output_dir, "shared_policy_test_summary.png"),
+        )
+        save_summary_csv(os.path.join(args.output_dir, "shared_policy_test_summary.csv"), shared_test_rows)
 
     print(f"Wrote plots to {args.output_dir}")
 

@@ -129,35 +129,28 @@ So PLS performs soft multiplicative reweighting rather than hard masking. Risky 
 
 Even after adding the PLPG-style safety term, the current implementation still differs from the papers in several specific ways.
 
-#### 1. No ProbLog-based probabilistic logic program
+#### 1. ProbLog backend now available, but domain rules remain thesis-specific
 
-In the papers, the safety probability is derived from a probabilistic logic representation of the domain. In the current implementation, there is no ProbLog program and no external probabilistic logic engine. Instead, the safety model is implemented directly in Python inside `logicity/shields/pls.py`.
+The thesis PLS path now supports a ProbLog-backed shield in `logicity/shields/pls.py`. This replaces the earlier purely hand-written shielding path when the shield config uses `backend: "problog"`. The resulting shield queries a ProbLog program for action safety, policy safety, and the shielded policy.
 
 #### 2. No differentiable logic circuit compilation
 
 The papers describe probabilistic shielding in a form that supports differentiable reasoning over the probabilistic logic structure. The current implementation does not compile the logic into a differentiable probabilistic circuit. Instead, it computes conflict probabilities through hand-written numerical formulas over the uncertain predicate values.
 
-#### 3. Hand-crafted `P(safe | s, a)` model
+#### 3. Thesis-specific `P(safe | s, a)` knowledge base
 
-In the papers, `P(safe | s, a)` follows from the probabilistic logic semantics. In the current implementation, `P(safe | s, a)` is manually engineered from the task predicates:
+In the papers, `P(safe | s, a)` follows from the probabilistic logic semantics and the chosen knowledge base. In the current implementation, the ProbLog knowledge base is still built around the thesis task predicates:
 
 - `IsAtInter`
 - `IsInInter`
 - `HigherPri`
 - `CollidingClose`
 
-These are combined into a custom conflict probability and then mapped into custom action-specific safety weights for `slow`, `normal`, `fast`, and `stop`.
+These are encoded into thesis-specific ProbLog rules for `slow`, `normal`, `fast`, and `stop`. So the implementation now matches the paper architecture more closely, but the domain safety clauses are still task-specific rather than copied from the original paper code.
 
-#### 4. Task-specific action-safety shaping
+#### 4. Optional heuristic backend still exists
 
-The current implementation uses explicit heuristic shaping so that:
-
-- very low risk can favour `fast`
-- low to moderate risk should favour `normal`
-- elevated risk should favour `slow`
-- high risk should favour `stop`
-
-This is useful for the LogiCity thesis task, but it is more hand-crafted and task-specific than the generic formulation in the paper.
+The older heuristic backend is still available as `backend: "heuristic"` for comparison and ablation, but the thesis PLS configs now point to the ProbLog backend by default.
 
 #### 5. Current alpha handling
 
@@ -174,6 +167,25 @@ The most accurate description of the current method is:
 
 So it should be described as a PLPG-style implementation that is structurally aligned with the papers, but not a full low-level reproduction of their probabilistic logic machinery.
 
+### Explicit Non-Reproduction Statement
+
+This thesis does **not** claim an exact reproduction of the IJCAI 2023 probabilistic logic shield / PLPG pipeline. In particular, the current PLS component should not be described as a full ProbLog-based probabilistic logic shield in the strict sense used in the paper.
+
+Instead, the current method should be described more carefully as:
+
+- a **probabilistic shield over logical predicates**
+- with a **PLPG-style training objective**
+- and a **hand-crafted probabilistic safety model**
+
+The implementation is therefore intended to capture the main thesis ideas:
+
+- predicate-based neuro-symbolic safety reasoning
+- uncertain sensing
+- probabilistic shielding
+- safety-aware PPO training
+
+but without reproducing the exact probabilistic logic programming and differentiable ProbLog machinery of the original work.
+
 ### Sensor Scenarios
 
 The thesis distinguishes two scenarios.
@@ -184,7 +196,7 @@ In the perfect-sensor scenario, PPO, DLS, and PLS all receive the true logical g
 
 #### Scenario 2: Uncertain sensors
 
-In the uncertain-sensor scenario, PPO, DLS, and PLS all receive noisy predicate observations. This is implemented so that all methods face the same perception uncertainty. PPO receives the noisy observation vector directly. DLS receives the same noisy observation vector and thresholds it into booleans. PLS receives the same noisy observation vector and keeps the predicate values probabilistic.
+In the uncertain-sensor scenario, PPO, DLS, and PLS all receive noisy predicate observations. This is implemented so that all methods face the same perception uncertainty. PPO receives the noisy observation vector directly. DLS receives the same noisy observation vector and thresholds it into booleans. PLS receives the same noisy observation vector and keeps the predicate values probabilistic. In this thesis setup, DLS and PLS do not add a second shield-side noise layer on top of those observation probabilities.
 
 This design is more realistic than giving uncertainty only to the shield, because in a real driving system the learned policy also acts under uncertain sensing.
 

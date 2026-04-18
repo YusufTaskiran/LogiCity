@@ -6,10 +6,14 @@ Assumptions:
 
 - run everything from the repo root: `d:\Dev\LogicityFresh\LogiCity`
 - active Python environment is the project environment
-- current final scenario is the **uncertain-sensor** setup
 - final common training budget is `40000` timesteps
 - evaluation frequency is `1000`
 - each method is trained with `3` seeds
+
+Two scenarios are supported:
+
+- **Perfect-sensor scenario**: the original LogiCity-style setup without injected observation or shield uncertainty
+- **Uncertain-sensor scenario**: the thesis setup with observation uncertainty for PPO/DLS/PLS; DLS and PLS consume those observation probabilities directly, without additional shield-side noise
 
 ## 1. Dataset Generation
 
@@ -64,6 +68,34 @@ python main.py --config config/tasks/Nav/thesis/algo/expert_single_test.yaml --e
 ```
 
 ## 4. Final Training Runs
+
+### 4A. Perfect-Sensor Scenario
+
+#### PPO, seeds 1-3
+
+```powershell
+python main.py --config config/tasks/Nav/thesis/algo/ppo_single_train_perfect.yaml --exp thesis_perfect_ppo_single_s1 --use_gym --log_dir log_rl/thesis_perfect_train_ppo_s1 --seed 111
+python main.py --config config/tasks/Nav/thesis/algo/ppo_single_train_perfect.yaml --exp thesis_perfect_ppo_single_s2 --use_gym --log_dir log_rl/thesis_perfect_train_ppo_s2 --seed 222
+python main.py --config config/tasks/Nav/thesis/algo/ppo_single_train_perfect.yaml --exp thesis_perfect_ppo_single_s3 --use_gym --log_dir log_rl/thesis_perfect_train_ppo_s3 --seed 333
+```
+
+#### PPO + DLS, seeds 1-3
+
+```powershell
+python main.py --config config/tasks/Nav/thesis/algo/ppo_dls_single_train_perfect.yaml --exp thesis_perfect_ppo_dls_single_s1 --use_gym --log_dir log_rl/thesis_perfect_train_dls_s1 --seed 111
+python main.py --config config/tasks/Nav/thesis/algo/ppo_dls_single_train_perfect.yaml --exp thesis_perfect_ppo_dls_single_s2 --use_gym --log_dir log_rl/thesis_perfect_train_dls_s2 --seed 222
+python main.py --config config/tasks/Nav/thesis/algo/ppo_dls_single_train_perfect.yaml --exp thesis_perfect_ppo_dls_single_s3 --use_gym --log_dir log_rl/thesis_perfect_train_dls_s3 --seed 333
+```
+
+#### PPO + PLS/PLPG, seeds 1-3
+
+```powershell
+python main.py --config config/tasks/Nav/thesis/algo/ppo_pls_single_train_perfect.yaml --exp thesis_perfect_ppo_pls_single_s1 --use_gym --log_dir log_rl/thesis_perfect_train_pls_s1 --seed 111
+python main.py --config config/tasks/Nav/thesis/algo/ppo_pls_single_train_perfect.yaml --exp thesis_perfect_ppo_pls_single_s2 --use_gym --log_dir log_rl/thesis_perfect_train_pls_s2 --seed 222
+python main.py --config config/tasks/Nav/thesis/algo/ppo_pls_single_train_perfect.yaml --exp thesis_perfect_ppo_pls_single_s3 --use_gym --log_dir log_rl/thesis_perfect_train_pls_s3 --seed 333
+```
+
+### 4B. Uncertain-Sensor Scenario
 
 ### PPO, seed 1
 
@@ -121,6 +153,34 @@ python main.py --config config/tasks/Nav/thesis/algo/ppo_pls_single_train.yaml -
 
 ## 5. Single-Agent Test Runs
 
+### 5A. Perfect-Sensor Scenario
+
+#### PPO single-agent test
+
+```powershell
+python main.py --config config/tasks/Nav/thesis/algo/ppo_single_test_perfect.yaml --exp thesis_perfect_ppo_single_s1_test --use_gym --log_dir log_rl/thesis_perfect_test_ppo_s1 --checkpoint_path checkpoints/thesis_perfect_ppo_single_s1/best_model.zip
+python main.py --config config/tasks/Nav/thesis/algo/ppo_single_test_perfect.yaml --exp thesis_perfect_ppo_single_s2_test --use_gym --log_dir log_rl/thesis_perfect_test_ppo_s2 --checkpoint_path checkpoints/thesis_perfect_ppo_single_s2/best_model.zip
+python main.py --config config/tasks/Nav/thesis/algo/ppo_single_test_perfect.yaml --exp thesis_perfect_ppo_single_s3_test --use_gym --log_dir log_rl/thesis_perfect_test_ppo_s3 --checkpoint_path checkpoints/thesis_perfect_ppo_single_s3/best_model.zip
+```
+
+#### PPO + DLS single-agent test
+
+```powershell
+python main.py --config config/tasks/Nav/thesis/algo/ppo_dls_single_test_perfect.yaml --exp thesis_perfect_ppo_dls_single_s1_test --use_gym --log_dir log_rl/thesis_perfect_test_dls_s1 --checkpoint_path checkpoints/thesis_perfect_ppo_dls_single_s1/best_model.zip
+python main.py --config config/tasks/Nav/thesis/algo/ppo_dls_single_test_perfect.yaml --exp thesis_perfect_ppo_dls_single_s2_test --use_gym --log_dir log_rl/thesis_perfect_test_dls_s2 --checkpoint_path checkpoints/thesis_perfect_ppo_dls_single_s2/best_model.zip
+python main.py --config config/tasks/Nav/thesis/algo/ppo_dls_single_test_perfect.yaml --exp thesis_perfect_ppo_dls_single_s3_test --use_gym --log_dir log_rl/thesis_perfect_test_dls_s3 --checkpoint_path checkpoints/thesis_perfect_ppo_dls_single_s3/best_model.zip
+```
+
+#### PPO + PLS/PLPG single-agent test
+
+```powershell
+python main.py --config config/tasks/Nav/thesis/algo/ppo_pls_single_test_perfect.yaml --exp thesis_perfect_ppo_pls_single_s1_test --use_gym --log_dir log_rl/thesis_perfect_test_pls_s1 --checkpoint_path checkpoints/thesis_perfect_ppo_pls_single_s1/best_model.zip
+python main.py --config config/tasks/Nav/thesis/algo/ppo_pls_single_test_perfect.yaml --exp thesis_perfect_ppo_pls_single_s2_test --use_gym --log_dir log_rl/thesis_perfect_test_pls_s2 --checkpoint_path checkpoints/thesis_perfect_ppo_pls_single_s2/best_model.zip
+python main.py --config config/tasks/Nav/thesis/algo/ppo_pls_single_test_perfect.yaml --exp thesis_perfect_ppo_pls_single_s3_test --use_gym --log_dir log_rl/thesis_perfect_test_pls_s3 --checkpoint_path checkpoints/thesis_perfect_ppo_pls_single_s3/best_model.zip
+```
+
+### 5B. Uncertain-Sensor Scenario
+
 ### PPO single-agent test
 
 ```powershell
@@ -146,6 +206,34 @@ python main.py --config config/tasks/Nav/thesis/algo/ppo_pls_single_test.yaml --
 ```
 
 ## 6. Shared-Policy Multi-Agent Test Runs
+
+### 6A. Perfect-Sensor Scenario
+
+#### PPO shared-policy test
+
+```powershell
+python tools/run_shared_policy_two_agent.py --config config/tasks/Nav/thesis/algo/ppo_shared_eval_perfect.yaml --exp thesis_perfect_ppo_single_s1_shared_test --log_dir log_rl/thesis_perfect_shared_test_ppo_s1 --checkpoint_path checkpoints/thesis_perfect_ppo_single_s1/best_model.zip --episode_data dataset/thesis/main_3cars_1ped/test_50_episodes_shared_oracle.pkl
+python tools/run_shared_policy_two_agent.py --config config/tasks/Nav/thesis/algo/ppo_shared_eval_perfect.yaml --exp thesis_perfect_ppo_single_s2_shared_test --log_dir log_rl/thesis_perfect_shared_test_ppo_s2 --checkpoint_path checkpoints/thesis_perfect_ppo_single_s2/best_model.zip --episode_data dataset/thesis/main_3cars_1ped/test_50_episodes_shared_oracle.pkl
+python tools/run_shared_policy_two_agent.py --config config/tasks/Nav/thesis/algo/ppo_shared_eval_perfect.yaml --exp thesis_perfect_ppo_single_s3_shared_test --log_dir log_rl/thesis_perfect_shared_test_ppo_s3 --checkpoint_path checkpoints/thesis_perfect_ppo_single_s3/best_model.zip --episode_data dataset/thesis/main_3cars_1ped/test_50_episodes_shared_oracle.pkl
+```
+
+#### PPO + DLS shared-policy test
+
+```powershell
+python tools/run_shared_policy_two_agent.py --config config/tasks/Nav/thesis/algo/ppo_dls_shared_eval_perfect.yaml --exp thesis_perfect_ppo_dls_single_s1_shared_test --log_dir log_rl/thesis_perfect_shared_test_dls_s1 --checkpoint_path checkpoints/thesis_perfect_ppo_dls_single_s1/best_model.zip --episode_data dataset/thesis/main_3cars_1ped/test_50_episodes_shared_oracle.pkl
+python tools/run_shared_policy_two_agent.py --config config/tasks/Nav/thesis/algo/ppo_dls_shared_eval_perfect.yaml --exp thesis_perfect_ppo_dls_single_s2_shared_test --log_dir log_rl/thesis_perfect_shared_test_dls_s2 --checkpoint_path checkpoints/thesis_perfect_ppo_dls_single_s2/best_model.zip --episode_data dataset/thesis/main_3cars_1ped/test_50_episodes_shared_oracle.pkl
+python tools/run_shared_policy_two_agent.py --config config/tasks/Nav/thesis/algo/ppo_dls_shared_eval_perfect.yaml --exp thesis_perfect_ppo_dls_single_s3_shared_test --log_dir log_rl/thesis_perfect_shared_test_dls_s3 --checkpoint_path checkpoints/thesis_perfect_ppo_dls_single_s3/best_model.zip --episode_data dataset/thesis/main_3cars_1ped/test_50_episodes_shared_oracle.pkl
+```
+
+#### PPO + PLS/PLPG shared-policy test
+
+```powershell
+python tools/run_shared_policy_two_agent.py --config config/tasks/Nav/thesis/algo/ppo_pls_shared_eval_perfect.yaml --exp thesis_perfect_ppo_pls_single_s1_shared_test --log_dir log_rl/thesis_perfect_shared_test_pls_s1 --checkpoint_path checkpoints/thesis_perfect_ppo_pls_single_s1/best_model.zip --episode_data dataset/thesis/main_3cars_1ped/test_50_episodes_shared_oracle.pkl
+python tools/run_shared_policy_two_agent.py --config config/tasks/Nav/thesis/algo/ppo_pls_shared_eval_perfect.yaml --exp thesis_perfect_ppo_pls_single_s2_shared_test --log_dir log_rl/thesis_perfect_shared_test_pls_s2 --checkpoint_path checkpoints/thesis_perfect_ppo_pls_single_s2/best_model.zip --episode_data dataset/thesis/main_3cars_1ped/test_50_episodes_shared_oracle.pkl
+python tools/run_shared_policy_two_agent.py --config config/tasks/Nav/thesis/algo/ppo_pls_shared_eval_perfect.yaml --exp thesis_perfect_ppo_pls_single_s3_shared_test --log_dir log_rl/thesis_perfect_shared_test_pls_s3 --checkpoint_path checkpoints/thesis_perfect_ppo_pls_single_s3/best_model.zip --episode_data dataset/thesis/main_3cars_1ped/test_50_episodes_shared_oracle.pkl
+```
+
+### 6B. Uncertain-Sensor Scenario
 
 These use the shared-policy runner and the shared-oracle annotated test split.
 
@@ -210,6 +298,36 @@ Use two complementary plotting perspectives.
 
 This is used to inspect seed stability for a single method.
 
+#### Perfect-sensor PPO seed stability
+
+```powershell
+python tools/plot_thesis_results.py `
+  --training "PPO s1=checkpoints/thesis_perfect_ppo_single_s1/thesis_perfect_ppo_single_s1_metrics.csv" `
+  --training "PPO s2=checkpoints/thesis_perfect_ppo_single_s2/thesis_perfect_ppo_single_s2_metrics.csv" `
+  --training "PPO s3=checkpoints/thesis_perfect_ppo_single_s3/thesis_perfect_ppo_single_s3_metrics.csv" `
+  --output-dir vis/thesis_results_perfect_ppo_3seeds
+```
+
+#### Perfect-sensor DLS seed stability
+
+```powershell
+python tools/plot_thesis_results.py `
+  --training "DLS s1=checkpoints/thesis_perfect_ppo_dls_single_s1/thesis_perfect_ppo_dls_single_s1_metrics.csv" `
+  --training "DLS s2=checkpoints/thesis_perfect_ppo_dls_single_s2/thesis_perfect_ppo_dls_single_s2_metrics.csv" `
+  --training "DLS s3=checkpoints/thesis_perfect_ppo_dls_single_s3/thesis_perfect_ppo_dls_single_s3_metrics.csv" `
+  --output-dir vis/thesis_results_perfect_dls_3seeds
+```
+
+#### Perfect-sensor PLS/PLPG seed stability
+
+```powershell
+python tools/plot_thesis_results.py `
+  --training "PLS s1=checkpoints/thesis_perfect_ppo_pls_single_s1/thesis_perfect_ppo_pls_single_s1_metrics.csv" `
+  --training "PLS s2=checkpoints/thesis_perfect_ppo_pls_single_s2/thesis_perfect_ppo_pls_single_s2_metrics.csv" `
+  --training "PLS s3=checkpoints/thesis_perfect_ppo_pls_single_s3/thesis_perfect_ppo_pls_single_s3_metrics.csv" `
+  --output-dir vis/thesis_results_perfect_pls_3seeds
+```
+
 #### PPO seed stability
 
 ```powershell
@@ -244,6 +362,29 @@ python tools/plot_thesis_results.py `
 
 This is used for the final thesis comparison between methods.
 
+#### Perfect-sensor averaged training curves and averaged single-agent test summaries
+
+```powershell
+python tools/plot_thesis_results.py `
+  --avg-training "PPO=checkpoints/thesis_perfect_ppo_single_s1/thesis_perfect_ppo_single_s1_metrics.csv,checkpoints/thesis_perfect_ppo_single_s2/thesis_perfect_ppo_single_s2_metrics.csv,checkpoints/thesis_perfect_ppo_single_s3/thesis_perfect_ppo_single_s3_metrics.csv" `
+  --avg-training "PPO + DLS=checkpoints/thesis_perfect_ppo_dls_single_s1/thesis_perfect_ppo_dls_single_s1_metrics.csv,checkpoints/thesis_perfect_ppo_dls_single_s2/thesis_perfect_ppo_dls_single_s2_metrics.csv,checkpoints/thesis_perfect_ppo_dls_single_s3/thesis_perfect_ppo_dls_single_s3_metrics.csv" `
+  --avg-training "PPO + PLS=checkpoints/thesis_perfect_ppo_pls_single_s1/thesis_perfect_ppo_pls_single_s1_metrics.csv,checkpoints/thesis_perfect_ppo_pls_single_s2/thesis_perfect_ppo_pls_single_s2_metrics.csv,checkpoints/thesis_perfect_ppo_pls_single_s3/thesis_perfect_ppo_pls_single_s3_metrics.csv" `
+  --avg-single-test "PPO=results/thesis_perfect_ppo_single_s1_test/test_metrics.csv,results/thesis_perfect_ppo_single_s2_test/test_metrics.csv,results/thesis_perfect_ppo_single_s3_test/test_metrics.csv" `
+  --avg-single-test "PPO + DLS=results/thesis_perfect_ppo_dls_single_s1_test/test_metrics.csv,results/thesis_perfect_ppo_dls_single_s2_test/test_metrics.csv,results/thesis_perfect_ppo_dls_single_s3_test/test_metrics.csv" `
+  --avg-single-test "PPO + PLS=results/thesis_perfect_ppo_pls_single_s1_test/test_metrics.csv,results/thesis_perfect_ppo_pls_single_s2_test/test_metrics.csv,results/thesis_perfect_ppo_pls_single_s3_test/test_metrics.csv" `
+  --output-dir vis/thesis_results_perfect_avg_3seeds
+```
+
+#### Perfect-sensor averaged shared-policy test summaries
+
+```powershell
+python tools/plot_thesis_results.py `
+  --avg-shared-test "PPO=results/thesis_perfect_ppo_single_s1_shared_test/summary_metrics.csv,results/thesis_perfect_ppo_single_s2_shared_test/summary_metrics.csv,results/thesis_perfect_ppo_single_s3_shared_test/summary_metrics.csv" `
+  --avg-shared-test "PPO + DLS=results/thesis_perfect_ppo_dls_single_s1_shared_test/summary_metrics.csv,results/thesis_perfect_ppo_dls_single_s2_shared_test/summary_metrics.csv,results/thesis_perfect_ppo_dls_single_s3_shared_test/summary_metrics.csv" `
+  --avg-shared-test "PPO + PLS=results/thesis_perfect_ppo_pls_single_s1_shared_test/summary_metrics.csv,results/thesis_perfect_ppo_pls_single_s2_shared_test/summary_metrics.csv,results/thesis_perfect_ppo_pls_single_s3_shared_test/summary_metrics.csv" `
+  --output-dir vis/thesis_results_perfect_shared_avg_3seeds
+```
+
 #### Averaged training curves and averaged single-agent test summaries
 
 ```powershell
@@ -257,6 +398,16 @@ python tools/plot_thesis_results.py `
   --output-dir vis/thesis_results_avg_3seeds
 ```
 
+#### Averaged shared-policy test summaries
+
+```powershell
+python tools/plot_thesis_results.py `
+  --avg-shared-test "PPO=results/thesis_uncertain_ppo_single_s1_shared_test/summary_metrics.csv,results/thesis_uncertain_ppo_single_s2_shared_test/summary_metrics.csv,results/thesis_uncertain_ppo_single_s3_shared_test/summary_metrics.csv" `
+  --avg-shared-test "PPO + DLS=results/thesis_uncertain_ppo_dls_single_s1_shared_test/summary_metrics.csv,results/thesis_uncertain_ppo_dls_single_s2_shared_test/summary_metrics.csv,results/thesis_uncertain_ppo_dls_single_s3_shared_test/summary_metrics.csv" `
+  --avg-shared-test "PPO + PLS=results/thesis_uncertain_ppo_pls_single_s1_shared_test/summary_metrics.csv,results/thesis_uncertain_ppo_pls_single_s2_shared_test/summary_metrics.csv,results/thesis_uncertain_ppo_pls_single_s3_shared_test/summary_metrics.csv" `
+  --output-dir vis/thesis_results_shared_avg_3seeds
+```
+
 ### Example: compare one seed per method
 
 ```powershell
@@ -268,6 +419,16 @@ python tools/plot_thesis_results.py `
   --single-test "PPO + DLS=results/thesis_uncertain_ppo_dls_single_s1_test/test_metrics.csv" `
   --single-test "PPO + PLS=results/thesis_uncertain_ppo_pls_single_s1_test/test_metrics.csv" `
   --output-dir vis/thesis_results_seed1
+```
+
+### Example: compare one shared-policy seed per method
+
+```powershell
+python tools/plot_thesis_results.py `
+  --shared-test "PPO=results/thesis_uncertain_ppo_single_s1_shared_test/summary_metrics.csv" `
+  --shared-test "PPO + DLS=results/thesis_uncertain_ppo_dls_single_s1_shared_test/summary_metrics.csv" `
+  --shared-test "PPO + PLS=results/thesis_uncertain_ppo_pls_single_s1_shared_test/summary_metrics.csv" `
+  --output-dir vis/thesis_results_shared_seed1
 ```
 
 ## 9. Notes

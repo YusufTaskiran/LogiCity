@@ -68,20 +68,11 @@ shield:
   train_time: true
   test_time: true
   method: "probabilistic_logic_shield"
+  backend: "problog"
   safety_coefficient: 0.1
   use_observation_probabilities: true
   action_space: ["slow", "normal", "fast", "stop"]
   unsafe_action: "fast"
   safe_fallback_action: "stop"
   threshold: 0.5
-  sensor_uncertainty:
-    enabled: true
-    mode: "confusion_matrix"
-    threshold: 0.5
-    positive_confidence: 0.9
-    negative_confidence: 0.1
-    predicates:
-      IsAtInter: {tpr: 0.9, fpr: 0.1}
-      IsInInter: {tpr: 0.9, fpr: 0.1}
-      CollidingClose: {tpr: 0.85, fpr: 0.15}
   notes: "Placeholder thesis config for shielded shared-policy evaluation; requires code integration."

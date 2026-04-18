@@ -58,6 +58,7 @@ class PLSPPO(SB3PPO):
                 stop_action=stop_action,
                 sensor_uncertainty=self._shield_cfg.get("sensor_uncertainty"),
                 use_observation_probabilities=bool(self._shield_cfg.get("use_observation_probabilities", False)),
+                backend=str(self._shield_cfg.get("backend", "heuristic")),
             )
         except Exception:
             self._pls_enabled = False
@@ -74,6 +75,7 @@ class PLSPPO(SB3PPO):
                 stop_action=stop_action,
                 sensor_uncertainty=(self._shield_cfg or {}).get("sensor_uncertainty"),
                 use_observation_probabilities=bool((self._shield_cfg or {}).get("use_observation_probabilities", False)),
+                backend=str((self._shield_cfg or {}).get("backend", "heuristic")),
             )
 
     def configure_shield(self, pred_grounding_index, shield_cfg=None) -> None:
@@ -89,6 +91,7 @@ class PLSPPO(SB3PPO):
             stop_action=stop_action,
             sensor_uncertainty=(self._shield_cfg or {}).get("sensor_uncertainty"),
             use_observation_probabilities=bool((self._shield_cfg or {}).get("use_observation_probabilities", False)),
+            backend=str((self._shield_cfg or {}).get("backend", "heuristic")),
         )
 
     def reset_shield_metrics(self) -> None:
@@ -124,17 +127,44 @@ class PLSPPO(SB3PPO):
         return th.as_tensor(safe, device=base_probs.device, dtype=base_probs.dtype)
 
     def _shield_probs_tensor(self, observation: np.ndarray, base_probs: th.Tensor, track_metrics: bool = False) -> th.Tensor:
-        safe_probs = self._safe_probs_tensor(observation, base_probs, track_metrics=track_metrics)
-        weighted = base_probs * safe_probs
-        denom = weighted.sum(dim=1, keepdim=True)
-        fallback = th.zeros_like(weighted)
-        fallback[:, -1] = 1.0
-        normalized = weighted / denom.clamp(min=1e-8)
-        return th.where(denom > 1e-8, normalized, fallback)
+        self._ensure_shield()
+        if (not self._pls_enabled) or self._shield is None:
+            return base_probs
+        obs_np = np.asarray(observation, dtype=np.float32)
+        probs_np = base_probs.detach().cpu().numpy()
+        if obs_np.ndim == 1:
+            shielded = (
+                self._shield.shield_probs(obs_np, probs_np[0], track_metrics=track_metrics)
+                if track_metrics
+                else self._shield.shield_probs_no_metrics(obs_np, probs_np[0])
+            )
+            shielded = np.expand_dims(shielded, axis=0)
+        else:
+            shielded = np.stack(
+                [
+                    self._shield.shield_probs(obs_np[idx], probs_np[idx], track_metrics=track_metrics)
+                    if track_metrics
+                    else self._shield.shield_probs_no_metrics(obs_np[idx], probs_np[idx])
+                    for idx in range(obs_np.shape[0])
+                ],
+                axis=0,
+            )
+        return th.as_tensor(shielded, device=base_probs.device, dtype=base_probs.dtype)
 
     def _safety_probability_tensor(self, observation: np.ndarray, shielded_probs: th.Tensor) -> th.Tensor:
-        safe_probs = self._safe_probs_tensor(observation, shielded_probs, track_metrics=False)
-        return (shielded_probs * safe_probs).sum(dim=1).clamp(min=1e-8, max=1.0)
+        self._ensure_shield()
+        if (not self._pls_enabled) or self._shield is None:
+            return th.ones(shielded_probs.shape[0], device=shielded_probs.device, dtype=shielded_probs.dtype)
+        obs_np = np.asarray(observation, dtype=np.float32)
+        probs_np = shielded_probs.detach().cpu().numpy()
+        if obs_np.ndim == 1:
+            values = np.array([self._shield.policy_safety_probability(obs_np, probs_np[0])], dtype=np.float32)
+        else:
+            values = np.array(
+                [self._shield.policy_safety_probability(obs_np[idx], probs_np[idx]) for idx in range(obs_np.shape[0])],
+                dtype=np.float32,
+            )
+        return th.as_tensor(values, device=shielded_probs.device, dtype=shielded_probs.dtype).clamp(min=1e-8, max=1.0)
 
     def predict(self, observation, state=None, episode_start=None, deterministic=False):
         self._ensure_shield()
