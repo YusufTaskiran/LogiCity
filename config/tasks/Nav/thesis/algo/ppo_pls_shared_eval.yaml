@@ -24,16 +24,6 @@ simulation:
       3: [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1]
     fov_entities:
       Entity: 4
-    observation_uncertainty:
-      enabled: true
-      mode: "confusion_matrix"
-      action_profile: "normal"
-      positive_confidence: 0.9
-      negative_confidence: 0.1
-      predicates:
-        IsAtInter: {}
-        IsInInter: {}
-        CollidingClose: {}
     action_cost:
       0: -3
       1: 0
@@ -60,7 +50,7 @@ stable_baselines:
     verbose: 1
     tensorboard_log: "./tb_logs"
   train: false
-  checkpoint_path: "checkpoints/thesis_ppo_pls_single/best_model.zip"
+  checkpoint_path: "checkpoints/thesis_ppo_pls_heuristic_alpha001_s1/best_model.zip"
   episode_data: "dataset/thesis/main_3cars_1ped/test_50_episodes.pkl"
 
 shield:
@@ -68,9 +58,9 @@ shield:
   train_time: true
   test_time: true
   method: "probabilistic_logic_shield"
-  backend: "problog"
-  safety_coefficient: 0.1
-  use_observation_probabilities: true
+  backend: "heuristic"
+  safety_coefficient: 0.01
+  use_safety_loss: true
   action_space: ["slow", "normal", "fast", "stop"]
   unsafe_action: "fast"
   safe_fallback_action: "stop"

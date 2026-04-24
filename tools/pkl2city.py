@@ -323,7 +323,7 @@ def paste_car_on_map(map_image, car_image, position, direction, type, position_l
 
     return rotated_car, map_image, list(new_position)
 
-def gridmap2img_agents(gridmap, gridmap_, icon_dict, static_map, last_icons=None, agents=None):
+def gridmap2img_agents(gridmap, gridmap_, icon_dict, static_map, last_icons=None, agents=None, ego_ids=None):
     current_map = static_map.copy()
     current_map = Image.fromarray(current_map)
     resized_full_grid = np.repeat(np.repeat(gridmap, SCALE, axis=1), SCALE, axis=2)
@@ -336,6 +336,8 @@ def gridmap2img_agents(gridmap, gridmap_, icon_dict, static_map, last_icons=None
         "pos": {}
     }
 
+    ego_ids = set(ego_ids or [])
+
     for i in range(resized_grid.shape[0]):
         local_layer = resized_grid[i]
         left, top, right, bottom = get_pos(local_layer)
@@ -346,6 +348,7 @@ def gridmap2img_agents(gridmap, gridmap_, icon_dict, static_map, last_icons=None
         
         agent_type = LABEL_MAP[local_layer[top, left].item()]     
         agent_name = "{}_{}".format(agent_type, BASIC_LAYER + i)
+        is_ego_agent = (BASIC_LAYER + i) in ego_ids
         if agents != None:
             concepts = agents[agent_name]["concepts"]
             is_ambulance = False
@@ -376,7 +379,9 @@ def gridmap2img_agents(gridmap, gridmap_, icon_dict, static_map, last_icons=None
             if "reckless" in concepts.keys():
                 if concepts["reckless"] == 1.0:
                     is_reckless = True
-            if is_ambulance:
+            if is_ego_agent and agent_type == "Car":
+                icon = icon_dict["Tiro"]
+            elif is_ambulance:
                 icon = icon_dict["Ambulance"]
             elif is_bus:
                 icon = icon_dict["Bus"]
@@ -400,9 +405,12 @@ def gridmap2img_agents(gridmap, gridmap_, icon_dict, static_map, last_icons=None
                     icon_id = i%len(icon_list)
                     icon = icon_list[icon_id]
         else:
-            icon_list = icon_dict[agent_type]
-            icon_id = i%len(icon_list)
-            icon = icon_list[icon_id]
+            if is_ego_agent and agent_type == "Car":
+                icon = icon_dict["Tiro"]
+            else:
+                icon_list = icon_dict[agent_type]
+                icon_id = i%len(icon_list)
+                icon = icon_list[icon_id]
 
         if agent_type == "Car":
             street_type = get_steet_type(resized_full_grid, pos)
@@ -463,7 +471,7 @@ def main(pkl_path, ego_ids, output_folder):
     for key in trange(time_steps[0], time_steps[-2]):
         grid = obs[key]["World"].numpy()
         grid_ = obs[key+1]["World"].numpy()
-        img, last_icons = gridmap2img_agents(grid, grid_, icon_dict, static_map, last_icons, agents)
+        img, last_icons = gridmap2img_agents(grid, grid_, icon_dict, static_map, last_icons, agents, ego_ids=ego_ids)
         # Define the text to be added
         text = "#{}".format(key)
 

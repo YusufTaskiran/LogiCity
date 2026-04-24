@@ -1,4 +1,5 @@
 import copy
+import logging
 from typing import Any
 
 import numpy as np
@@ -10,6 +11,8 @@ from stable_baselines3.common.utils import explained_variance
 from stable_baselines3.common.utils import obs_as_tensor
 
 from ...shields import ProbabilisticLogicShield
+
+logger = logging.getLogger(__name__)
 
 
 def _unwrap_first_env(env: Any) -> Any:
@@ -24,9 +27,9 @@ def _unwrap_first_env(env: Any) -> Any:
 class PLSPPO(SB3PPO):
     """Probabilistic Logic Shield PPO.
 
-    Uses the same uncertain shield-side sensor model as DLS, but computes
-    a soft conflict probability and renormalizes the policy with soft action
-    safety values instead of a hard deterministic mask.
+    Computes a soft conflict probability from perfect predicates and
+    renormalizes the policy with soft action safety values instead of a
+    hard deterministic mask.
     """
 
     def __init__(self, *args, **kwargs):
@@ -36,35 +39,41 @@ class PLSPPO(SB3PPO):
         self._shield_cfg = None
         self._shield = None
         self._safety_coefficient = 0.1
+        self._use_safety_loss = True
         self._init_pls_from_env()
 
     def _init_pls_from_env(self) -> None:
         if self.env is None:
             return
+        base_env = _unwrap_first_env(self.env)
+        shield_cfg = getattr(base_env, "shield_config", None)
+        pred_grounding_index = getattr(base_env, "pred_grounding_index", None)
+        if not shield_cfg or shield_cfg.get("method") != "probabilistic_logic_shield" or pred_grounding_index is None:
+            return
         try:
-            base_env = _unwrap_first_env(self.env)
-            shield_cfg = getattr(base_env, "shield_config", None)
-            pred_grounding_index = getattr(base_env, "pred_grounding_index", None)
-            if not shield_cfg or shield_cfg.get("method") != "probabilistic_logic_shield" or pred_grounding_index is None:
-                return
             self._pls_enabled = True
             self._pls_pred_grounding_index = copy.deepcopy(pred_grounding_index)
             self._shield_cfg = copy.deepcopy(shield_cfg)
             self._safety_coefficient = float(self._shield_cfg.get("safety_coefficient", self._shield_cfg.get("alpha", 0.1)))
+            self._use_safety_loss = bool(self._shield_cfg.get("use_safety_loss", True))
             stop_action = int(getattr(self.action_space, "n", 4) - 1)
             self._shield = ProbabilisticLogicShield(
                 self._pls_pred_grounding_index,
                 num_actions=int(getattr(self.action_space, "n", 4)),
                 stop_action=stop_action,
-                sensor_uncertainty=self._shield_cfg.get("sensor_uncertainty"),
-                use_observation_probabilities=bool(self._shield_cfg.get("use_observation_probabilities", False)),
                 backend=str(self._shield_cfg.get("backend", "heuristic")),
             )
-        except Exception:
+        except Exception as exc:
             self._pls_enabled = False
             self._pls_pred_grounding_index = None
             self._shield_cfg = None
             self._shield = None
+            logger.exception("Failed to initialize ProbabilisticLogicShield.")
+            raise RuntimeError(
+                "PLS shield initialization failed. "
+                "This run would otherwise silently fall back to PPO. "
+                "Check the ProbLog installation and shield configuration."
+            ) from exc
 
     def _ensure_shield(self) -> None:
         if self._shield is None and self._pls_enabled and self._pls_pred_grounding_index is not None:
@@ -73,8 +82,6 @@ class PLSPPO(SB3PPO):
                 self._pls_pred_grounding_index,
                 num_actions=int(getattr(self.action_space, "n", 4)),
                 stop_action=stop_action,
-                sensor_uncertainty=(self._shield_cfg or {}).get("sensor_uncertainty"),
-                use_observation_probabilities=bool((self._shield_cfg or {}).get("use_observation_probabilities", False)),
                 backend=str((self._shield_cfg or {}).get("backend", "heuristic")),
             )
 
@@ -84,13 +91,12 @@ class PLSPPO(SB3PPO):
         if shield_cfg is not None:
             self._shield_cfg = copy.deepcopy(shield_cfg)
         self._safety_coefficient = float((self._shield_cfg or {}).get("safety_coefficient", (self._shield_cfg or {}).get("alpha", 0.1)))
+        self._use_safety_loss = bool((self._shield_cfg or {}).get("use_safety_loss", True))
         stop_action = int(getattr(self.action_space, "n", 4) - 1)
         self._shield = ProbabilisticLogicShield(
             self._pls_pred_grounding_index,
             num_actions=int(getattr(self.action_space, "n", 4)),
             stop_action=stop_action,
-            sensor_uncertainty=(self._shield_cfg or {}).get("sensor_uncertainty"),
-            use_observation_probabilities=bool((self._shield_cfg or {}).get("use_observation_probabilities", False)),
             backend=str((self._shield_cfg or {}).get("backend", "heuristic")),
         )
 
@@ -113,10 +119,13 @@ class PLSPPO(SB3PPO):
         if (not self._pls_enabled) or self._shield is None:
             return th.ones_like(base_probs)
         obs_np = np.asarray(observation, dtype=np.float32)
+        probs_np = base_probs.detach().cpu().numpy()
         if obs_np.ndim == 1:
             safe = self._shield.safety_probs(obs_np) if track_metrics else self._shield.safety_probs_no_metrics(obs_np)
             safe = np.expand_dims(safe, axis=0)
         else:
+            if probs_np.ndim == 1:
+                probs_np = np.expand_dims(probs_np, axis=0)
             safe = np.stack(
                 [
                     self._shield.safety_probs(obs_np[idx]) if track_metrics else self._shield.safety_probs_no_metrics(obs_np[idx])
@@ -132,6 +141,8 @@ class PLSPPO(SB3PPO):
             return base_probs
         obs_np = np.asarray(observation, dtype=np.float32)
         probs_np = base_probs.detach().cpu().numpy()
+        if probs_np.ndim == 1:
+            probs_np = np.expand_dims(probs_np, axis=0)
         if obs_np.ndim == 1:
             shielded = (
                 self._shield.shield_probs(obs_np, probs_np[0], track_metrics=track_metrics)
@@ -157,6 +168,8 @@ class PLSPPO(SB3PPO):
             return th.ones(shielded_probs.shape[0], device=shielded_probs.device, dtype=shielded_probs.dtype)
         obs_np = np.asarray(observation, dtype=np.float32)
         probs_np = shielded_probs.detach().cpu().numpy()
+        if probs_np.ndim == 1:
+            probs_np = np.expand_dims(probs_np, axis=0)
         if obs_np.ndim == 1:
             values = np.array([self._shield.policy_safety_probability(obs_np, probs_np[0])], dtype=np.float32)
         else:
@@ -308,9 +321,12 @@ class PLSPPO(SB3PPO):
                     entropy_loss = -th.mean(entropy)
                 entropy_losses.append(entropy_loss.item())
 
-                # PLPG safety term: -alpha * log P_{pi+}(safe | s)
-                safety_prob = self._safety_probability_tensor(obs_np, shielded_probs)
-                safety_loss = -th.log(safety_prob).mean()
+                if self._use_safety_loss:
+                    # PLPG safety term: -alpha * log P_{pi+}(safe | s)
+                    safety_prob = self._safety_probability_tensor(obs_np, shielded_probs)
+                    safety_loss = -th.log(safety_prob).mean()
+                else:
+                    safety_loss = th.zeros((), device=obs_tensor.device, dtype=shielded_probs.dtype)
                 safety_losses.append(safety_loss.item())
 
                 loss = policy_loss + self.ent_coef * entropy_loss + self.vf_coef * value_loss + self._safety_coefficient * safety_loss
@@ -352,3 +368,4 @@ class PLSPPO(SB3PPO):
         if clip_range_vf is not None:
             self.logger.record("train/clip_range_vf", clip_range_vf)
         self.logger.record("train/safety_coefficient", self._safety_coefficient)
+        self.logger.record("train/use_safety_loss", float(self._use_safety_loss))

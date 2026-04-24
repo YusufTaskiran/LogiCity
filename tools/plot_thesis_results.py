@@ -22,6 +22,19 @@ PALETTE = {
     "expert": "#9467bd",
 }
 
+VARIANT_COLORS = [
+    "#1f77b4",
+    "#d62728",
+    "#2ca02c",
+    "#ff7f0e",
+    "#9467bd",
+    "#8c564b",
+    "#e377c2",
+    "#7f7f7f",
+    "#bcbd22",
+    "#17becf",
+]
+
 SEED_COLORS = {
     "s1": "#1f77b4",
     "s2": "#ff7f0e",
@@ -129,9 +142,9 @@ def parse_named_groups(items: list[str] | None) -> list[tuple[str, list[str]]]:
 
 def autodiscover_training() -> list[tuple[str, str]]:
     patterns = [
-        ("PPO", "checkpoints/thesis_uncertain_ppo_single/thesis_uncertain_ppo_single_metrics.csv"),
-        ("PPO + DLS", "checkpoints/thesis_uncertain_ppo_dls_single/thesis_uncertain_ppo_dls_single_metrics.csv"),
-        ("PPO + PLS", "checkpoints/thesis_uncertain_ppo_pls_single/thesis_uncertain_ppo_pls_single_metrics.csv"),
+        ("PPO", "checkpoints/thesis_ppo_single/thesis_ppo_single_metrics.csv"),
+        ("PPO + DLS", "checkpoints/thesis_ppo_dls_single/thesis_ppo_dls_single_metrics.csv"),
+        ("PPO + PLS", "checkpoints/thesis_ppo_pls_single/thesis_ppo_pls_single_metrics.csv"),
     ]
     return [(label, path) for label, path in patterns if os.path.exists(path)]
 
@@ -145,6 +158,27 @@ def load_training_series(path: str, metric: str, label: str | None = None) -> Se
         if step is None or value is None:
             continue
         points.append((step, value))
+    series_label = label or infer_method_label(path)
+    return Series(
+        series_label,
+        points,
+        infer_color(series_label),
+        infer_linestyle(series_label),
+        infer_marker(series_label),
+    )
+
+
+def load_cumulative_training_series(path: str, metric: str, label: str | None = None) -> Series:
+    rows = read_csv_rows(path)
+    points: list[tuple[float, float]] = []
+    running_total = 0.0
+    for row in rows:
+        step = to_float(row.get("step"))
+        value = to_float(row.get(metric))
+        if step is None or value is None:
+            continue
+        running_total += value
+        points.append((step, running_total))
     series_label = label or infer_method_label(path)
     return Series(
         series_label,
@@ -171,6 +205,44 @@ def average_series(paths: list[str], metric: str, label: str) -> Series:
         if values:
             points.append((step, sum(values) / len(values)))
     return Series(label, points, infer_color(label), "-", "o")
+
+
+def average_cumulative_series(paths: list[str], metric: str, label: str) -> Series:
+    by_step: dict[float, list[float]] = {}
+    for path in paths:
+        rows = read_csv_rows(path)
+        running_total = 0.0
+        for row in rows:
+            step = to_float(row.get("step"))
+            value = to_float(row.get(metric))
+            if step is None or value is None:
+                continue
+            running_total += value
+            by_step.setdefault(step, []).append(running_total)
+    points = []
+    for step in sorted(by_step.keys()):
+        values = by_step[step]
+        if values:
+            points.append((step, sum(values) / len(values)))
+    return Series(label, points, infer_color(label), "-", "o")
+
+
+def first_step_at_threshold(path: str, metric: str, threshold: float) -> float | None:
+    rows = read_csv_rows(path)
+    for row in rows:
+        step = to_float(row.get("step"))
+        value = to_float(row.get(metric))
+        if step is None or value is None:
+            continue
+        if value >= threshold:
+            return step
+    return None
+
+
+def average_first_step_at_threshold(paths: list[str], metric: str, threshold: float) -> float | None:
+    values = [first_step_at_threshold(path, metric, threshold) for path in paths]
+    present = [float(value) for value in values if value is not None]
+    return (sum(present) / len(present)) if present else None
 
 
 def load_latest_training_row(path: str, label: str | None = None) -> dict[str, float | str | None]:
@@ -284,8 +356,27 @@ def save_line_plot(series_list: list[Series], title: str, ylabel: str, output_pa
     series_list = [series for series in series_list if series.points]
     if not series_list:
         return
-    plt.figure(figsize=(10, 5))
+    color_counts: dict[str, int] = {}
     for series in series_list:
+        color_counts[series.color] = color_counts.get(series.color, 0) + 1
+    variant_color_idx = 0
+    adjusted_series: list[Series] = []
+    for series in series_list:
+        if color_counts.get(series.color, 0) > 1:
+            adjusted_series.append(
+                Series(
+                    label=series.label,
+                    points=series.points,
+                    color=VARIANT_COLORS[variant_color_idx % len(VARIANT_COLORS)],
+                    linestyle=series.linestyle,
+                    marker=series.marker,
+                )
+            )
+            variant_color_idx += 1
+        else:
+            adjusted_series.append(series)
+    plt.figure(figsize=(10, 5))
+    for series in adjusted_series:
         xs = [x for x, _ in series.points]
         ys = [y for _, y in series.points]
         plt.plot(
@@ -344,12 +435,38 @@ def save_summary_csv(path: str, rows: list[dict[str, float | str | None]]) -> No
         writer.writerows(rows)
 
 
+def build_convergence_rows(
+    training_inputs: list[tuple[str | None, str]],
+    avg_training_inputs: list[tuple[str, list[str]]],
+    thresholds: list[float],
+    metric: str = "tsr",
+) -> list[dict[str, float | str | None]]:
+    rows: list[dict[str, float | str | None]] = []
+    if avg_training_inputs:
+        for label, paths in avg_training_inputs:
+            row: dict[str, float | str | None] = {"label": label}
+            for threshold in thresholds:
+                key = f"{metric}_steps_to_{threshold:.2f}"
+                row[key] = average_first_step_at_threshold(paths, metric, threshold)
+            rows.append(row)
+        return rows
+
+    for label, path in training_inputs:
+        series_label = label or infer_method_label(path)
+        row = {"label": series_label}
+        for threshold in thresholds:
+            key = f"{metric}_steps_to_{threshold:.2f}"
+            row[key] = first_step_at_threshold(path, metric, threshold)
+        rows.append(row)
+    return rows
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description="Generate thesis result plots as PNG files using matplotlib.")
     parser.add_argument(
         "--training",
         action="append",
-        help="Training CSV input as LABEL=path or just path. Can be passed multiple times. If omitted, uncertain-sensor defaults are auto-discovered.",
+        help="Training CSV input as LABEL=path or just path. Can be passed multiple times. If omitted, thesis training defaults are auto-discovered.",
     )
     parser.add_argument(
         "--single-test",
@@ -381,9 +498,16 @@ def main() -> None:
         default="vis/thesis_results",
         help="Directory where plots and summaries are written.",
     )
+    parser.add_argument(
+        "--convergence-threshold",
+        action="append",
+        type=float,
+        help="TSR threshold used for convergence summaries. Can be passed multiple times. Defaults to 0.70, 0.80, 0.90.",
+    )
     args = parser.parse_args()
 
     os.makedirs(args.output_dir, exist_ok=True)
+    convergence_thresholds = args.convergence_threshold or [0.70, 0.80, 0.90]
 
     training_inputs = parse_named_paths(args.training)
     avg_training_inputs = parse_named_groups(args.avg_training)
@@ -394,6 +518,7 @@ def main() -> None:
         tsr_series = [average_series(paths, "tsr", label) for label, paths in avg_training_inputs]
         dsr_series = [average_series(paths, "dsr", label) for label, paths in avg_training_inputs]
         reward_series = [average_series(paths, "mean_reward", label) for label, paths in avg_training_inputs]
+        eval_fail_cumulative_series = [average_cumulative_series(paths, "fail", label) for label, paths in avg_training_inputs]
         train_fail_series = [average_series(paths, "train_fail", label) for label, paths in avg_training_inputs]
         train_fail_delta_series = [average_series(paths, "train_fail_since_last_eval", label) for label, paths in avg_training_inputs]
         runtime_rows = [average_latest_training_rows(paths, label) for label, paths in avg_training_inputs]
@@ -401,6 +526,7 @@ def main() -> None:
         tsr_series = [load_training_series(path, "tsr", label) for label, path in training_inputs]
         dsr_series = [load_training_series(path, "dsr", label) for label, path in training_inputs]
         reward_series = [load_training_series(path, "mean_reward", label) for label, path in training_inputs]
+        eval_fail_cumulative_series = [load_cumulative_training_series(path, "fail", label) for label, path in training_inputs]
         train_fail_series = [load_training_series(path, "train_fail", label) for label, path in training_inputs]
         train_fail_delta_series = [load_training_series(path, "train_fail_since_last_eval", label) for label, path in training_inputs]
         runtime_rows = [load_latest_training_row(path, label) for label, path in training_inputs]
@@ -408,6 +534,12 @@ def main() -> None:
     save_line_plot(tsr_series, "TSR Learning Curve", "TSR", os.path.join(args.output_dir, "tsr_learning_curve.png"))
     save_line_plot(dsr_series, "DSR Learning Curve", "DSR", os.path.join(args.output_dir, "dsr_learning_curve.png"))
     save_line_plot(reward_series, "Mean Reward Learning Curve", "Mean reward", os.path.join(args.output_dir, "mean_reward_learning_curve.png"))
+    save_line_plot(
+        eval_fail_cumulative_series,
+        "Cumulative Validation Failures",
+        "cumulative eval fail",
+        os.path.join(args.output_dir, "eval_fail_cumulative.png"),
+    )
     save_line_plot(train_fail_series, "Cumulative Training Failures", "train_fail", os.path.join(args.output_dir, "train_fail_cumulative.png"))
     save_line_plot(train_fail_delta_series, "Training Failures Since Last Eval", "train_fail_since_last_eval", os.path.join(args.output_dir, "train_fail_since_last_eval.png"))
     save_grouped_bar_chart(
@@ -417,6 +549,14 @@ def main() -> None:
         os.path.join(args.output_dir, "runtime_overhead.png"),
     )
     save_summary_csv(os.path.join(args.output_dir, "training_runtime_summary.csv"), runtime_rows)
+    convergence_rows = build_convergence_rows(training_inputs, avg_training_inputs, convergence_thresholds, metric="tsr")
+    save_summary_csv(os.path.join(args.output_dir, "tsr_convergence_summary.csv"), convergence_rows)
+    save_grouped_bar_chart(
+        convergence_rows,
+        [f"tsr_steps_to_{threshold:.2f}" for threshold in convergence_thresholds],
+        "TSR Convergence Summary",
+        os.path.join(args.output_dir, "tsr_convergence_summary.png"),
+    )
 
     single_test_inputs = parse_named_paths(args.single_test)
     avg_single_test_inputs = parse_named_groups(args.avg_single_test)

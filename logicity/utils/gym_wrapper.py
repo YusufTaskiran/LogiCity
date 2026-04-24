@@ -6,7 +6,6 @@ import pickle as pkl
 from gym.spaces import Box, Dict
 import torch.nn.functional as F
 from ..core.config import *
-from ..shields import PredicateSensorModel
 
 import logging
 logger = logging.getLogger(__name__)
@@ -68,13 +67,6 @@ class GymCityWrapper(gym.core.Env):
         self.reset_all_agents = env.rl_agent.get("reset_all_agents", True)
         self.randomize_all_car_priorities = env.rl_agent.get("randomize_all_car_priorities", False)
         self.shield_config = env.rl_agent.get("shield")
-        self.observation_uncertainty_cfg = env.rl_agent.get("observation_uncertainty")
-        self.observation_sensor_model = PredicateSensorModel(self.observation_uncertainty_cfg)
-        self.observation_action_profile = (
-            self.observation_uncertainty_cfg.get("action_profile", "normal")
-            if self.observation_uncertainty_cfg
-            else "normal"
-        )
         self.current_grounding_dic = None
         self.training_episode_data_path = env.rl_agent.get("training_episode_data")
         self.training_episode_data = None
@@ -107,25 +99,9 @@ class GymCityWrapper(gym.core.Env):
 
     def full_action2index(self, action):
         return self._macro_action_index(action)
-    
-    def _apply_observation_uncertainty(self, grounding: np.ndarray) -> np.ndarray:
-        grounding = np.asarray(grounding, dtype=np.float32).copy()
-        if not self.observation_sensor_model.enabled:
-            return grounding
-        for pred_name, (start, end) in self.pred_grounding_index.items():
-            if not self.observation_sensor_model.is_uncertain(pred_name):
-                continue
-            for idx in range(start, end):
-                truth_value = bool(grounding[idx] > 0.5)
-                grounding[idx] = self.observation_sensor_model.sense_probability(
-                    pred_name,
-                    truth_value,
-                    action_name=self.observation_action_profile,
-                )
-        return grounding
 
     def _flatten_obs(self, obs_dict):
-        world_state = self._apply_observation_uncertainty(obs_dict["World_state"][0])
+        world_state = np.asarray(obs_dict["World_state"][0], dtype=np.float32)
         if self.cat_length:
             return np.concatenate([world_state, [self.normed_path_length]], axis=0, dtype=np.float32)
         else:

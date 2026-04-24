@@ -1,9 +1,9 @@
 import math
+import logging
+from collections import OrderedDict
 from typing import Any
 
 import numpy as np
-
-from .sensor_model import PredicateSensorModel
 
 try:
     from problog import get_evaluatable
@@ -12,6 +12,10 @@ except ImportError:  # pragma: no cover - optional dependency
     PrologString = None
     get_evaluatable = None
 
+# ProbLog emits very verbose INFO logs for every evaluation. Keep those quiet
+# during training/evaluation unless the application explicitly re-enables them.
+logging.getLogger("problog").setLevel(logging.WARNING)
+
 
 class _BaseProbabilisticLogicShield:
     def __init__(
@@ -19,15 +23,11 @@ class _BaseProbabilisticLogicShield:
         pred_grounding_index: dict[str, tuple[int, int]],
         num_actions: int = 4,
         stop_action: int = 3,
-        sensor_uncertainty: dict[str, Any] | None = None,
-        use_observation_probabilities: bool = False,
         epsilon: float = 1e-6,
     ):
         self.pred_grounding_index = pred_grounding_index
         self.num_actions = int(num_actions)
         self.stop_action = int(stop_action)
-        self.sensor_model = PredicateSensorModel(sensor_uncertainty)
-        self.use_observation_probabilities = bool(use_observation_probabilities)
         self.epsilon = float(epsilon)
         self.intervention_count = 0
         self.total_calls = 0
@@ -69,19 +69,13 @@ class _BaseProbabilisticLogicShield:
     def _unary_prob(self, obs: np.ndarray, pred_name: str, entity_idx: int, action_name: str) -> float:
         start, _ = self.pred_grounding_index[pred_name]
         observed_value = float(obs[start + entity_idx])
-        if self.use_observation_probabilities:
-            return float(np.clip(observed_value, 0.0, 1.0))
-        truth_value = bool(observed_value > 0.5)
-        return float(self.sensor_model.sense_probability(pred_name, truth_value, action_name=action_name))
+        return float(observed_value > 0.5)
 
     def _binary_prob(self, obs: np.ndarray, pred_name: str, entity_i: int, entity_j: int, action_name: str) -> float:
         start, _ = self.pred_grounding_index[pred_name]
         offset = entity_i * self.n_entities + entity_j
         observed_value = float(obs[start + offset])
-        if self.use_observation_probabilities:
-            return float(np.clip(observed_value, 0.0, 1.0))
-        truth_value = bool(observed_value > 0.5)
-        return float(self.sensor_model.sense_probability(pred_name, truth_value, action_name=action_name))
+        return float(observed_value > 0.5)
 
 
 class _HeuristicProbabilisticLogicShield(_BaseProbabilisticLogicShield):
@@ -90,8 +84,6 @@ class _HeuristicProbabilisticLogicShield(_BaseProbabilisticLogicShield):
         pred_grounding_index: dict[str, tuple[int, int]],
         num_actions: int = 4,
         stop_action: int = 3,
-        sensor_uncertainty: dict[str, Any] | None = None,
-        use_observation_probabilities: bool = False,
         epsilon: float = 1e-3,
         stop_safety: float = 0.97,
         risk_deadzone: float = 0.15,
@@ -101,8 +93,6 @@ class _HeuristicProbabilisticLogicShield(_BaseProbabilisticLogicShield):
             pred_grounding_index=pred_grounding_index,
             num_actions=num_actions,
             stop_action=stop_action,
-            sensor_uncertainty=sensor_uncertainty,
-            use_observation_probabilities=use_observation_probabilities,
             epsilon=epsilon,
         )
         self.stop_safety = float(stop_safety)
@@ -207,10 +197,53 @@ class _ProbLogProbabilisticLogicShield(_BaseProbabilisticLogicShield):
                 "ProbLog backend requested, but the `problog` package is not installed."
             )
         super().__init__(*args, **kwargs)
+        self._state_prob_cache: OrderedDict[tuple[float, ...], dict[str, float]] = OrderedDict()
+        self._program_eval_cache: OrderedDict[tuple[tuple[float, ...], tuple[float, ...]], dict[str, float]] = OrderedDict()
+        self._state_cache_limit = 4096
+        self._program_cache_limit = 16384
 
     @staticmethod
     def _format_prob(probability: float) -> str:
         return f"{float(np.clip(probability, 0.0, 1.0)):.10f}"
+
+    @staticmethod
+    def _obs_cache_key(obs: Any) -> tuple[float, ...]:
+        obs_vec = np.asarray(obs, dtype=np.float32).reshape(-1)
+        return tuple(np.round(obs_vec, 6).tolist())
+
+    @staticmethod
+    def _policy_cache_key(policy_probs: np.ndarray) -> tuple[float, ...]:
+        probs = np.asarray(policy_probs, dtype=np.float32).reshape(-1)
+        return tuple(np.round(probs, 6).tolist())
+
+    @staticmethod
+    def _cache_get(cache: OrderedDict, key: Any) -> Any:
+        value = cache.get(key)
+        if value is not None:
+            cache.move_to_end(key)
+        return value
+
+    @staticmethod
+    def _cache_put(cache: OrderedDict, key: Any, value: Any, limit: int) -> None:
+        cache[key] = value
+        cache.move_to_end(key)
+        if len(cache) > limit:
+            cache.popitem(last=False)
+
+    def _problog_action_probs(self, policy_probs: np.ndarray) -> tuple[float, float, float, float]:
+        """Make action probabilities safe for ProbLog annotated disjunctions.
+
+        ProbLog is strict about AD weights summing to at most 1.0, so we round
+        the first three actions and assign the residual to `stop`.
+        """
+        probs = self._policy_probs(policy_probs)
+        rounded = [round(float(np.clip(probs[idx], 0.0, 1.0)), 10) for idx in range(3)]
+        residual = max(0.0, 1.0 - sum(rounded))
+        stop_prob = round(float(np.clip(residual, 0.0, 1.0)), 10)
+        total = sum(rounded) + stop_prob
+        if total > 1.0:
+            stop_prob = max(0.0, round(stop_prob - (total - 1.0), 10))
+        return rounded[0], rounded[1], rounded[2], stop_prob
 
     def _policy_probs(self, base_probs: Any) -> np.ndarray:
         probs = np.asarray(base_probs, dtype=np.float32).copy()
@@ -227,6 +260,10 @@ class _ProbLogProbabilisticLogicShield(_BaseProbabilisticLogicShield):
         return probs / float(max(np.sum(probs), self.epsilon))
 
     def _state_probabilities(self, obs: Any) -> dict[str, float]:
+        obs_key = self._obs_cache_key(obs)
+        cached = self._cache_get(self._state_prob_cache, obs_key)
+        if cached is not None:
+            return cached
         obs_vec = self._prepare_obs(obs)
         probs: dict[str, float] = {
             "ego_at_inter": self._unary_prob(obs_vec, "IsAtInter", 0, "normal"),
@@ -236,14 +273,12 @@ class _ProbLogProbabilisticLogicShield(_BaseProbabilisticLogicShield):
             probs[f"other_in_inter_{other_idx}"] = self._unary_prob(obs_vec, "IsInInter", other_idx, "normal")
             probs[f"other_at_inter_{other_idx}"] = self._unary_prob(obs_vec, "IsAtInter", other_idx, "normal")
             probs[f"colliding_close_{other_idx}"] = self._binary_prob(obs_vec, "CollidingClose", 0, other_idx, "normal")
+        self._cache_put(self._state_prob_cache, obs_key, probs, self._state_cache_limit)
         return probs
 
     def _build_program(self, state_probs: dict[str, float], policy_probs: np.ndarray) -> str:
         lines = []
-        slow_prob = float(policy_probs[0])
-        normal_prob = float(policy_probs[1])
-        fast_prob = float(policy_probs[2])
-        stop_prob = max(0.0, 1.0 - slow_prob - normal_prob - fast_prob)
+        slow_prob, normal_prob, fast_prob, stop_prob = self._problog_action_probs(policy_probs)
         lines.append(
             f"{self._format_prob(slow_prob)}::act(slow); "
             f"{self._format_prob(normal_prob)}::act(normal); "
@@ -290,9 +325,17 @@ class _ProbLogProbabilisticLogicShield(_BaseProbabilisticLogicShield):
         return "\n".join(lines)
 
     def _evaluate_program(self, state_probs: dict[str, float], policy_probs: np.ndarray) -> dict[str, float]:
+        state_key = tuple(sorted((name, round(probability, 6)) for name, probability in state_probs.items()))
+        policy_key = self._policy_cache_key(policy_probs)
+        cache_key = (state_key, policy_key)
+        cached = self._cache_get(self._program_eval_cache, cache_key)
+        if cached is not None:
+            return cached
         program = self._build_program(state_probs, policy_probs)
         result = get_evaluatable().create_from(PrologString(program)).evaluate()
-        return {str(key): float(value) for key, value in result.items()}
+        parsed = {str(key): float(value) for key, value in result.items()}
+        self._cache_put(self._program_eval_cache, cache_key, parsed, self._program_cache_limit)
+        return parsed
 
     def _query_action_safety(self, state_probs: dict[str, float], action_idx: int) -> float:
         one_hot = np.zeros(self.num_actions, dtype=np.float32)
@@ -370,8 +413,6 @@ class ProbabilisticLogicShield:
         pred_grounding_index: dict[str, tuple[int, int]],
         num_actions: int = 4,
         stop_action: int = 3,
-        sensor_uncertainty: dict[str, Any] | None = None,
-        use_observation_probabilities: bool = False,
         epsilon: float = 1e-3,
         stop_safety: float = 0.97,
         risk_deadzone: float = 0.15,
@@ -383,8 +424,6 @@ class ProbabilisticLogicShield:
             "pred_grounding_index": pred_grounding_index,
             "num_actions": num_actions,
             "stop_action": stop_action,
-            "sensor_uncertainty": sensor_uncertainty,
-            "use_observation_probabilities": use_observation_probabilities,
             "epsilon": epsilon,
         }
         if backend_name == "problog":

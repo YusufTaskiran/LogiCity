@@ -3,8 +3,6 @@ from typing import Any
 
 import numpy as np
 
-from .sensor_model import PredicateSensorModel
-
 
 class DeterministicLogicShield:
     """Deterministic probability-level logic shield.
@@ -21,14 +19,10 @@ class DeterministicLogicShield:
         pred_grounding_index: dict[str, tuple[int, int]],
         num_actions: int = 4,
         safe_action: int = 3,
-        sensor_uncertainty: dict[str, Any] | None = None,
-        use_observation_probabilities: bool = False,
     ):
         self.pred_grounding_index = pred_grounding_index
         self.num_actions = int(num_actions)
         self.safe_action = int(safe_action)
-        self.sensor_model = PredicateSensorModel(sensor_uncertainty)
-        self.use_observation_probabilities = bool(use_observation_probabilities)
         self.intervention_count = 0
         self.total_calls = 0
         self.n_entities = self._infer_num_entities()
@@ -71,21 +65,13 @@ class DeterministicLogicShield:
     def _unary(self, obs: np.ndarray, pred_name: str, entity_idx: int, action_name: str) -> bool:
         start, _ = self.pred_grounding_index[pred_name]
         observed_value = float(obs[start + entity_idx])
-        if self.use_observation_probabilities:
-            return self.sensor_model.threshold_probability(observed_value)
-        truth_value = bool(observed_value > 0.5)
-        sensed_prob = self.sensor_model.sense_probability(pred_name, truth_value, action_name=action_name)
-        return self.sensor_model.threshold_probability(sensed_prob)
+        return bool(observed_value > 0.5)
 
     def _binary(self, obs: np.ndarray, pred_name: str, entity_i: int, entity_j: int, action_name: str) -> bool:
         start, _ = self.pred_grounding_index[pred_name]
         offset = entity_i * self.n_entities + entity_j
         observed_value = float(obs[start + offset])
-        if self.use_observation_probabilities:
-            return self.sensor_model.threshold_probability(observed_value)
-        truth_value = bool(observed_value > 0.5)
-        sensed_prob = self.sensor_model.sense_probability(pred_name, truth_value, action_name=action_name)
-        return self.sensor_model.threshold_probability(sensed_prob)
+        return bool(observed_value > 0.5)
 
     def stop_required(self, obs: Any, action_name: str) -> bool:
         return self.risk_band(obs, action_name) == "high"

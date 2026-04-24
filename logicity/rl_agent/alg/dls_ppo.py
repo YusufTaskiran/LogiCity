@@ -55,8 +55,6 @@ class DLSPPO(SB3PPO):
                 self._dls_pred_grounding_index,
                 num_actions=int(getattr(self.action_space, "n", 4)),
                 safe_action=safe_action,
-                sensor_uncertainty=self._shield_cfg.get("sensor_uncertainty"),
-                use_observation_probabilities=bool(self._shield_cfg.get("use_observation_probabilities", False)),
             )
         except Exception:
             self._dls_enabled = False
@@ -71,8 +69,6 @@ class DLSPPO(SB3PPO):
                 self._dls_pred_grounding_index,
                 num_actions=int(getattr(self.action_space, "n", 4)),
                 safe_action=safe_action,
-                sensor_uncertainty=(self._shield_cfg or {}).get("sensor_uncertainty"),
-                use_observation_probabilities=bool((self._shield_cfg or {}).get("use_observation_probabilities", False)),
             )
 
     def configure_shield(self, pred_grounding_index, shield_cfg=None) -> None:
@@ -85,8 +81,6 @@ class DLSPPO(SB3PPO):
             self._dls_pred_grounding_index,
             num_actions=int(getattr(self.action_space, "n", 4)),
             safe_action=safe_action,
-            sensor_uncertainty=(self._shield_cfg or {}).get("sensor_uncertainty"),
-            use_observation_probabilities=bool((self._shield_cfg or {}).get("use_observation_probabilities", False)),
         )
 
     def reset_shield_metrics(self) -> None:
