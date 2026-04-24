@@ -1,0 +1,49 @@
+Rules:
+  Sim:
+    - name: Stop
+      formula: |
+        Stop(entity) == And(
+          Not(IsSafeStep1(entity)),
+          Not(IsSafeStep2(entity))
+        )
+      description: Deterministic agents stop only when neither slow nor normal is safe.
+    - name: Slow
+      formula: |
+        Slow(entity) == And(
+          IsSafeStep1(entity),
+          Not(IsSafeStep2(entity))
+        )
+      description: Deterministic agents fall back to slow when normal is unsafe but slow is safe.
+    - name: Fast
+      formula: |
+        Not(Fast(entity))
+      description: Deterministic agents do not use the fast action in the minimal setup.
+    - name: Normal
+      formula: |
+        Normal(entity) == IsSafeStep2(entity)
+      description: Deterministic agents take normal when it is safe.
+  Task:
+    - name: Safe Slow
+      description: Slow is only valid when the slow action is safe.
+      dead: true
+      reward: -10
+      formula: |
+        Implies(Slow(entity), IsSafeStep1(entity))
+    - name: Safe Normal
+      description: Normal is only valid when the normal action is safe.
+      dead: true
+      reward: -10
+      formula: |
+        Implies(Normal(entity), IsSafeStep2(entity))
+    - name: Safe Fast
+      description: Fast is only valid when the fast action is safe.
+      dead: true
+      reward: -10
+      formula: |
+        Implies(Fast(entity), IsSafeStep3(entity))
+    - name: Safe Stop
+      description: Stop is only valid when stopping is safe.
+      dead: true
+      reward: -10
+      formula: |
+        Implies(Stop(entity), IsSafeWait(entity))

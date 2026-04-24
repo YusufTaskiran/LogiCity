@@ -24,6 +24,10 @@ class GymCityWrapper(gym.core.Env):
         self.env = env
         self.logic_grounding_shape = self.env.logic_grounding_shape
         self.pred_grounding_index = self.env.pred_grounding_index
+        self.ego_only_grounding = env.rl_agent.get("ego_only_grounding", False)
+        self.obs_indices = None
+        if self.ego_only_grounding:
+            self._configure_ego_only_grounding()
         # self.observation_space = Dict({
         #     "map": Box(low=-1.0, high=1.0, shape=(3, self.fov, self.fov), dtype=np.float32),  # Adjust the shape as needed
         #     "position": Box(low=0.0, high=1.0, shape=(6,), dtype=np.float32)
@@ -54,6 +58,8 @@ class GymCityWrapper(gym.core.Env):
         self.action_mapping = env.rl_agent["action_mapping"]
         self.max_priority = env.rl_agent["max_priority"]
         self.action_cost = env.rl_agent["action_cost"]
+        self.step_cost = env.rl_agent.get("step_cost", 0)
+        self.goal_reward = env.rl_agent.get("goal_reward", 0)
         self.reset_dist = env.rl_agent["reset_dist"] if "reset_dist" in env.rl_agent else None
         self.overtime_cost = env.rl_agent["overtime_cost"] if "overtime_cost" in env.rl_agent else -3
         self.type2label = {v: k for k, v in LABEL_MAP.items()}
@@ -100,8 +106,42 @@ class GymCityWrapper(gym.core.Env):
     def full_action2index(self, action):
         return self._macro_action_index(action)
 
+    def _configure_ego_only_grounding(self):
+        entity_slots = int(self.env.rl_agent["fov_entities"]["Entity"])
+        planner_predicates = self.env.local_planner.predicates
+        obs_indices = []
+        new_pred_grounding_index = {}
+        cursor = 0
+
+        for pred_name, (start, end) in self.pred_grounding_index.items():
+            pred_info = planner_predicates.get(pred_name)
+            if pred_info is None:
+                continue
+            arity = int(pred_info["arity"])
+
+            if arity == 1:
+                selected = [start]
+            elif arity == 2:
+                # Keep only groundings where the ego entity is the first argument.
+                selected = list(range(start, min(start + entity_slots, end)))
+            else:
+                selected = list(range(start, end))
+
+            if not selected:
+                continue
+
+            obs_indices.extend(selected)
+            new_pred_grounding_index[pred_name] = (cursor, cursor + len(selected))
+            cursor += len(selected)
+
+        self.obs_indices = np.asarray(obs_indices, dtype=np.int64)
+        self.pred_grounding_index = new_pred_grounding_index
+        self.logic_grounding_shape = len(obs_indices)
+
     def _flatten_obs(self, obs_dict):
         world_state = np.asarray(obs_dict["World_state"][0], dtype=np.float32)
+        if self.obs_indices is not None:
+            world_state = world_state[self.obs_indices]
         if self.cat_length:
             return np.concatenate([world_state, [self.normed_path_length]], axis=0, dtype=np.float32)
         else:
@@ -114,10 +154,10 @@ class GymCityWrapper(gym.core.Env):
         '''
         if obs_dict["Fail"][0]:
             # failing step do not normailze the reward
-            return obs_dict["Reward"][0]
+            return obs_dict["Reward"][0] + self.step_cost
         else:
             moving_cost = self.action2cost(obs_dict["Agent_actions"][0])
-            return (moving_cost + obs_dict["Reward"][0])/self.path_length
+            return self.step_cost + (moving_cost + obs_dict["Reward"][0])/self.path_length
     
     def get_reward(self, obs_array, action):
         ''' Get the reward for the current step.
@@ -125,6 +165,8 @@ class GymCityWrapper(gym.core.Env):
         :param int action: the action index
         :return: the reward
         '''
+        if self.obs_indices is not None:
+            raise NotImplementedError("get_reward is not supported with ego_only_grounding because the observation is lossy.")
         # get the SAT reward/fail
         fail, sat_reward = self.env.local_planner.eval_state_action(obs_array, action)
         if fail:
@@ -279,6 +321,8 @@ class GymCityWrapper(gym.core.Env):
         info["is_success"] = False
 
         if done:
+            rew += self.goal_reward
+            self.current_episode_reward += self.goal_reward
             info['episode'] = {'r': self.current_episode_reward, 'l': self.current_episode_length}
             info["is_success"] = True
             logger.info("Episode ended by success.")

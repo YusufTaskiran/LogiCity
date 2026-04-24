@@ -1,0 +1,48 @@
+EntityTypes:
+  - Entity
+
+Predicates:
+  - IsSafeStep1:
+      arity: 1
+      method: IsSafeStep1(Entity)
+      function: logicity.utils.pred_converter.z3.IsSafeStep1
+      description: Checks whether taking the slow action is safe from the current state.
+      semantic: false
+  - IsSafeStep2:
+      arity: 1
+      method: IsSafeStep2(Entity)
+      function: logicity.utils.pred_converter.z3.IsSafeStep2
+      description: Checks whether taking the normal action is safe from the current state.
+      semantic: false
+  - IsSafeStep3:
+      arity: 1
+      method: IsSafeStep3(Entity)
+      function: logicity.utils.pred_converter.z3.IsSafeStep3
+      description: Checks whether taking the fast action is safe from the current state.
+      semantic: false
+  - IsSafeWait:
+      arity: 1
+      method: IsSafeWait(Entity)
+      function: logicity.utils.pred_converter.z3.IsSafeWait
+      description: Checks whether stopping is safe from the current state.
+      semantic: false
+  - Stop:
+      arity: 1
+      method: Stop(Entity)
+      function: None
+      description: Stop action.
+  - Fast:
+      arity: 1
+      method: Fast(Entity)
+      function: None
+      description: Fast action.
+  - Normal:
+      arity: 1
+      method: Normal(Entity)
+      function: None
+      description: Normal action.
+  - Slow:
+      arity: 1
+      method: Slow(Entity)
+      function: None
+      description: Slow action.
