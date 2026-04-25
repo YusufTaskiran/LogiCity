@@ -313,6 +313,73 @@ def _intersection_entry_mask(intersect_matrix, agent_type):
         return intersect_matrix[0] > 0
     return intersect_matrix[1] > 0
 
+def _pairwise_step_conflict(world_matrix, intersect_matrix, agents, entity, other_entity, step_count):
+    if "PH" in entity or "PH" in other_entity or entity == other_entity:
+        return 0
+    agent_type, layer_id, agent_layer, agent_position, agent_record = _get_entity_state(world_matrix, agents, entity)
+    other_type, _, _, other_position, other_record = _get_entity_state(world_matrix, agents, other_entity)
+    direction = _infer_moving_direction(agent_layer, agent_type, agent_position, agent_record.moving_direction)
+    if direction is None:
+        return 0
+
+    ego_swept = _swept_cells(agent_position, direction, step_count, agent_layer.shape)
+    if len(ego_swept) == 0:
+        return 0
+
+    intersection_mask = _intersection_mask(intersect_matrix)
+    interior_intersection_mask = _intersection_interior_mask(intersect_matrix)
+    entry_intersection_mask = _intersection_entry_mask(intersect_matrix, agent_type)
+    ego_final_cell = ego_swept[-1]
+    ego_in_intersection = bool(interior_intersection_mask[int(agent_position[0]), int(agent_position[1])])
+    ego_at_intersection_after = bool(entry_intersection_mask[ego_final_cell[0], ego_final_cell[1]])
+    ego_in_intersection_after = (
+        bool(interior_intersection_mask[ego_final_cell[0], ego_final_cell[1]])
+        or any(interior_intersection_mask[x, y] for x, y in ego_swept)
+    )
+
+    other_step_count = 3 if other_type == "Car" else 1
+    other_cells, other_direction = _projected_cells(world_matrix, agents, other_entity, other_step_count)
+    other_current_cell = (int(other_position[0]), int(other_position[1]))
+    overlap_cells = {cell for cell in ego_swept if cell in other_cells}
+    overlap_outside_intersection = {
+        cell for cell in overlap_cells if not intersection_mask[cell[0], cell[1]]
+    }
+    overlap_in_intersection = overlap_cells - overlap_outside_intersection
+    same_direction = (
+        agent_type == other_type == "Car"
+        and direction is not None
+        and other_direction == direction
+    )
+
+    if overlap_outside_intersection:
+        if (not same_direction) or (other_current_cell in ego_swept):
+            return 1
+
+    other_in_intersection = bool(
+        interior_intersection_mask[other_current_cell[0], other_current_cell[1]]
+    )
+    other_at_intersection = bool(
+        _intersection_entry_mask(intersect_matrix, other_record.type)[
+            other_current_cell[0], other_current_cell[1]
+        ]
+    )
+    other_has_precedence = _has_strict_precedence(other_record, agent_record)
+
+    if ego_in_intersection:
+        if overlap_in_intersection and ((not same_direction) or other_in_intersection):
+            return 1
+        return 0
+
+    if ego_at_intersection_after and other_in_intersection:
+        return 1
+    if ego_at_intersection_after and other_at_intersection and other_has_precedence:
+        return 1
+
+    if ego_in_intersection_after and overlap_in_intersection and ((not same_direction) or other_in_intersection):
+        return 1
+
+    return 0
+
 def _safe_after_step_count(world_matrix, intersect_matrix, agents, entity, step_count):
     if "PH" in entity:
         return 0
@@ -412,6 +479,15 @@ def SafeStop(world_matrix, intersect_matrix, agents, entity):
     if "PH" in entity:
         return 0
     return 1
+
+def CollidingCloseStep1(world_matrix, intersect_matrix, agents, entity1, entity2):
+    return _pairwise_step_conflict(world_matrix, intersect_matrix, agents, entity1, entity2, 1)
+
+def CollidingCloseStep2(world_matrix, intersect_matrix, agents, entity1, entity2):
+    return _pairwise_step_conflict(world_matrix, intersect_matrix, agents, entity1, entity2, 2)
+
+def CollidingCloseStep3(world_matrix, intersect_matrix, agents, entity1, entity2):
+    return _pairwise_step_conflict(world_matrix, intersect_matrix, agents, entity1, entity2, 3)
 
 def IsSafeStep1(world_matrix, intersect_matrix, agents, entity):
     return SafeSlow(world_matrix, intersect_matrix, agents, entity)

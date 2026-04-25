@@ -33,12 +33,39 @@ simulation:
     overtime_cost: -6
 
 stable_baselines:
-  algorithm: "ExpertCollector"
+  algorithm: "PLSPPO"
+  policy_network: "MlpPolicy"
+  policy_kwargs:
+    features_extractor_module: "logicity.rl_agent.policy.neural"
+    features_extractor_class: "MLPFeatureExtractor"
+    features_extractor_kwargs:
+      features_dim: 32
+  hyperparameters:
+    learning_rate: 0.0003
+    clip_range: 0.2
+    vf_coef: 0.5
+    batch_size: 64
+    n_steps: 256
+    n_epochs: 10
+    ent_coef: 0.001
+    verbose: 1
+    tensorboard_log: "./tb_logs"
   train: false
-  policy_kwargs: {}
-  hyperparameters: {}
-  checkpoint_path: ""
+  checkpoint_path: "checkpoints/thesis_ppo_pls_single_minimal_safe/best_model.zip"
   num_envs: 1
   episode_data: "dataset/thesis/main_3cars_1ped/test_50_episodes.pkl"
   eval_actions: {"Stop": 3}
-  vis_id: [0]
+  vis_id: [-1]
+
+shield:
+  enabled: true
+  train_time: true
+  test_time: true
+  method: "probabilistic_logic_shield"
+  backend: "problog"
+  safety_coefficient: 0.1
+  use_safety_loss: true
+  action_space: ["slow", "normal", "fast", "stop"]
+  safe_fallback_action: "stop"
+  threshold: 0.5
+  notes: "Minimal-safe PLS test config using ProbLog over ego-only IsSafe* predicates."

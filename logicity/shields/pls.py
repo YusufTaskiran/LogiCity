@@ -31,7 +31,10 @@ class _BaseProbabilisticLogicShield:
         self.epsilon = float(epsilon)
         self.intervention_count = 0
         self.total_calls = 0
+        self.uses_action_safe_obs = self._detect_action_safe_obs()
+        self.uses_compact_relational_obs = self._detect_compact_relational_obs()
         self.n_entities = self._infer_num_entities()
+        self.stop_priority_scale = 0.2
         self.action_names = {
             0: "slow",
             1: "normal",
@@ -39,7 +42,21 @@ class _BaseProbabilisticLogicShield:
             int(self.stop_action): "stop",
         }
 
+    def _detect_action_safe_obs(self) -> bool:
+        return any(
+            pred_name in self.pred_grounding_index
+            for pred_name in ("IsSafeStep1", "IsSafeStep2", "IsSafeStep3", "IsSafeWait")
+        )
+
+    def _detect_compact_relational_obs(self) -> bool:
+        required = {"IsAtInter", "IsInInter", "HigherPri", "CollidingCloseStep1", "CollidingCloseStep2", "CollidingCloseStep3"}
+        return required.issubset(self.pred_grounding_index.keys())
+
     def _infer_num_entities(self) -> int:
+        for pred_name in ("IsSafeStep1", "IsSafeStep2", "IsSafeStep3", "IsSafeWait"):
+            if pred_name in self.pred_grounding_index:
+                start, end = self.pred_grounding_index[pred_name]
+                return int(end - start)
         for pred_name in ("IsCar", "IsPedestrian", "IsAtInter", "IsInInter"):
             if pred_name in self.pred_grounding_index:
                 start, end = self.pred_grounding_index[pred_name]
@@ -76,6 +93,75 @@ class _BaseProbabilisticLogicShield:
         offset = entity_i * self.n_entities + entity_j
         observed_value = float(obs[start + offset])
         return float(observed_value > 0.5)
+
+    def _action_safe_prob(self, obs: np.ndarray, pred_name: str) -> float:
+        if pred_name not in self.pred_grounding_index:
+            return 0.0
+        start, _ = self.pred_grounding_index[pred_name]
+        observed_value = float(obs[start])
+        return float(observed_value > 0.5)
+
+    def _unary_values(self, obs: np.ndarray, pred_name: str) -> np.ndarray:
+        if pred_name not in self.pred_grounding_index:
+            return np.zeros(self.n_entities, dtype=np.float32)
+        start, end = self.pred_grounding_index[pred_name]
+        values = np.asarray(obs[start:end], dtype=np.float32)
+        if values.shape[0] < self.n_entities:
+            padded = np.zeros(self.n_entities, dtype=np.float32)
+            padded[: values.shape[0]] = values
+            return padded
+        return values[: self.n_entities]
+
+    def _ego_centered_binary_values(self, obs: np.ndarray, pred_name: str) -> np.ndarray:
+        if pred_name not in self.pred_grounding_index:
+            return np.zeros(max(self.n_entities - 1, 0), dtype=np.float32)
+        start, end = self.pred_grounding_index[pred_name]
+        return np.asarray(obs[start:end], dtype=np.float32)
+
+    def _prefer_safe_motion(self, safe_probs: np.ndarray) -> np.ndarray:
+        adjusted = np.asarray(safe_probs, dtype=np.float32).copy()
+        move_indices = [idx for idx in range(self.num_actions) if idx != self.stop_action]
+        if not move_indices:
+            return adjusted
+        max_move = float(np.max(adjusted[move_indices]))
+        if max_move <= 0.0:
+            return adjusted
+        adjusted[self.stop_action] = min(
+            float(adjusted[self.stop_action]),
+            float(self.stop_priority_scale * max_move),
+        )
+        return adjusted
+
+    def _compact_relational_safe_probs(self, obs: Any) -> np.ndarray:
+        obs_vec = self._prepare_obs(obs)
+        ego_at_inter = float(self._unary_values(obs_vec, "IsAtInter")[0] > 0.5)
+        ego_in_inter = float(self._unary_values(obs_vec, "IsInInter")[0] > 0.5)
+        other_at_inter = self._unary_values(obs_vec, "IsAtInter")[1:self.n_entities]
+        other_in_inter = self._unary_values(obs_vec, "IsInInter")[1:self.n_entities]
+        higher_pri = self._ego_centered_binary_values(obs_vec, "HigherPri")
+        colliding_step1 = self._ego_centered_binary_values(obs_vec, "CollidingCloseStep1")
+        colliding_step2 = self._ego_centered_binary_values(obs_vec, "CollidingCloseStep2")
+        colliding_step3 = self._ego_centered_binary_values(obs_vec, "CollidingCloseStep3")
+
+        def _step_safe(conflict_values: np.ndarray) -> float:
+            direct_conflict = float(np.any(conflict_values > 0.5))
+            if ego_in_inter > 0.5:
+                return float(not direct_conflict)
+            wait_for_inside = float(np.any(other_in_inter > 0.5)) if ego_at_inter > 0.5 else 0.0
+            wait_for_priority = float(np.any((other_at_inter > 0.5) & (higher_pri > 0.5))) if ego_at_inter > 0.5 else 0.0
+            unsafe = (direct_conflict > 0.5) or (wait_for_inside > 0.5) or (wait_for_priority > 0.5)
+            return float(not unsafe)
+
+        safe = np.array(
+            [
+                _step_safe(colliding_step1),
+                _step_safe(colliding_step2),
+                _step_safe(colliding_step3),
+                1.0,
+            ],
+            dtype=np.float32,
+        )
+        return self._prefer_safe_motion(safe)
 
 
 class _HeuristicProbabilisticLogicShield(_BaseProbabilisticLogicShield):
@@ -127,6 +213,30 @@ class _HeuristicProbabilisticLogicShield(_BaseProbabilisticLogicShield):
         return float(1.0 - risk)
 
     def _compute_safety_probs(self, obs: Any, track_metrics: bool) -> np.ndarray:
+        if self.uses_action_safe_obs:
+            if track_metrics:
+                self.total_calls += 1
+            obs_vec = self._prepare_obs(obs)
+            safe = np.array(
+                [
+                    self._action_safe_prob(obs_vec, "IsSafeStep1"),
+                    self._action_safe_prob(obs_vec, "IsSafeStep2"),
+                    self._action_safe_prob(obs_vec, "IsSafeStep3"),
+                    self._action_safe_prob(obs_vec, "IsSafeWait"),
+                ],
+                dtype=np.float32,
+            )
+            safe = self._prefer_safe_motion(safe)
+            if track_metrics and np.any(safe[:-1] < (1.0 - self.epsilon)):
+                self.intervention_count += 1
+            return safe
+        if self.uses_compact_relational_obs:
+            if track_metrics:
+                self.total_calls += 1
+            safe = self._compact_relational_safe_probs(obs)
+            if track_metrics and np.any(safe[:-1] < (1.0 - self.epsilon)):
+                self.intervention_count += 1
+            return safe
         if track_metrics:
             self.total_calls += 1
         safe = np.ones(self.num_actions, dtype=np.float32)
@@ -265,14 +375,41 @@ class _ProbLogProbabilisticLogicShield(_BaseProbabilisticLogicShield):
         if cached is not None:
             return cached
         obs_vec = self._prepare_obs(obs)
-        probs: dict[str, float] = {
-            "ego_at_inter": self._unary_prob(obs_vec, "IsAtInter", 0, "normal"),
-        }
-        for other_idx in range(1, self.n_entities):
-            probs[f"higher_pri_{other_idx}"] = self._binary_prob(obs_vec, "HigherPri", other_idx, 0, "normal")
-            probs[f"other_in_inter_{other_idx}"] = self._unary_prob(obs_vec, "IsInInter", other_idx, "normal")
-            probs[f"other_at_inter_{other_idx}"] = self._unary_prob(obs_vec, "IsAtInter", other_idx, "normal")
-            probs[f"colliding_close_{other_idx}"] = self._binary_prob(obs_vec, "CollidingClose", 0, other_idx, "normal")
+        if self.uses_action_safe_obs:
+            probs = {
+                "obs_safe_slow": self._action_safe_prob(obs_vec, "IsSafeStep1"),
+                "obs_safe_normal": self._action_safe_prob(obs_vec, "IsSafeStep2"),
+                "obs_safe_fast": self._action_safe_prob(obs_vec, "IsSafeStep3"),
+                "obs_safe_stop": self._action_safe_prob(obs_vec, "IsSafeWait"),
+            }
+        elif self.uses_compact_relational_obs:
+            probs = {
+                "ego_at_inter": float(self._unary_values(obs_vec, "IsAtInter")[0] > 0.5),
+                "ego_in_inter": float(self._unary_values(obs_vec, "IsInInter")[0] > 0.5),
+            }
+            other_at_inter = self._unary_values(obs_vec, "IsAtInter")[1:self.n_entities]
+            other_in_inter = self._unary_values(obs_vec, "IsInInter")[1:self.n_entities]
+            higher_pri = self._ego_centered_binary_values(obs_vec, "HigherPri")
+            colliding_step1 = self._ego_centered_binary_values(obs_vec, "CollidingCloseStep1")
+            colliding_step2 = self._ego_centered_binary_values(obs_vec, "CollidingCloseStep2")
+            colliding_step3 = self._ego_centered_binary_values(obs_vec, "CollidingCloseStep3")
+            for other_idx in range(1, self.n_entities):
+                rel_idx = other_idx - 1
+                probs[f"other_at_inter_{other_idx}"] = float(other_at_inter[rel_idx] > 0.5) if rel_idx < len(other_at_inter) else 0.0
+                probs[f"other_in_inter_{other_idx}"] = float(other_in_inter[rel_idx] > 0.5) if rel_idx < len(other_in_inter) else 0.0
+                probs[f"higher_pri_{other_idx}"] = float(higher_pri[rel_idx] > 0.5) if rel_idx < len(higher_pri) else 0.0
+                probs[f"colliding_step1_{other_idx}"] = float(colliding_step1[rel_idx] > 0.5) if rel_idx < len(colliding_step1) else 0.0
+                probs[f"colliding_step2_{other_idx}"] = float(colliding_step2[rel_idx] > 0.5) if rel_idx < len(colliding_step2) else 0.0
+                probs[f"colliding_step3_{other_idx}"] = float(colliding_step3[rel_idx] > 0.5) if rel_idx < len(colliding_step3) else 0.0
+        else:
+            probs = {
+                "ego_at_inter": self._unary_prob(obs_vec, "IsAtInter", 0, "normal"),
+            }
+            for other_idx in range(1, self.n_entities):
+                probs[f"higher_pri_{other_idx}"] = self._binary_prob(obs_vec, "HigherPri", other_idx, 0, "normal")
+                probs[f"other_in_inter_{other_idx}"] = self._unary_prob(obs_vec, "IsInInter", other_idx, "normal")
+                probs[f"other_at_inter_{other_idx}"] = self._unary_prob(obs_vec, "IsAtInter", other_idx, "normal")
+                probs[f"colliding_close_{other_idx}"] = self._binary_prob(obs_vec, "CollidingClose", 0, other_idx, "normal")
         self._cache_put(self._state_prob_cache, obs_key, probs, self._state_cache_limit)
         return probs
 
@@ -288,40 +425,105 @@ class _ProbLogProbabilisticLogicShield(_BaseProbabilisticLogicShield):
         for atom_name, probability in state_probs.items():
             lines.append(f"{self._format_prob(probability)}::{atom_name}.")
 
-        for other_idx in range(1, self.n_entities):
-            lines.append(
-                f"priority_conflict_{other_idx} :- ego_at_inter, higher_pri_{other_idx}, other_in_inter_{other_idx}."
+        if self.uses_action_safe_obs:
+            lines.extend(
+                [
+                    "safe :- act(slow), obs_safe_slow.",
+                    "safe :- act(normal), obs_safe_normal.",
+                    "safe :- act(fast), obs_safe_fast.",
+                    "safe :- act(stop), obs_safe_stop.",
+                    "safe_action_slow :- act(slow), obs_safe_slow.",
+                    "safe_action_normal :- act(normal), obs_safe_normal.",
+                    "safe_action_fast :- act(fast), obs_safe_fast.",
+                    "safe_action_stop :- act(stop), obs_safe_stop.",
+                    "query(safe).",
+                    "query(safe_action_slow).",
+                    "query(safe_action_normal).",
+                    "query(safe_action_fast).",
+                    "query(safe_action_stop).",
+                ]
             )
-            lines.append(
-                f"waiting_conflict_{other_idx} :- ego_at_inter, higher_pri_{other_idx}, other_at_inter_{other_idx}."
+        elif self.uses_compact_relational_obs:
+            for other_idx in range(1, self.n_entities):
+                lines.append(
+                    f"priority_conflict_{other_idx} :- ego_at_inter, higher_pri_{other_idx}, other_in_inter_{other_idx}."
+                )
+                lines.append(
+                    f"waiting_conflict_{other_idx} :- ego_at_inter, higher_pri_{other_idx}, other_at_inter_{other_idx}."
+                )
+                lines.append(f"unsafe_slow :- colliding_step1_{other_idx}.")
+                lines.append(
+                    f"unsafe_slow :- priority_conflict_{other_idx}."
+                )
+                lines.append(
+                    f"unsafe_slow :- waiting_conflict_{other_idx}."
+                )
+                lines.append(f"unsafe_normal :- colliding_step2_{other_idx}.")
+                lines.append(
+                    f"unsafe_normal :- priority_conflict_{other_idx}."
+                )
+                lines.append(
+                    f"unsafe_normal :- waiting_conflict_{other_idx}."
+                )
+                lines.append(f"unsafe_fast :- colliding_step3_{other_idx}.")
+                lines.append(
+                    f"unsafe_fast :- priority_conflict_{other_idx}."
+                )
+                lines.append(
+                    f"unsafe_fast :- waiting_conflict_{other_idx}."
+                )
+            lines.extend(
+                [
+                    "safe :- act(stop).",
+                    "safe :- act(slow), \\+ unsafe_slow.",
+                    "safe :- act(normal), \\+ unsafe_normal.",
+                    "safe :- act(fast), \\+ unsafe_fast.",
+                    "safe_action_slow :- act(slow), safe.",
+                    "safe_action_normal :- act(normal), safe.",
+                    "safe_action_fast :- act(fast), safe.",
+                    "safe_action_stop :- act(stop), safe.",
+                    "query(safe).",
+                    "query(safe_action_slow).",
+                    "query(safe_action_normal).",
+                    "query(safe_action_fast).",
+                    "query(safe_action_stop).",
+                ]
             )
-            lines.append(
-                f"close_conflict_{other_idx} :- colliding_close_{other_idx}, higher_pri_{other_idx}."
-            )
-            lines.append(f"unsafe_fast :- priority_conflict_{other_idx}.")
-            lines.append(f"unsafe_fast :- waiting_conflict_{other_idx}.")
-            lines.append(f"unsafe_fast :- close_conflict_{other_idx}.")
-            lines.append(f"unsafe_normal :- priority_conflict_{other_idx}.")
-            lines.append(f"unsafe_normal :- close_conflict_{other_idx}.")
-            lines.append(f"unsafe_slow :- close_conflict_{other_idx}.")
+        else:
+            for other_idx in range(1, self.n_entities):
+                lines.append(
+                    f"priority_conflict_{other_idx} :- ego_at_inter, higher_pri_{other_idx}, other_in_inter_{other_idx}."
+                )
+                lines.append(
+                    f"waiting_conflict_{other_idx} :- ego_at_inter, higher_pri_{other_idx}, other_at_inter_{other_idx}."
+                )
+                lines.append(
+                    f"close_conflict_{other_idx} :- colliding_close_{other_idx}, higher_pri_{other_idx}."
+                )
+                lines.append(f"unsafe_fast :- priority_conflict_{other_idx}.")
+                lines.append(f"unsafe_fast :- waiting_conflict_{other_idx}.")
+                lines.append(f"unsafe_fast :- close_conflict_{other_idx}.")
+                lines.append(f"unsafe_normal :- priority_conflict_{other_idx}.")
+                lines.append(f"unsafe_normal :- close_conflict_{other_idx}.")
+                lines.append(f"unsafe_slow :- close_conflict_{other_idx}.")
 
-        lines.extend(
-            [
-                "safe :- act(stop).",
-                "safe :- act(slow), \\+ unsafe_slow.",
-                "safe :- act(normal), \\+ unsafe_normal.",
-                "safe :- act(fast), \\+ unsafe_fast.",
-                "safe_action_slow :- act(slow), safe.",
-                "safe_action_normal :- act(normal), safe.",
-                "safe_action_fast :- act(fast), safe.",
-                "safe_action_stop :- act(stop), safe.",
-                "query(safe).",
-                "query(safe_action_slow).",
-                "query(safe_action_normal).",
-                "query(safe_action_fast).",
-                "query(safe_action_stop).",
-            ]
-        )
+            lines.extend(
+                [
+                    "safe :- act(stop).",
+                    "safe :- act(slow), \\+ unsafe_slow.",
+                    "safe :- act(normal), \\+ unsafe_normal.",
+                    "safe :- act(fast), \\+ unsafe_fast.",
+                    "safe_action_slow :- act(slow), safe.",
+                    "safe_action_normal :- act(normal), safe.",
+                    "safe_action_fast :- act(fast), safe.",
+                    "safe_action_stop :- act(stop), safe.",
+                    "query(safe).",
+                    "query(safe_action_slow).",
+                    "query(safe_action_normal).",
+                    "query(safe_action_fast).",
+                    "query(safe_action_stop).",
+                ]
+            )
         return "\n".join(lines)
 
     def _evaluate_program(self, state_probs: dict[str, float], policy_probs: np.ndarray) -> dict[str, float]:
@@ -350,6 +552,7 @@ class _ProbLogProbabilisticLogicShield(_BaseProbabilisticLogicShield):
         safe = np.zeros(self.num_actions, dtype=np.float32)
         for action_idx in range(self.num_actions):
             safe[action_idx] = self._query_action_safety(state_probs, action_idx)
+        safe = self._prefer_safe_motion(safe)
         if track_metrics and np.any(safe[:-1] < (1.0 - self.epsilon)):
             self.intervention_count += 1
         return safe
@@ -392,6 +595,21 @@ class _ProbLogProbabilisticLogicShield(_BaseProbabilisticLogicShield):
                 shielded[self.stop_action] = 1.0
             else:
                 shielded = shielded / total
+        if self.uses_action_safe_obs:
+            safe_action_probs = np.array(
+                [
+                    float(state_probs.get("obs_safe_slow", 0.0)),
+                    float(state_probs.get("obs_safe_normal", 0.0)),
+                    float(state_probs.get("obs_safe_fast", 0.0)),
+                    float(state_probs.get("obs_safe_stop", 0.0)),
+                ],
+                dtype=np.float32,
+            )
+            adjusted_safe = self._prefer_safe_motion(safe_action_probs)
+            weighted = shielded * adjusted_safe
+            weighted_total = float(np.sum(weighted))
+            if weighted_total > 0.0:
+                shielded = weighted / weighted_total
         if track_metrics and np.max(np.abs(shielded - policy_probs)) > 1e-6:
             self.intervention_count += 1
         return shielded

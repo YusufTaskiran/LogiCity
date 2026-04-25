@@ -8,7 +8,7 @@ import matplotlib.pyplot as plt
 METHOD_ORDER = ["PPO", "PPO + DLS", "PPO + PLS"]
 DISPLAY_LABELS = {
     "PPO": "PPO",
-    "PPO + DLS": "DLS",
+    "PPO + DLS": "DS",
     "PPO + PLS": "PLS",
 }
 COLORS = {

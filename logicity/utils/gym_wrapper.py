@@ -25,9 +25,14 @@ class GymCityWrapper(gym.core.Env):
         self.logic_grounding_shape = self.env.logic_grounding_shape
         self.pred_grounding_index = self.env.pred_grounding_index
         self.ego_only_grounding = env.rl_agent.get("ego_only_grounding", False)
+        self.grounding_mode = env.rl_agent.get("grounding_mode")
+        if self.grounding_mode is None:
+            self.grounding_mode = "ego_only" if self.ego_only_grounding else "full"
         self.obs_indices = None
-        if self.ego_only_grounding:
+        if self.grounding_mode == "ego_only":
             self._configure_ego_only_grounding()
+        elif self.grounding_mode == "compact_relational":
+            self._configure_compact_relational_grounding()
         # self.observation_space = Dict({
         #     "map": Box(low=-1.0, high=1.0, shape=(3, self.fov, self.fov), dtype=np.float32),  # Adjust the shape as needed
         #     "position": Box(low=0.0, high=1.0, shape=(6,), dtype=np.float32)
@@ -60,6 +65,7 @@ class GymCityWrapper(gym.core.Env):
         self.action_cost = env.rl_agent["action_cost"]
         self.step_cost = env.rl_agent.get("step_cost", 0)
         self.goal_reward = env.rl_agent.get("goal_reward", 0)
+        self.progress_reward = env.rl_agent.get("progress_reward", 0)
         self.reset_dist = env.rl_agent["reset_dist"] if "reset_dist" in env.rl_agent else None
         self.overtime_cost = env.rl_agent["overtime_cost"] if "overtime_cost" in env.rl_agent else -3
         self.type2label = {v: k for k, v in LABEL_MAP.items()}
@@ -68,6 +74,7 @@ class GymCityWrapper(gym.core.Env):
         self.t = 0
         self.current_episode_reward = 0
         self.current_episode_length = 0
+        self.last_route_index = None
         self.require_route_intersection = env.rl_agent.get("require_route_intersection", False)
         self.reset_attempts = env.rl_agent.get("reset_attempts", 20)
         self.reset_all_agents = env.rl_agent.get("reset_all_agents", True)
@@ -138,6 +145,49 @@ class GymCityWrapper(gym.core.Env):
         self.pred_grounding_index = new_pred_grounding_index
         self.logic_grounding_shape = len(obs_indices)
 
+    def _configure_compact_relational_grounding(self):
+        entity_slots = int(self.env.rl_agent["fov_entities"]["Entity"])
+        planner_predicates = self.env.local_planner.predicates
+        unary_all = set(self.env.rl_agent.get("observed_unary_predicates", []))
+        binary_first_arg_ego = set(self.env.rl_agent.get("observed_binary_first_arg_ego", []))
+        binary_second_arg_ego = set(self.env.rl_agent.get("observed_binary_second_arg_ego", []))
+        obs_indices = []
+        new_pred_grounding_index = {}
+        cursor = 0
+
+        for pred_name, (start, end) in self.pred_grounding_index.items():
+            pred_info = planner_predicates.get(pred_name)
+            if pred_info is None:
+                continue
+            arity = int(pred_info["arity"])
+            selected = []
+
+            if arity == 1 and pred_name in unary_all:
+                selected = list(range(start, end))
+            elif arity == 2 and pred_name in binary_first_arg_ego:
+                selected = [
+                    start + other_idx
+                    for other_idx in range(1, entity_slots)
+                    if start + other_idx < end
+                ]
+            elif arity == 2 and pred_name in binary_second_arg_ego:
+                selected = [
+                    start + other_idx * entity_slots
+                    for other_idx in range(1, entity_slots)
+                    if start + other_idx * entity_slots < end
+                ]
+
+            if not selected:
+                continue
+
+            obs_indices.extend(selected)
+            new_pred_grounding_index[pred_name] = (cursor, cursor + len(selected))
+            cursor += len(selected)
+
+        self.obs_indices = np.asarray(obs_indices, dtype=np.int64)
+        self.pred_grounding_index = new_pred_grounding_index
+        self.logic_grounding_shape = len(obs_indices)
+
     def _flatten_obs(self, obs_dict):
         world_state = np.asarray(obs_dict["World_state"][0], dtype=np.float32)
         if self.obs_indices is not None:
@@ -146,18 +196,39 @@ class GymCityWrapper(gym.core.Env):
             return np.concatenate([world_state, [self.normed_path_length]], axis=0, dtype=np.float32)
         else:
             return world_state
+
+    def _current_route_index(self):
+        matches = torch.all((self.agent.global_traj == self.agent.pos), dim=1).nonzero()
+        if len(matches) == 0:
+            return None
+        return int(matches[0].item())
+
+    def _progress_delta(self):
+        if self.progress_reward == 0:
+            return 0
+        current_index = self._current_route_index()
+        if current_index is None:
+            self.last_route_index = None
+            return 0
+        if self.last_route_index is None:
+            self.last_route_index = current_index
+            return 0
+        delta = current_index - self.last_route_index
+        self.last_route_index = current_index
+        return max(delta, 0)
                 
     def _get_reward(self, obs_dict):
         ''' Get the reward for the current step.
         :param dict obs_dict: the observation dictionary
         :return: the reward
         '''
+        progress_reward = self.progress_reward * self._progress_delta()
         if obs_dict["Fail"][0]:
             # failing step do not normailze the reward
-            return obs_dict["Reward"][0] + self.step_cost
+            return obs_dict["Reward"][0] + self.step_cost + progress_reward
         else:
             moving_cost = self.action2cost(obs_dict["Agent_actions"][0])
-            return self.step_cost + (moving_cost + obs_dict["Reward"][0])/self.path_length
+            return self.step_cost + progress_reward + (moving_cost + obs_dict["Reward"][0])/self.path_length
     
     def get_reward(self, obs_array, action):
         ''' Get the reward for the current step.
@@ -166,7 +237,7 @@ class GymCityWrapper(gym.core.Env):
         :return: the reward
         '''
         if self.obs_indices is not None:
-            raise NotImplementedError("get_reward is not supported with ego_only_grounding because the observation is lossy.")
+            raise NotImplementedError("get_reward is not supported when the exported observation is lossy.")
         # get the SAT reward/fail
         fail, sat_reward = self.env.local_planner.eval_state_action(obs_array, action)
         if fail:
@@ -265,6 +336,7 @@ class GymCityWrapper(gym.core.Env):
         self.current_obs = obs
         self.last_dist = -1
         self.last_pos = None
+        self.last_route_index = self._current_route_index()
         self.current_episode_reward = 0
         self.current_episode_length = 0
         self.current_grounding_dic = ob_dict["Ground_dic"][0] if len(ob_dict["Ground_dic"]) > 0 else None
@@ -292,6 +364,7 @@ class GymCityWrapper(gym.core.Env):
         obs = self._flatten_obs(ob_dict)
         self.last_dist = -1
         self.last_pos = None
+        self.last_route_index = self._current_route_index()
         self.current_obs = obs
         self.current_grounding_dic = ob_dict["Ground_dic"][0] if len(ob_dict["Ground_dic"]) > 0 else None
         return self.current_obs

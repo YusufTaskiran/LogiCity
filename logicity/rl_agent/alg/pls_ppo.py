@@ -40,6 +40,7 @@ class PLSPPO(SB3PPO):
         self._shield = None
         self._safety_coefficient = 0.1
         self._use_safety_loss = True
+        self._diagnostics = {}
         self._init_pls_from_env()
 
     def _init_pls_from_env(self) -> None:
@@ -104,15 +105,106 @@ class PLSPPO(SB3PPO):
         self._ensure_shield()
         if self._shield is not None:
             self._shield.reset_metrics()
+        self._diagnostics = {
+            "rollout_base_stop_prob_sum": 0.0,
+            "rollout_shielded_stop_prob_sum": 0.0,
+            "rollout_base_move_prob_sum": 0.0,
+            "rollout_shielded_move_prob_sum": 0.0,
+            "rollout_safe_stop_prob_sum": 0.0,
+            "rollout_safe_move_max_sum": 0.0,
+            "rollout_any_move_safe_count": 0.0,
+            "rollout_chosen_stop_count": 0.0,
+            "rollout_samples": 0.0,
+            "train_base_safety_prob_sum": 0.0,
+            "train_shielded_safety_prob_sum": 0.0,
+            "train_batches": 0.0,
+        }
+
+    def _update_rollout_diagnostics(self, base_probs: th.Tensor, shielded_probs: th.Tensor, safe_probs: th.Tensor, actions_tensor: th.Tensor) -> None:
+        if not self._diagnostics:
+            self.reset_shield_metrics()
+        base_np = base_probs.detach().cpu().numpy()
+        shielded_np = shielded_probs.detach().cpu().numpy()
+        safe_np = safe_probs.detach().cpu().numpy()
+        actions_np = actions_tensor.detach().cpu().numpy().reshape(-1)
+        if base_np.ndim == 1:
+            base_np = np.expand_dims(base_np, axis=0)
+        if shielded_np.ndim == 1:
+            shielded_np = np.expand_dims(shielded_np, axis=0)
+        if safe_np.ndim == 1:
+            safe_np = np.expand_dims(safe_np, axis=0)
+        sample_count = float(base_np.shape[0])
+        self._diagnostics["rollout_base_stop_prob_sum"] += float(np.sum(base_np[:, -1]))
+        self._diagnostics["rollout_shielded_stop_prob_sum"] += float(np.sum(shielded_np[:, -1]))
+        self._diagnostics["rollout_base_move_prob_sum"] += float(np.sum(np.sum(base_np[:, :-1], axis=1)))
+        self._diagnostics["rollout_shielded_move_prob_sum"] += float(np.sum(np.sum(shielded_np[:, :-1], axis=1)))
+        self._diagnostics["rollout_safe_stop_prob_sum"] += float(np.sum(safe_np[:, -1]))
+        self._diagnostics["rollout_safe_move_max_sum"] += float(np.sum(np.max(safe_np[:, :-1], axis=1)))
+        self._diagnostics["rollout_any_move_safe_count"] += float(np.sum(np.max(safe_np[:, :-1], axis=1) > 0.5))
+        self._diagnostics["rollout_chosen_stop_count"] += float(np.sum(actions_np == (self.action_space.n - 1)))
+        self._diagnostics["rollout_samples"] += sample_count
 
     def get_shield_metrics(self) -> dict[str, float]:
         self._ensure_shield()
-        if self._shield is None:
-            return {
+        base_metrics = {
                 "shield_intervention_count": 0,
                 "shield_intervention_rate": 0.0,
             }
-        return self._shield.get_metrics()
+        if self._shield is not None:
+            base_metrics.update(self._shield.get_metrics())
+        samples = float(self._diagnostics.get("rollout_samples", 0.0)) if self._diagnostics else 0.0
+        train_batches = float(self._diagnostics.get("train_batches", 0.0)) if self._diagnostics else 0.0
+        if samples > 0.0:
+            base_metrics.update(
+                {
+                    "rollout_base_stop_prob_mean": self._diagnostics["rollout_base_stop_prob_sum"] / samples,
+                    "rollout_shielded_stop_prob_mean": self._diagnostics["rollout_shielded_stop_prob_sum"] / samples,
+                    "rollout_base_move_prob_mean": self._diagnostics["rollout_base_move_prob_sum"] / samples,
+                    "rollout_shielded_move_prob_mean": self._diagnostics["rollout_shielded_move_prob_sum"] / samples,
+                    "rollout_safe_stop_prob_mean": self._diagnostics["rollout_safe_stop_prob_sum"] / samples,
+                    "rollout_safe_move_max_mean": self._diagnostics["rollout_safe_move_max_sum"] / samples,
+                    "rollout_any_move_safe_rate": self._diagnostics["rollout_any_move_safe_count"] / samples,
+                    "rollout_chosen_stop_rate": self._diagnostics["rollout_chosen_stop_count"] / samples,
+                }
+            )
+        if train_batches > 0.0:
+            base_metrics.update(
+                {
+                    "train_base_safety_prob_mean": self._diagnostics["train_base_safety_prob_sum"] / train_batches,
+                    "train_shielded_safety_prob_mean": self._diagnostics["train_shielded_safety_prob_sum"] / train_batches,
+                }
+            )
+        return base_metrics
+
+    def debug_action_snapshot(self, observation: np.ndarray) -> dict[str, Any]:
+        self._ensure_shield()
+        obs_np = np.asarray(observation, dtype=np.float32)
+        if obs_np.ndim != 1:
+            raise ValueError(f"Expected a single flattened observation, got shape {obs_np.shape}.")
+
+        with th.no_grad():
+            obs_tensor = obs_as_tensor(obs_np, self.device)
+            distribution = self.policy.get_distribution(obs_tensor)
+            base_dist = getattr(distribution, "distribution", distribution)
+            base_probs = base_dist.probs
+            shielded_probs = self._shield_probs_tensor(obs_np, base_probs, track_metrics=False)
+            safe_probs = self._safe_probs_tensor(obs_np, base_probs, track_metrics=False)
+            base_safety_prob = self._safety_probability_tensor(obs_np, base_probs)
+            shielded_safety_prob = self._safety_probability_tensor(obs_np, shielded_probs)
+
+        snapshot: dict[str, Any] = {
+            "base_probs": base_probs.detach().cpu().numpy().reshape(-1).tolist(),
+            "shielded_probs": shielded_probs.detach().cpu().numpy().reshape(-1).tolist(),
+            "safe_probs": safe_probs.detach().cpu().numpy().reshape(-1).tolist(),
+            "base_safety_prob": float(base_safety_prob.detach().cpu().numpy().reshape(-1)[0]),
+            "shielded_safety_prob": float(shielded_safety_prob.detach().cpu().numpy().reshape(-1)[0]),
+        }
+        if self._pls_pred_grounding_index is not None:
+            for pred_name in ("IsSafeStep1", "IsSafeStep2", "IsSafeStep3", "IsSafeWait"):
+                if pred_name in self._pls_pred_grounding_index:
+                    start, _ = self._pls_pred_grounding_index[pred_name]
+                    snapshot[pred_name] = float(obs_np[start])
+        return snapshot
 
     def _safe_probs_tensor(self, observation: np.ndarray, base_probs: th.Tensor, track_metrics: bool = False) -> th.Tensor:
         self._ensure_shield()
@@ -224,8 +316,10 @@ class PLSPPO(SB3PPO):
                 distribution = self.policy.get_distribution(obs_tensor)
                 base_dist = getattr(distribution, "distribution", distribution)
                 base_probs = base_dist.probs
+                safe_probs = self._safe_probs_tensor(self._last_obs, base_probs, track_metrics=False)
                 shielded_probs = self._shield_probs_tensor(self._last_obs, base_probs, track_metrics=True)
                 actions_tensor = th.distributions.Categorical(probs=shielded_probs).sample()
+                self._update_rollout_diagnostics(base_probs, shielded_probs, safe_probs, actions_tensor)
                 chosen_probs = shielded_probs.gather(1, actions_tensor.unsqueeze(1)).squeeze(1)
                 log_probs = th.log(chosen_probs + 1e-8)
                 values = self.policy.predict_values(obs_tensor)
@@ -323,7 +417,13 @@ class PLSPPO(SB3PPO):
 
                 if self._use_safety_loss:
                     # PLPG safety term: -alpha * log P_{pi+}(safe | s)
-                    safety_prob = self._safety_probability_tensor(obs_np, shielded_probs)
+                    # PLPG safety gradient should be computed from the base
+                    # policy distribution, not the already shielded one.
+                    safety_prob = self._safety_probability_tensor(obs_np, base_probs)
+                    shielded_safety_prob = self._safety_probability_tensor(obs_np, shielded_probs)
+                    self._diagnostics["train_base_safety_prob_sum"] += float(safety_prob.mean().detach().cpu().item())
+                    self._diagnostics["train_shielded_safety_prob_sum"] += float(shielded_safety_prob.mean().detach().cpu().item())
+                    self._diagnostics["train_batches"] += 1.0
                     safety_loss = -th.log(safety_prob).mean()
                 else:
                     safety_loss = th.zeros((), device=obs_tensor.device, dtype=shielded_probs.dtype)

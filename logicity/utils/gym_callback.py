@@ -51,6 +51,8 @@ class EvalCheckpointCallback(CheckpointCallback):
         rl_cfg = self.simulation_config.get("rl_agent", {})
         self.debug_action_probs = bool(rl_cfg.get("debug_action_probs", False))
         self.debug_action_prob_steps = int(rl_cfg.get("debug_action_prob_steps", 5))
+        self.debug_shield_snapshot = bool(rl_cfg.get("debug_shield_snapshot", False))
+        self.debug_shield_snapshot_steps = int(rl_cfg.get("debug_shield_snapshot_steps", 10))
         self.train_fail = 0
         self.train_timeout = 0
         self.train_success = 0
@@ -238,6 +240,22 @@ class EvalCheckpointCallback(CheckpointCallback):
                     action_probs = None
                     if self.debug_action_probs and ts == first_eval_episode and step < self.debug_action_prob_steps:
                         action_probs = _extract_action_probs(self.model, obs)
+                    shield_snapshot = None
+                    if (
+                        self.debug_shield_snapshot
+                        and ts == first_eval_episode
+                        and step < self.debug_shield_snapshot_steps
+                        and hasattr(self.model, "debug_action_snapshot")
+                    ):
+                        try:
+                            shield_snapshot = self.model.debug_action_snapshot(obs)
+                        except Exception as exc:
+                            logger.info(
+                                "Eval shield snapshot failed episode=%s step=%s error=%s",
+                                ts,
+                                step,
+                                exc,
+                            )
                     action, _states = self.model.predict(obs, deterministic=True)
                     action_int = int(action)
                     local_policy_action_hist[action_int] = local_policy_action_hist.get(action_int, 0) + 1
@@ -248,6 +266,24 @@ class EvalCheckpointCallback(CheckpointCallback):
                             ts,
                             step,
                             np.asarray(action_probs).tolist(),
+                            action_int,
+                            oracle_action,
+                        )
+                    if shield_snapshot is not None:
+                        logger.info(
+                            "Eval shield snapshot episode=%s step=%s safe_bits=%s base_probs=%s shielded_probs=%s safe_probs=%s base_safety=%.4f shielded_safety=%.4f action=%s expert=%s",
+                            ts,
+                            step,
+                            {
+                                key: shield_snapshot[key]
+                                for key in ("IsSafeStep1", "IsSafeStep2", "IsSafeStep3", "IsSafeWait")
+                                if key in shield_snapshot
+                            },
+                            shield_snapshot.get("base_probs"),
+                            shield_snapshot.get("shielded_probs"),
+                            shield_snapshot.get("safe_probs"),
+                            float(shield_snapshot.get("base_safety_prob", 0.0)),
+                            float(shield_snapshot.get("shielded_safety_prob", 0.0)),
                             action_int,
                             oracle_action,
                         )

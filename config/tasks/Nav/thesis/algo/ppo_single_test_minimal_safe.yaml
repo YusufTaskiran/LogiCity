@@ -22,13 +22,14 @@ simulation:
       3: [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1]
     fov_entities:
       Entity: 4
-    step_cost: -1
+    step_cost: 0
+    progress_reward: 0.1
     goal_reward: 10
     action_cost:
-      0: -3
+      0: 0
       1: 0
-      2: -4
-      3: -5
+      2: 0
+      3: 0
     overtime_cost: -6
 
 stable_baselines:
