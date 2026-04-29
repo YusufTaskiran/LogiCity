@@ -228,6 +228,7 @@ class EvalCheckpointCallback(CheckpointCallback):
                 local_expert_stop = 0
                 local_matched_stop = 0
                 saw_required_stop = False
+                logged_first_required_stop = False
                 failed_reason = "unknown"
                 for acc, id in self.eval_actions.items():
                     local_decision_step[id] = 0
@@ -247,6 +248,8 @@ class EvalCheckpointCallback(CheckpointCallback):
                         and step < self.debug_shield_snapshot_steps
                         and hasattr(self.model, "debug_action_snapshot")
                     ):
+                        if hasattr(self.model, "set_shield_context_from_env"):
+                            self.model.set_shield_context_from_env(eval_env, obs)
                         try:
                             shield_snapshot = self.model.debug_action_snapshot(obs)
                         except Exception as exc:
@@ -256,6 +259,8 @@ class EvalCheckpointCallback(CheckpointCallback):
                                 step,
                                 exc,
                             )
+                    if hasattr(self.model, "set_shield_context_from_env"):
+                        self.model.set_shield_context_from_env(eval_env, obs)
                     action, _states = self.model.predict(obs, deterministic=True)
                     action_int = int(action)
                     local_policy_action_hist[action_int] = local_policy_action_hist.get(action_int, 0) + 1
@@ -271,7 +276,7 @@ class EvalCheckpointCallback(CheckpointCallback):
                         )
                     if shield_snapshot is not None:
                         logger.info(
-                            "Eval shield snapshot episode=%s step=%s safe_bits=%s base_probs=%s shielded_probs=%s safe_probs=%s base_safety=%.4f shielded_safety=%.4f action=%s expert=%s",
+                            "Eval shield snapshot episode=%s step=%s safe_bits=%s shield_facts=%s base_probs=%s shielded_probs=%s safe_probs=%s base_safety=%.4f shielded_safety=%.4f action=%s expert=%s",
                             ts,
                             step,
                             {
@@ -279,6 +284,7 @@ class EvalCheckpointCallback(CheckpointCallback):
                                 for key in ("IsSafeStep1", "IsSafeStep2", "IsSafeStep3", "IsSafeWait")
                                 if key in shield_snapshot
                             },
+                            shield_snapshot.get("shield_facts", {}),
                             shield_snapshot.get("base_probs"),
                             shield_snapshot.get("shielded_probs"),
                             shield_snapshot.get("safe_probs"),
@@ -292,6 +298,32 @@ class EvalCheckpointCallback(CheckpointCallback):
                         local_decision_step[oracle_action] += 1
                         expert_stop_total += 1
                         local_expert_stop += 1
+                        if (not logged_first_required_stop) and hasattr(self.model, "debug_action_snapshot"):
+                            if hasattr(self.model, "set_shield_context_from_env"):
+                                self.model.set_shield_context_from_env(eval_env, obs)
+                            try:
+                                stop_snapshot = self.model.debug_action_snapshot(obs)
+                                logger.info(
+                                    "Eval first required-stop snapshot episode=%s step=%s shield_facts=%s base_probs=%s shielded_probs=%s safe_probs=%s base_safety=%.4f shielded_safety=%.4f action=%s expert=%s",
+                                    ts,
+                                    step,
+                                    stop_snapshot.get("shield_facts", {}),
+                                    stop_snapshot.get("base_probs"),
+                                    stop_snapshot.get("shielded_probs"),
+                                    stop_snapshot.get("safe_probs"),
+                                    float(stop_snapshot.get("base_safety_prob", 0.0)),
+                                    float(stop_snapshot.get("shielded_safety_prob", 0.0)),
+                                    None,
+                                    oracle_action,
+                                )
+                            except Exception as exc:
+                                logger.info(
+                                    "Eval first required-stop snapshot failed episode=%s step=%s error=%s",
+                                    ts,
+                                    step,
+                                    exc,
+                                )
+                            logged_first_required_stop = True
                         if action_int == oracle_action:
                             local_succ_decision[oracle_action] += 1
                             matched_stop_total += 1
@@ -324,7 +356,7 @@ class EvalCheckpointCallback(CheckpointCallback):
                     if (not saw_required_stop) and any(v > 0 for v in local_decision_step.values()):
                         failed_before_first_required_stop += 1
                 if step >= max_steps:
-                    episode_rewards -= 3
+                    episode_rewards -= 6
                     truncated_episodes += 1
                 for acc, id in self.eval_actions.items():
                     decision_step[id] += local_decision_step[id]

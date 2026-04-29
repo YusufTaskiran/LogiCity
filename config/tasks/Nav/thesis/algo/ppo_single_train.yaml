@@ -3,7 +3,7 @@ simulation:
   agent_yaml_file: "config/agents/thesis/main_3cars_1ped.yaml"
   ontology_yaml_file: "config/rules/ontology_simple.yaml"
   rule_type: "Z3_Expert"
-  rule_yaml_file: "config/rules/Nav/easy/expert_simple.yaml"
+  rule_yaml_file: "config/rules/Nav/easy/expert_minimal_4action.yaml"
   rl: true
   debug: false
   use_multi: false
@@ -25,16 +25,19 @@ simulation:
     require_route_intersection: true
     reset_attempts: 30
     reset_all_agents: true
+    step_cost: 0
+    progress_reward: 0.1
+    goal_reward: 10
     action_cost:
-      0: -3
+      0: 0
       1: 0
-      2: -4
-      3: -5
+      2: 0
+      3: 0
     overtime_cost: -6
 
 eval_checkpoint:
-  eval_freq: 1000
-  save_freq: 1000
+  eval_freq: 500
+  save_freq: 500
   save_path: "./checkpoints/"
   name_prefix: "thesis_ppo_single"
   episode_data: "dataset/thesis/main_3cars_1ped/val_20_episodes.pkl"
@@ -43,7 +46,7 @@ eval_checkpoint:
     agent_yaml_file: "config/agents/thesis/main_3cars_1ped.yaml"
     ontology_yaml_file: "config/rules/ontology_simple.yaml"
     rule_type: "Z3_Expert"
-    rule_yaml_file: "config/rules/Nav/easy/expert_simple.yaml"
+    rule_yaml_file: "config/rules/Nav/easy/expert_minimal_4action.yaml"
     rl: true
     debug: false
     use_multi: false
@@ -61,11 +64,15 @@ eval_checkpoint:
         3: [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1]
       fov_entities:
         Entity: 4
+      step_cost: 0
+      progress_reward: 0.1
+      goal_reward: 10
       action_cost:
-        0: -3
+        0: 0
         1: 0
-        2: -4
-        3: -5
+        2: 0
+        3: 0
+      overtime_cost: -6
   eval_actions: {"Stop": 3}
 
 stable_baselines:
@@ -89,4 +96,4 @@ stable_baselines:
   train: true
   checkpoint_path: ""
   num_envs: 1
-  total_timesteps: 40000
+  total_timesteps: 25000

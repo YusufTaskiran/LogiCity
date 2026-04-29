@@ -81,6 +81,7 @@ class GymCityWrapper(gym.core.Env):
         self.randomize_all_car_priorities = env.rl_agent.get("randomize_all_car_priorities", False)
         self.shield_config = env.rl_agent.get("shield")
         self.current_grounding_dic = None
+        self.current_shield_context = None
         self.training_episode_data_path = env.rl_agent.get("training_episode_data")
         self.training_episode_data = None
         self.training_episode_keys = []
@@ -340,6 +341,7 @@ class GymCityWrapper(gym.core.Env):
         self.current_episode_reward = 0
         self.current_episode_length = 0
         self.current_grounding_dic = ob_dict["Ground_dic"][0] if len(ob_dict["Ground_dic"]) > 0 else None
+        self.current_shield_context = ob_dict["Shield_context"][0] if len(ob_dict.get("Shield_context", [])) > 0 else None
         if self.use_expert:
             self.expert_action = self.full_action2index(ob_dict["Expert_actions"][0])
             if return_info:
@@ -367,6 +369,7 @@ class GymCityWrapper(gym.core.Env):
         self.last_route_index = self._current_route_index()
         self.current_obs = obs
         self.current_grounding_dic = ob_dict["Ground_dic"][0] if len(ob_dict["Ground_dic"]) > 0 else None
+        self.current_shield_context = ob_dict["Shield_context"][0] if len(ob_dict.get("Shield_context", [])) > 0 else None
         return self.current_obs
 
     def step(self, action):
@@ -388,6 +391,7 @@ class GymCityWrapper(gym.core.Env):
         obs = self._flatten_obs(new_ob_dict)
         self.current_obs = obs
         self.current_grounding_dic = new_ob_dict["Ground_dic"][0] if len(new_ob_dict["Ground_dic"]) > 0 else None
+        self.current_shield_context = new_ob_dict["Shield_context"][0] if len(new_ob_dict.get("Shield_context", [])) > 0 else None
         
         # offset the index by 3 layers 0,1,2 are static in world matrix
         done = self.agent.reach_goal

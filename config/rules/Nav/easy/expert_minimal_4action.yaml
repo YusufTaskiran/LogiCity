@@ -1,0 +1,89 @@
+Rules:
+  Sim: # how the determinist agents move
+    - name: Stop
+      formula: |
+        Stop(entity) == Exists(
+          [dummyEntity],
+          Or(
+            And(
+              IsAtInter(entity),
+              IsInInter(dummyEntity),
+            ),
+            And(
+              IsAtInter(entity),
+              IsAtInter(dummyEntity),
+              HigherPri(dummyEntity, entity),
+            ),
+            CollidingClose(entity, dummyEntity)
+          )
+        )
+      description: Minimal stop rule based on intersection occupancy, priority, and immediate close conflict.
+  Task: # how the reward/score is calculated
+    - name: Collision and Intersection
+      description: should not collide.
+      dead: true
+      reward: -10
+      formula: |
+        Implies(Exists(
+          [dummyEntity],
+            Or(
+              And(
+                IsAtInter(entity),
+                IsInInter(dummyEntity),
+              ),
+              And(
+                IsAtInter(entity),
+                IsAtInter(dummyEntity),
+                HigherPri(dummyEntity, entity),
+              ),
+              CollidingClose(entity, dummyEntity)
+            )
+          ),
+          Stop(entity)
+        )
+  Expert: # how the expert agents should move
+    - name: Stop
+      description: Stop on the minimal conflict condition.
+      formula: |
+        Stop(entity) == Exists(
+          [dummyEntity],
+          Or(
+            And(
+              IsAtInter(entity),
+              IsInInter(dummyEntity),
+            ),
+            And(
+              IsAtInter(entity),
+              IsAtInter(dummyEntity),
+              HigherPri(dummyEntity, entity),
+            ),
+            CollidingClose(entity, dummyEntity)
+          )
+        )
+    - name: Slow
+      description: If not stop, slow down for early forward warnings.
+      formula: |
+        Slow(entity) == And(
+          Not(Stop(entity)),
+          Exists(
+            [dummyEntity],
+            IsCloseAhead(entity, dummyEntity)
+          )
+        )
+    - name: Fast
+      description: If not stop or slow and not near/in the intersection, move fast on open road.
+      formula: |
+        Fast(entity) == And(
+          Not(Stop(entity)),
+          Not(Slow(entity)),
+          Not(IsAtInter(entity)),
+          Not(IsInInter(entity))
+        )
+    - name: Normal
+      description: Fallback action when neither stop, slow, nor fast applies.
+      formula: |
+        Normal(entity) == And(
+          Not(Stop(entity)),
+          Not(Slow(entity)),
+          Not(Fast(entity))
+        )

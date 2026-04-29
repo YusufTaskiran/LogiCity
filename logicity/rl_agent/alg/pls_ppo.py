@@ -40,6 +40,7 @@ class PLSPPO(SB3PPO):
         self._shield = None
         self._safety_coefficient = 0.1
         self._use_safety_loss = True
+        self._shield_temperature = 1.0
         self._diagnostics = {}
         self._init_pls_from_env()
 
@@ -57,12 +58,17 @@ class PLSPPO(SB3PPO):
             self._shield_cfg = copy.deepcopy(shield_cfg)
             self._safety_coefficient = float(self._shield_cfg.get("safety_coefficient", self._shield_cfg.get("alpha", 0.1)))
             self._use_safety_loss = bool(self._shield_cfg.get("use_safety_loss", True))
+            self._shield_temperature = float(self._shield_cfg.get("shield_temperature", 1.0))
             stop_action = int(getattr(self.action_space, "n", 4) - 1)
             self._shield = ProbabilisticLogicShield(
                 self._pls_pred_grounding_index,
                 num_actions=int(getattr(self.action_space, "n", 4)),
                 stop_action=stop_action,
                 backend=str(self._shield_cfg.get("backend", "heuristic")),
+                use_privileged_internal_safety=bool(self._shield_cfg.get("use_privileged_internal_safety", False)),
+                stop_priority_scale=float(self._shield_cfg.get("stop_priority_scale", 0.2)),
+                graded_safety=bool(self._shield_cfg.get("graded_safety", False)),
+                graded_safety_weights=self._shield_cfg.get("graded_safety_weights"),
             )
         except Exception as exc:
             self._pls_enabled = False
@@ -84,7 +90,28 @@ class PLSPPO(SB3PPO):
                 num_actions=int(getattr(self.action_space, "n", 4)),
                 stop_action=stop_action,
                 backend=str((self._shield_cfg or {}).get("backend", "heuristic")),
+                use_privileged_internal_safety=bool((self._shield_cfg or {}).get("use_privileged_internal_safety", False)),
+                stop_priority_scale=float((self._shield_cfg or {}).get("stop_priority_scale", 0.2)),
+                graded_safety=bool((self._shield_cfg or {}).get("graded_safety", False)),
+                graded_safety_weights=(self._shield_cfg or {}).get("graded_safety_weights"),
             )
+
+    def _register_shield_context(self, observation: np.ndarray, env_source: Any | None = None) -> None:
+        self._ensure_shield()
+        if (not self._pls_enabled) or self._shield is None:
+            return
+        base_env = _unwrap_first_env(env_source if env_source is not None else self.env)
+        context = getattr(base_env, "current_shield_context", None)
+        if context is None:
+            return
+        obs_np = np.asarray(observation, dtype=np.float32)
+        if obs_np.ndim == 1:
+            self._shield.register_privileged_context(obs_np, context)
+        elif obs_np.ndim == 2 and obs_np.shape[0] == 1:
+            self._shield.register_privileged_context(obs_np[0], context)
+
+    def set_shield_context_from_env(self, env_source: Any, observation: np.ndarray) -> None:
+        self._register_shield_context(observation, env_source=env_source)
 
     def configure_shield(self, pred_grounding_index, shield_cfg=None) -> None:
         self._pls_enabled = True
@@ -93,13 +120,27 @@ class PLSPPO(SB3PPO):
             self._shield_cfg = copy.deepcopy(shield_cfg)
         self._safety_coefficient = float((self._shield_cfg or {}).get("safety_coefficient", (self._shield_cfg or {}).get("alpha", 0.1)))
         self._use_safety_loss = bool((self._shield_cfg or {}).get("use_safety_loss", True))
+        self._shield_temperature = float((self._shield_cfg or {}).get("shield_temperature", 1.0))
         stop_action = int(getattr(self.action_space, "n", 4) - 1)
         self._shield = ProbabilisticLogicShield(
             self._pls_pred_grounding_index,
             num_actions=int(getattr(self.action_space, "n", 4)),
             stop_action=stop_action,
             backend=str((self._shield_cfg or {}).get("backend", "heuristic")),
+            use_privileged_internal_safety=bool((self._shield_cfg or {}).get("use_privileged_internal_safety", False)),
+            stop_priority_scale=float((self._shield_cfg or {}).get("stop_priority_scale", 0.2)),
+            graded_safety=bool((self._shield_cfg or {}).get("graded_safety", False)),
+            graded_safety_weights=(self._shield_cfg or {}).get("graded_safety_weights"),
         )
+
+    def _temperature_adjusted_safe_probs(self, safe_probs: th.Tensor) -> th.Tensor:
+        temperature = max(float(self._shield_temperature), 1e-6)
+        if abs(temperature - 1.0) < 1e-8:
+            return safe_probs
+        positive_mask = safe_probs > 0
+        clamped = safe_probs.clamp(min=1e-8, max=1.0)
+        adjusted = th.exp(th.log(clamped) / temperature)
+        return th.where(positive_mask, adjusted, th.zeros_like(safe_probs))
 
     def reset_shield_metrics(self) -> None:
         self._ensure_shield()
@@ -178,6 +219,7 @@ class PLSPPO(SB3PPO):
 
     def debug_action_snapshot(self, observation: np.ndarray) -> dict[str, Any]:
         self._ensure_shield()
+        self._register_shield_context(observation)
         obs_np = np.asarray(observation, dtype=np.float32)
         if obs_np.ndim != 1:
             raise ValueError(f"Expected a single flattened observation, got shape {obs_np.shape}.")
@@ -199,6 +241,8 @@ class PLSPPO(SB3PPO):
             "base_safety_prob": float(base_safety_prob.detach().cpu().numpy().reshape(-1)[0]),
             "shielded_safety_prob": float(shielded_safety_prob.detach().cpu().numpy().reshape(-1)[0]),
         }
+        if self._shield is not None:
+            snapshot["shield_facts"] = self._shield.debug_state_facts(obs_np)
         if self._pls_pred_grounding_index is not None:
             for pred_name in ("IsSafeStep1", "IsSafeStep2", "IsSafeStep3", "IsSafeWait"):
                 if pred_name in self._pls_pred_grounding_index:
@@ -213,14 +257,20 @@ class PLSPPO(SB3PPO):
         obs_np = np.asarray(observation, dtype=np.float32)
         probs_np = base_probs.detach().cpu().numpy()
         if obs_np.ndim == 1:
-            safe = self._shield.safety_probs(obs_np) if track_metrics else self._shield.safety_probs_no_metrics(obs_np)
+            safe = (
+                self._shield.safety_probs(obs_np, probs_np[0] if probs_np.ndim > 1 else probs_np)
+                if track_metrics
+                else self._shield.safety_probs_no_metrics(obs_np, probs_np[0] if probs_np.ndim > 1 else probs_np)
+            )
             safe = np.expand_dims(safe, axis=0)
         else:
             if probs_np.ndim == 1:
                 probs_np = np.expand_dims(probs_np, axis=0)
             safe = np.stack(
                 [
-                    self._shield.safety_probs(obs_np[idx]) if track_metrics else self._shield.safety_probs_no_metrics(obs_np[idx])
+                    self._shield.safety_probs(obs_np[idx], probs_np[idx])
+                    if track_metrics
+                    else self._shield.safety_probs_no_metrics(obs_np[idx], probs_np[idx])
                     for idx in range(obs_np.shape[0])
                 ],
                 axis=0,
@@ -231,28 +281,47 @@ class PLSPPO(SB3PPO):
         self._ensure_shield()
         if (not self._pls_enabled) or self._shield is None:
             return base_probs
-        obs_np = np.asarray(observation, dtype=np.float32)
-        probs_np = base_probs.detach().cpu().numpy()
-        if probs_np.ndim == 1:
-            probs_np = np.expand_dims(probs_np, axis=0)
-        if obs_np.ndim == 1:
-            shielded = (
-                self._shield.shield_probs(obs_np, probs_np[0], track_metrics=track_metrics)
-                if track_metrics
-                else self._shield.shield_probs_no_metrics(obs_np, probs_np[0])
-            )
-            shielded = np.expand_dims(shielded, axis=0)
-        else:
-            shielded = np.stack(
-                [
-                    self._shield.shield_probs(obs_np[idx], probs_np[idx], track_metrics=track_metrics)
-                    if track_metrics
-                    else self._shield.shield_probs_no_metrics(obs_np[idx], probs_np[idx])
-                    for idx in range(obs_np.shape[0])
-                ],
-                axis=0,
-            )
-        return th.as_tensor(shielded, device=base_probs.device, dtype=base_probs.dtype)
+        squeezed = False
+        base_probs_batched = base_probs
+        if base_probs_batched.ndim == 1:
+            base_probs_batched = base_probs_batched.unsqueeze(0)
+            squeezed = True
+        safe_probs = self._safe_probs_tensor(observation, base_probs_batched, track_metrics=track_metrics)
+        adjusted_safe = self._temperature_adjusted_safe_probs(safe_probs)
+        weighted = base_probs_batched * adjusted_safe
+        denom = weighted.sum(dim=1, keepdim=True)
+        fallback = th.zeros_like(base_probs_batched)
+        stop_action = int(getattr(self.action_space, "n", 4) - 1)
+        fallback[:, stop_action] = 1.0
+        normalized = weighted / denom.clamp_min(1e-8)
+        shielded = th.where(denom > 1e-8, normalized, fallback)
+        if squeezed:
+            return shielded.squeeze(0)
+        return shielded
+
+    def _shield_probs_tensor_differentiable(self, observation: np.ndarray, base_probs: th.Tensor) -> tuple[th.Tensor, th.Tensor]:
+        """Build pi+ in Torch so gradients still flow through base_probs.
+
+        The safety model itself is treated as fixed with respect to the policy:
+        safe_probs come from the shield and are detached constants. The
+        reweighting and normalization that produce the shielded policy remain in
+        the Torch graph.
+        """
+        safe_probs = self._safe_probs_tensor(observation, base_probs, track_metrics=False).detach()
+        adjusted_safe = self._temperature_adjusted_safe_probs(safe_probs)
+        weighted = base_probs * adjusted_safe
+        denom = weighted.sum(dim=1, keepdim=True)
+
+        fallback = th.zeros_like(base_probs)
+        stop_action = int(getattr(self.action_space, "n", 4) - 1)
+        fallback[:, stop_action] = 1.0
+        normalized = weighted / denom.clamp_min(1e-8)
+        shielded = th.where(denom > 1e-8, normalized, fallback)
+        return shielded, safe_probs
+
+    @staticmethod
+    def _policy_safety_from_safe_probs(policy_probs: th.Tensor, safe_probs: th.Tensor) -> th.Tensor:
+        return (policy_probs * safe_probs).sum(dim=1).clamp(1e-8, 1.0)
 
     def _safety_probability_tensor(self, observation: np.ndarray, shielded_probs: th.Tensor) -> th.Tensor:
         self._ensure_shield()
@@ -275,6 +344,7 @@ class PLSPPO(SB3PPO):
         self._ensure_shield()
         if (not self._pls_enabled) or self._shield is None:
             return super().predict(observation, state=state, episode_start=episode_start, deterministic=deterministic)
+        self._register_shield_context(observation)
 
         obs_tensor = obs_as_tensor(observation, self.device)
         with th.no_grad():
@@ -284,9 +354,15 @@ class PLSPPO(SB3PPO):
             shielded_probs = self._shield_probs_tensor(observation, base_probs, track_metrics=True)
 
         if deterministic:
-            actions_tensor = th.argmax(shielded_probs, dim=1)
+            if shielded_probs.ndim == 1:
+                actions_tensor = th.argmax(shielded_probs, dim=0).unsqueeze(0)
+            else:
+                actions_tensor = th.argmax(shielded_probs, dim=1)
         else:
-            actions_tensor = th.distributions.Categorical(probs=shielded_probs).sample()
+            if shielded_probs.ndim == 1:
+                actions_tensor = th.distributions.Categorical(probs=shielded_probs).sample().unsqueeze(0)
+            else:
+                actions_tensor = th.distributions.Categorical(probs=shielded_probs).sample()
 
         actions = actions_tensor.cpu().numpy()
         if np.asarray(observation).ndim == len(self.observation_space.shape):
@@ -312,6 +388,7 @@ class PLSPPO(SB3PPO):
                 self.policy.reset_noise(env.num_envs)
 
             with th.no_grad():
+                self._register_shield_context(self._last_obs, env_source=env)
                 obs_tensor = obs_as_tensor(self._last_obs, self.device)
                 distribution = self.policy.get_distribution(obs_tensor)
                 base_dist = getattr(distribution, "distribution", distribution)
@@ -378,7 +455,7 @@ class PLSPPO(SB3PPO):
                 distribution = self.policy.get_distribution(obs_tensor)
                 base_dist = getattr(distribution, "distribution", distribution)
                 base_probs = base_dist.probs
-                shielded_probs = self._shield_probs_tensor(obs_np, base_probs, track_metrics=False)
+                shielded_probs, safe_probs = self._shield_probs_tensor_differentiable(obs_np, base_probs)
                 shielded_dist = th.distributions.Categorical(probs=shielded_probs)
                 log_prob = shielded_dist.log_prob(actions)
                 entropy = shielded_dist.entropy()
@@ -417,14 +494,15 @@ class PLSPPO(SB3PPO):
 
                 if self._use_safety_loss:
                     # PLPG safety term: -alpha * log P_{pi+}(safe | s)
-                    # PLPG safety gradient should be computed from the base
-                    # policy distribution, not the already shielded one.
-                    safety_prob = self._safety_probability_tensor(obs_np, base_probs)
-                    shielded_safety_prob = self._safety_probability_tensor(obs_np, shielded_probs)
+                    # Keep diagnostics for both the base and shielded policy,
+                    # but optimize the shielded-policy safety as described in
+                    # the paper.
+                    safety_prob = self._policy_safety_from_safe_probs(base_probs, safe_probs)
+                    shielded_safety_prob = self._policy_safety_from_safe_probs(shielded_probs, safe_probs)
                     self._diagnostics["train_base_safety_prob_sum"] += float(safety_prob.mean().detach().cpu().item())
                     self._diagnostics["train_shielded_safety_prob_sum"] += float(shielded_safety_prob.mean().detach().cpu().item())
                     self._diagnostics["train_batches"] += 1.0
-                    safety_loss = -th.log(safety_prob).mean()
+                    safety_loss = -th.log(shielded_safety_prob).mean()
                 else:
                     safety_loss = th.zeros((), device=obs_tensor.device, dtype=shielded_probs.dtype)
                 safety_losses.append(safety_loss.item())

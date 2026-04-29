@@ -52,6 +52,7 @@ class CityEnv(City):
         current_obs["Expert_actions"] = []
         current_obs["Expert_sg"] = []
         current_obs["Ground_dic"] = []
+        current_obs["Shield_context"] = []
 
         new_matrix = torch.zeros_like(self.city_grid)
         current_world = self.city_grid.clone()
@@ -72,6 +73,8 @@ class CityEnv(City):
                 # expert will provide the action and scene graph and groundings
                 if "{}_grounding_dic".format(agent_name) in agent_action_dist:
                     current_obs["Ground_dic"].append(agent_action_dist["{}_grounding_dic".format(agent_name)])
+                if "{}_shield_context".format(agent_name) in agent_action_dist:
+                    current_obs["Shield_context"].append(agent_action_dist["{}_shield_context".format(agent_name)])
                 if "{}_scene_graph".format(agent_name) in agent_action_dist:
                     current_obs["Expert_sg"].append(agent_action_dist["{}_scene_graph".format(agent_name)])
                 if "{}_action".format(agent_name) in agent_action_dist:

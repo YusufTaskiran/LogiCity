@@ -61,14 +61,20 @@ Rules:
           )
         )
     - name: Slow
-      description: Never take slow action.
+      description: If not stop, then slow down for earlier forward conflict warnings.
       formula: |
-        Not(Slow(entity))
+        Slow(entity) == And(
+          Not(Stop(entity)),
+          Exists(
+            [dummyEntity],
+            IsCloseAhead(entity, dummyEntity)
+          )
+        )
     - name: Fast
       description: Never take Fast action.
       formula: |
         Not(Fast(entity))
     - name: Normal
-      description: If not stop, then normal.
+      description: If not stop or slow, then normal.
       formula: |
-        Normal(entity) == Not(Stop(entity))
+        Normal(entity) == And(Not(Stop(entity)), Not(Slow(entity)))

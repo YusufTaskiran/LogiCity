@@ -205,6 +205,37 @@ def IsClose(world_matrix, intersect_matrix, agents, entity1, entity2):
     else:
         return 0
 
+def IsCloseAhead(world_matrix, intersect_matrix, agents, entity1, entity2):
+    if entity1 == entity2:
+        return 0
+    if "PH" in entity1 or "PH" in entity2:
+        return 0
+    _, agent_type1, layer_id1 = entity1.split("_")
+    _, agent_type2, layer_id2 = entity2.split("_")
+    agent_layer1 = world_matrix[int(layer_id1)]
+    agent_layer2 = world_matrix[int(layer_id2)]
+    agent_position1 = (agent_layer1 == TYPE_MAP[agent_type1]).nonzero()[0]
+    agent_position2 = (agent_layer2 == TYPE_MAP[agent_type2]).nonzero()[0]
+    if layer_id1 in agents.keys():
+        agent1_dire = agents[layer_id1].moving_direction
+    else:
+        assert "ego_{}".format(layer_id1) in agents.keys()
+        agent1_dire = agents["ego_{}".format(layer_id1)].moving_direction
+    if agent1_dire is None:
+        return 0
+    dist = torch.sqrt(torch.sum((agent_position1 - agent_position2) ** 2))
+    close_min = OCC_CHECK_RANGE[agent_type1]
+    close_max = OCC_CHECK_RANGE[agent_type1] * AHEAD_CLOSE_RANGE_SCALE
+    if dist <= close_min or dist > close_max:
+        return 0
+    agent1_dire_vec = torch.tensor(DIRECTION_VECTOR[agent1_dire])
+    relative = agent_position2 - agent_position1
+    denom = torch.clamp(torch.sqrt(torch.sum(relative.float() ** 2)), min=1e-8)
+    angle = torch.acos(torch.clamp(torch.dot(agent1_dire_vec.float(), relative.float()) / denom, -1.0, 1.0))
+    if angle < (OCC_CHECK_ANGEL * AHEAD_CLOSE_ANGLE_SCALE):
+        return 1
+    return 0
+
 def HigherPri(world_matrix, intersect_matrix, agents, entity1, entity2):
     if entity1 == entity2:
         return 0

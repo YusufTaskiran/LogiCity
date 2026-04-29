@@ -1,0 +1,64 @@
+simulation:
+  map_yaml_file: "config/maps/square_2x2.yaml"
+  agent_yaml_file: "config/agents/thesis/main_3cars_1ped.yaml"
+  ontology_yaml_file: "config/rules/ontology_simple.yaml"
+  rule_type: "Z3_Expert"
+  rule_yaml_file: "config/rules/Nav/easy/expert_minimal_4action.yaml"
+  rl: true
+  debug: false
+  use_multi: false
+  agent_region: 100
+  rl_agent:
+    max_priority: 3
+    use_expert: false
+    agent_name: "Car_1"
+    max_horizon: 200
+    action_space: 4
+    action_mapping:
+      0: [1, 1, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+      1: [0, 0, 0, 0, 1, 1, 1, 1, 0, 0, 0, 0, 0]
+      2: [0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 0]
+      3: [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1]
+    fov_entities:
+      Entity: 4
+    step_cost: 0
+    progress_reward: 0.1
+    goal_reward: 10
+    action_cost:
+      0: 0
+      1: 0
+      2: 0
+      3: 0
+    overtime_cost: -6
+
+stable_baselines:
+  algorithm: "DLSPPO"
+  policy_network: "MlpPolicy"
+  policy_kwargs:
+    features_extractor_module: "logicity.rl_agent.policy.neural"
+    features_extractor_class: "MLPFeatureExtractor"
+    features_extractor_kwargs:
+      features_dim: 32
+  hyperparameters:
+    learning_rate: 0.0003
+    clip_range: 0.2
+    vf_coef: 0.5
+    batch_size: 64
+    n_steps: 256
+    n_epochs: 10
+    ent_coef: 0.001
+    verbose: 1
+    tensorboard_log: "./tb_logs"
+  train: false
+  checkpoint_path: ""
+  episode_data: "dataset/thesis/main_3cars_1ped/test_50_episodes.pkl"
+  eval_actions:
+    Slow: 0
+    Normal: 1
+    Fast: 2
+    Stop: 3
+  vis_id: [24]
+
+shield:
+  type: "dls"
+  notes: "Deterministic logic shield single-agent episode-24 visualization config."

@@ -3,7 +3,7 @@ simulation:
   agent_yaml_file: "config/agents/thesis/main_3cars_1ped.yaml"
   ontology_yaml_file: "config/rules/ontology_simple.yaml"
   rule_type: "Z3_Expert"
-  rule_yaml_file: "config/rules/Nav/easy/expert_simple.yaml"
+  rule_yaml_file: "config/rules/Nav/easy/expert_minimal_4action.yaml"
   rl: true
   debug: false
   use_multi: false

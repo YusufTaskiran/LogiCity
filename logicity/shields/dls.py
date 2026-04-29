@@ -12,6 +12,13 @@ class DeterministicLogicShield:
 
     The shield computes a hard safety mask P(safe | s, a) in {0, 1} and
     renormalizes the base policy over safe actions only.
+
+    In the current thesis setup the deterministic regime structure is:
+
+    - must_stop -> only `stop` safe
+    - warning -> `slow` and `stop` safe
+    - fast_zone -> `slow`, `normal`, `fast`, `stop` safe
+    - normal_zone -> `slow`, `normal`, `stop` safe
     """
 
     def __init__(
@@ -73,69 +80,79 @@ class DeterministicLogicShield:
         observed_value = float(obs[start + offset])
         return bool(observed_value > 0.5)
 
-    def stop_required(self, obs: Any, action_name: str) -> bool:
-        return self.risk_band(obs, action_name) == "high"
-
-    def risk_score(self, obs: Any, action_name: str) -> float:
+    def _state_facts(self, obs: Any) -> dict[str, Any]:
         obs_vec = self._prepare_obs(obs)
-        ego_at_inter = self._unary(obs_vec, "IsAtInter", 0, action_name)
-        per_other_conflicts: list[float] = []
+        ego_at_inter = self._unary(obs_vec, "IsAtInter", 0, "ego")
+        ego_in_inter = self._unary(obs_vec, "IsInInter", 0, "ego")
+        higher_pri = []
+        other_in_inter = []
+        other_at_inter = []
+        colliding_close = []
+        close_ahead = []
         for other_idx in range(1, self.n_entities):
-            other_has_priority = self._binary(obs_vec, "HigherPri", other_idx, 0, action_name)
-            if not other_has_priority:
-                continue
-            other_in_inter = self._unary(obs_vec, "IsInInter", other_idx, action_name)
-            other_at_inter = self._unary(obs_vec, "IsAtInter", other_idx, action_name)
-            colliding_close = self._binary(obs_vec, "CollidingClose", 0, other_idx, action_name)
-            conflict = float((ego_at_inter and (other_in_inter or other_at_inter)) or colliding_close)
-            if conflict > 0.0:
-                per_other_conflicts.append(conflict)
-        if not per_other_conflicts:
-            return 0.0
-        return float(sum(per_other_conflicts) / len(per_other_conflicts))
+            higher_pri.append(self._binary(obs_vec, "HigherPri", other_idx, 0, "other"))
+            other_in_inter.append(self._unary(obs_vec, "IsInInter", other_idx, "other"))
+            other_at_inter.append(self._unary(obs_vec, "IsAtInter", other_idx, "other"))
+            colliding_close.append(self._binary(obs_vec, "CollidingClose", 0, other_idx, "other"))
+            close_ahead.append(self._binary(obs_vec, "IsCloseAhead", 0, other_idx, "other"))
+        return {
+            "ego_at_inter": ego_at_inter,
+            "ego_in_inter": ego_in_inter,
+            "higher_pri": higher_pri,
+            "other_in_inter": other_in_inter,
+            "other_at_inter": other_at_inter,
+            "colliding_close": colliding_close,
+            "close_ahead": close_ahead,
+        }
 
-    def risk_band(self, obs: Any, action_name: str) -> str:
-        risk = self.risk_score(obs, action_name)
-        if risk >= 0.95:
-            return "high"
-        if risk >= 0.45:
-            return "medium"
-        return "low"
+    def _must_stop(self, facts: dict[str, Any]) -> bool:
+        ego_at_inter = bool(facts["ego_at_inter"])
+        for idx in range(len(facts["higher_pri"])):
+            if ego_at_inter and bool(facts["other_in_inter"][idx]):
+                return True
+            if ego_at_inter and bool(facts["higher_pri"][idx]) and bool(facts["other_at_inter"][idx]):
+                return True
+            if bool(facts["colliding_close"][idx]):
+                return True
+        return False
+
+    def _has_close_ahead(self, facts: dict[str, Any]) -> bool:
+        return any(bool(v) for v in facts["close_ahead"])
+
+    def _fast_zone(self, facts: dict[str, Any], must_stop: bool, has_close_ahead: bool) -> bool:
+        return (not must_stop) and (not has_close_ahead) and (not bool(facts["ego_at_inter"])) and (not bool(facts["ego_in_inter"]))
+
+    def stop_required(self, obs: Any, action_name: str) -> bool:
+        facts = self._state_facts(obs)
+        return self._must_stop(facts)
 
     def safety_probs(self, obs: Any) -> np.ndarray:
         self.total_calls += 1
-        safe_probs = np.ones(self.num_actions, dtype=np.float32)
-        masked_any = False
-        risk_bands = {}
-        for action_idx in range(self.num_actions):
-            if action_idx == self.safe_action:
-                safe_probs[action_idx] = 1.0
-                continue
-            action_name = self.action_names.get(action_idx, "normal")
-            risk_bands[action_idx] = self.risk_band(obs, action_name)
+        facts = self._state_facts(obs)
+        must_stop = self._must_stop(facts)
+        has_close_ahead = self._has_close_ahead(facts)
+        fast_zone = self._fast_zone(facts, must_stop, has_close_ahead)
 
-        # Tiered deterministic shield:
-        # low risk -> allow normal, slow, stop
-        # medium risk -> allow slow, stop
-        # high risk -> allow stop only
+        slow_idx = 0
         normal_idx = 1 if self.num_actions > 1 else 0
         fast_idx = 2 if self.num_actions > 2 else normal_idx
-        low_risk_fast = risk_bands.get(fast_idx) == "low"
 
-        for action_idx in range(self.num_actions):
-            if action_idx == self.safe_action:
-                continue
-            band = risk_bands.get(action_idx, "low")
-            allowed = True
-            if action_idx == 0:  # slow
-                allowed = band in ("low", "medium")
-            elif action_idx == normal_idx:  # normal
-                allowed = band == "low"
-            elif action_idx == fast_idx:  # fast
-                allowed = low_risk_fast and risk_bands.get(normal_idx, "low") == "low"
-            if not allowed:
-                safe_probs[action_idx] = 0.0
-                masked_any = True
+        if must_stop:
+            safe_probs = np.zeros(self.num_actions, dtype=np.float32)
+            safe_probs[self.safe_action] = 1.0
+        elif has_close_ahead:
+            safe_probs = np.zeros(self.num_actions, dtype=np.float32)
+            safe_probs[slow_idx] = 1.0
+            safe_probs[self.safe_action] = 1.0
+        elif fast_zone:
+            safe_probs = np.ones(self.num_actions, dtype=np.float32)
+        else:
+            safe_probs = np.zeros(self.num_actions, dtype=np.float32)
+            safe_probs[slow_idx] = 1.0
+            safe_probs[normal_idx] = 1.0
+            safe_probs[self.safe_action] = 1.0
+
+        masked_any = bool(np.any(safe_probs[:-1] < 1.0))
         if masked_any:
             self.intervention_count += 1
         return safe_probs

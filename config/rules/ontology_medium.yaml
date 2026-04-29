@@ -62,6 +62,12 @@ Predicates:
       function: logicity.utils.pred_converter.z3.CollidingClose
       description: Checks if agent x is about to collide with agent y.
       semantic: false
+  - IsCloseAhead:
+      arity: 2
+      method: IsCloseAhead(Entity, Entity)
+      function: logicity.utils.pred_converter.z3.IsCloseAhead
+      description: Checks if agent y is ahead of agent x in an earlier warning zone before CollidingClose.
+      semantic: false
   - NextTo:
       arity: 2
       method: NextTo(Entity, Entity)

@@ -123,7 +123,8 @@ class Z3PlannerRL(Z3Planner):
                                             self.fov_entities, True, rl_input_shape=self.rl_input_shape)
                     self.last_rl_obs = {
                         "last_obs_dict": copy.deepcopy(result["{}_grounding_dic".format(ego_name)]),
-                        "last_obs": result["{}_grounding".format(ego_name)].copy()
+                        "last_obs": result["{}_grounding".format(ego_name)].copy(),
+                        "shield_context": copy.deepcopy(result.get("{}_shield_context".format(ego_name))),
                     }
                 else:
                     result = solve_sub_problem(ego_name, ego_agent[ego_name].action_mapping, ego_agent[ego_name].action_dist,
@@ -415,6 +416,18 @@ def solve_sub_problem(ego_name,
             "{}_grounding".format(ego_name): np.array(grounding, dtype=np.float32),
             "{}_grounding_dic".format(ego_name): grounding_dic
         }
+        ego_agent = None
+        for key, agent in partial_agents.items():
+            if "ego" in key:
+                ego_agent = agent
+                break
+        if ego_agent is not None:
+            agents_actions["{}_shield_context".format(ego_name)] = {
+                "world_matrix": partial_world.clone(),
+                "intersect_matrix": partial_intersections.clone(),
+                "agents": copy.deepcopy(partial_agents),
+                "ego_entity": f"Entity_{ego_agent.type}_{ego_agent.layer_id}",
+            }
         assert len(grounding) == rl_input_shape
 
         return agents_actions

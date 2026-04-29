@@ -72,6 +72,8 @@ OCC_CHECK_RANGE = {
     "Car": 8
 }
 OCC_CHECK_ANGEL = 0.1
+AHEAD_CLOSE_RANGE_SCALE = 2.0
+AHEAD_CLOSE_ANGLE_SCALE = 2.0
 DIRECTION_VECTOR = {
     "Left": (0, -1),
     "Right": (0, 1),

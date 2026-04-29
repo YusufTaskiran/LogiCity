@@ -3,7 +3,7 @@ simulation:
   agent_yaml_file: "config/agents/thesis/main_3cars_1ped.yaml"
   ontology_yaml_file: "config/rules/ontology_simple.yaml"
   rule_type: "Z3_Expert"
-  rule_yaml_file: "config/rules/Nav/easy/expert_simple.yaml"
+  rule_yaml_file: "config/rules/Nav/easy/expert_minimal_4action.yaml"
   rl: true
   debug: false
   use_multi: false
@@ -24,11 +24,14 @@ simulation:
       3: [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1]
     fov_entities:
       Entity: 4
+    step_cost: 0
+    progress_reward: 0.1
+    goal_reward: 10
     action_cost:
-      0: -3
+      0: 0
       1: 0
-      2: -4
-      3: -5
+      2: 0
+      3: 0
     overtime_cost: -6
 
 stable_baselines:
@@ -50,13 +53,9 @@ stable_baselines:
     verbose: 1
     tensorboard_log: "./tb_logs"
   train: false
-  checkpoint_path: "checkpoints/thesis_ppo_dls_single/best_model.zip"
-  episode_data: "dataset/thesis/main_3cars_1ped/test_50_episodes.pkl"
+  checkpoint_path: ""
+  episode_data: "dataset/thesis/main_3cars_1ped/test_50_episodes_shared_oracle.pkl"
 
 shield:
-  enabled: true
-  train_time: true
-  test_time: true
   type: "dls"
-  deterministic: true
-  notes: "Placeholder thesis config for deterministic logic shield shared-policy evaluation; requires code integration."
+  notes: "Deterministic logic shield shared-policy evaluation config."
