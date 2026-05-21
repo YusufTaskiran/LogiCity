@@ -39,6 +39,8 @@ def run_expert_shared_episode(simulation_config, episode_cache):
         step += 1
         actions = {}
         for agent in runner.controlled_agents:
+            if agent.layer_id in runner.parked_controlled_layers:
+                continue
             expert_action = views[agent.layer_id]["expert_action"]
             if expert_action is None:
                 expert_action = runner.stop_action_id

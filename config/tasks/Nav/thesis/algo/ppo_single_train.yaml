@@ -1,7 +1,7 @@
 simulation:
   map_yaml_file: "config/maps/square_2x2.yaml"
   agent_yaml_file: "config/agents/thesis/main_3cars_1ped.yaml"
-  ontology_yaml_file: "config/rules/ontology_simple.yaml"
+  ontology_yaml_file: "config/rules/ontology_simple_weak.yaml"
   rule_type: "Z3_Expert"
   rule_yaml_file: "config/rules/Nav/easy/expert_minimal_4action.yaml"
   rl: true
@@ -12,13 +12,15 @@ simulation:
     max_priority: 3
     use_expert: false
     agent_name: "Car_1"
-    max_horizon: 200
+    max_horizon: 150
     action_space: 4
     action_mapping:
       0: [1, 1, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0]
       1: [0, 0, 0, 0, 1, 1, 1, 1, 0, 0, 0, 0, 0]
       2: [0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 0]
       3: [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1]
+    obs_fov: 25
+    grounding_mode: "thesis_minimal"
     fov_entities:
       Entity: 4
     training_episode_data: "dataset/thesis/main_3cars_1ped/train_100_episodes.pkl"
@@ -44,7 +46,7 @@ eval_checkpoint:
   simulation_config:
     map_yaml_file: "config/maps/square_2x2.yaml"
     agent_yaml_file: "config/agents/thesis/main_3cars_1ped.yaml"
-    ontology_yaml_file: "config/rules/ontology_simple.yaml"
+    ontology_yaml_file: "config/rules/ontology_simple_weak.yaml"
     rule_type: "Z3_Expert"
     rule_yaml_file: "config/rules/Nav/easy/expert_minimal_4action.yaml"
     rl: true
@@ -55,13 +57,15 @@ eval_checkpoint:
       max_priority: 3
       use_expert: true
       agent_name: "Car_1"
-      max_horizon: 200
+      max_horizon: 150
       action_space: 4
       action_mapping:
         0: [1, 1, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0]
         1: [0, 0, 0, 0, 1, 1, 1, 1, 0, 0, 0, 0, 0]
         2: [0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 0]
         3: [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1]
+      obs_fov: 25
+      grounding_mode: "thesis_minimal"
       fov_entities:
         Entity: 4
       step_cost: 0
@@ -96,4 +100,4 @@ stable_baselines:
   train: true
   checkpoint_path: ""
   num_envs: 1
-  total_timesteps: 25000
+  total_timesteps: 20000

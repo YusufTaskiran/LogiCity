@@ -1,0 +1,104 @@
+simulation:
+  map_yaml_file: "config/maps/square_2x2.yaml"
+  agent_yaml_file: "config/agents/thesis/main_3cars_1ped.yaml"
+  ontology_yaml_file: "config/rules/ontology_simple_weak.yaml"
+  rule_type: "Z3_Expert"
+  rule_yaml_file: "config/rules/Nav/easy/expert_minimal_4action.yaml"
+  rl: true
+  debug: false
+  use_multi: false
+  agent_region: 100
+  rl_agent:
+    max_priority: 3
+    use_expert: true
+    agent_name: "Car_1"
+    require_ped_route_intersection: true
+    require_car_route_intersection: true
+    sample_attempts: 50
+    max_horizon: 250
+    action_space: 4
+    action_mapping:
+      0: [1, 1, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+      1: [0, 0, 0, 0, 1, 1, 1, 1, 0, 0, 0, 0, 0]
+      2: [0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 0]
+      3: [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1]
+    obs_fov: 8
+    grounding_mode: "thesis_minimal"
+    fov_entities:
+      Entity: 4
+    step_cost: 0
+    progress_reward: 0.1
+    goal_reward: 10
+    action_cost:
+      0: 0
+      1: 0
+      2: 0
+      3: 0
+    overtime_cost: -6
+
+stable_baselines:
+  algorithm: "PLSPPO"
+  policy_network: "MlpPolicy"
+  policy_kwargs:
+    features_extractor_module: "logicity.rl_agent.policy.neural"
+    features_extractor_class: "MLPFeatureExtractor"
+    features_extractor_kwargs:
+      features_dim: 32
+  hyperparameters:
+    learning_rate: 0.0003
+    clip_range: 0.2
+    vf_coef: 0.5
+    batch_size: 64
+    n_steps: 256
+    n_epochs: 10
+    ent_coef: 0.001
+    verbose: 1
+    tensorboard_log: "./tb_logs"
+  train: false
+  checkpoint_path: ""
+  num_envs: 1
+  episode_data: "dataset/thesis/main_3cars_1ped/test_50_episodes_shared_oracle.pkl"
+  eval_actions:
+    Slow: 0
+    Normal: 1
+    Fast: 2
+    Stop: 3
+
+shield:
+  enabled: true
+  train_time: true
+  test_time: true
+  method: "probabilistic_logic_shield"
+  backend: "problog"
+  use_privileged_internal_safety: true
+  graded_safety: true
+  shield_temperature: 1.0
+  graded_safety_weights:
+    must_stop:
+      slow: 0.05
+      normal: 0.01
+      fast: 0.0
+      stop: 1.0
+    warning:
+      slow: 0.90
+      normal: 0.60
+      fast: 0.10
+      stop: 0.85
+    fast_zone:
+      slow: 0.55
+      normal: 0.80
+      fast: 1.00
+      stop: 0.25
+    normal_zone:
+      slow: 0.75
+      normal: 1.00
+      fast: 0.35
+      stop: 0.40
+  stop_priority_scale: 1.0
+  safety_coefficient: 0.1
+  use_safety_loss: true
+  action_space: ["slow", "normal", "fast", "stop"]
+  unsafe_action: "fast"
+  safe_fallback_action: "stop"
+  threshold: 0.5
+  notes: "Thesis joint PLS shared-policy evaluation config using privileged global intersection facts with local ahead facts."

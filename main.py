@@ -1,4 +1,5 @@
 import os
+import glob
 import copy
 import time
 import csv
@@ -57,6 +58,20 @@ def attach_shield_config(config):
         )
         config["eval_checkpoint"]["simulation_config"]["rl_agent"]["shield"] = copy.deepcopy(shield_cfg)
     return config
+
+
+def _episode_eval_horizon(simulation_config, episode_cache, save_steps):
+    rl_cfg = simulation_config.get("rl_agent", {})
+    default_horizon = max(int(rl_cfg.get("max_horizon", 250)), 1)
+    label_info = episode_cache.get("label_info", {})
+    oracle_step = label_info.get("oracle_step")
+    if save_steps:
+        if oracle_step is not None:
+            return max(default_horizon, int(oracle_step) * 2)
+        return default_horizon
+    if oracle_step is not None:
+        return max(int(oracle_step) * 2, 1)
+    return default_horizon
 
 def dynamic_import(module_name, class_name):
     module = importlib.import_module(module_name)
@@ -226,6 +241,21 @@ def main_gym(args, logger):
         result_dir = os.path.join("results", args.exp)
         os.makedirs(result_dir, exist_ok=True)
         test_csv_path = os.path.join(result_dir, "test_metrics.csv")
+        rollout_world_dir = os.path.join(args.log_dir, args.exp)
+        os.makedirs(rollout_world_dir, exist_ok=True)
+        if args.save_steps:
+            stale_rollouts = glob.glob(os.path.join(rollout_world_dir, "*.pkl"))
+            for stale_path in stale_rollouts:
+                try:
+                    os.remove(stale_path)
+                except OSError:
+                    logger.warning("Failed to remove stale rollout pickle %s", stale_path)
+            if stale_rollouts:
+                logger.info(
+                    "Cleared %s stale rollout pickle(s) from %s before evaluation.",
+                    len(stale_rollouts),
+                    rollout_world_dir,
+                )
         eval_start_time = time.time()
         # RL testing mode
         with open(rl_config["episode_data"], "rb") as f:
@@ -237,6 +267,9 @@ def main_gym(args, logger):
         decision_step = {}
         succ_decision = {}
         fail_episodes = 0
+        hard_fail_events = 0
+        deadzone_fail_events = 0
+        simultaneous_entry_fail_events = 0
         timeout_episodes = 0
         truncated_episodes = 0
         stop_action_id = int(rl_config["eval_actions"].get("Stop", next(iter(rl_config["eval_actions"].values()))))
@@ -262,14 +295,11 @@ def main_gym(args, logger):
             #     continue
             logger.info("Evaluating episode {}...".format(ts))
             episode_cache = episode_data[ts]
-            max_steps = 10000
+            max_steps = _episode_eval_horizon(simulation_config, episode_cache, args.save_steps)
             if "label_info" in episode_cache:
                 logger.info("Episode label: {}".format(episode_cache["label_info"]))
                 if "oracle_step" in episode_cache["label_info"]:
                     oracle_steps.append(int(episode_cache["label_info"]["oracle_step"]))
-            if not args.save_steps:
-                assert "oracle_step" in episode_cache["label_info"], "Need oracle step for evaluation."
-                max_steps = episode_cache["label_info"]["oracle_step"] * 2
             eval_env, cached_observation = make_env(simulation_config, episode_cache, True)
             if rl_config["algorithm"] == "ExpertCollector" or rl_config["algorithm"] == "Random":
                 # expert and random agent do not need a policy network
@@ -296,12 +326,17 @@ def main_gym(args, logger):
             if hasattr(model, "reset_shield_metrics"):
                 model.reset_shield_metrics()
             o = eval_env.init()
+            if (ts in vis_id) or (-1 in vis_id):
+                cached_observation["Time_Obs"][0] = {"World": eval_env.env.city_grid.clone()}
             rew = 0    
             step = 0   
             local_decision_step = {}
             local_succ_decision = {}
             local_policy_action_hist = {}
             local_expert_action_hist = {}
+            local_hard_fail_events = 0
+            local_deadzone_fail_events = 0
+            local_simultaneous_entry_fail_events = 0
             local_predicted_stop = 0
             local_expert_stop = 0
             local_matched_stop = 0
@@ -341,6 +376,12 @@ def main_gym(args, logger):
                         predicted_stop_total += 1
                         local_predicted_stop += 1
                     o, r, d, i = eval_env.step(action_int)
+                    local_hard_fail_events += int(i.get("hard_fail_step_count", 0))
+                    local_deadzone_fail_events += int(i.get("deadzone_fail_step_count", 0))
+                    local_simultaneous_entry_fail_events += int(i.get("simultaneous_entry_fail_step_count", 0))
+                    hard_fail_events += int(i.get("hard_fail_step_count", 0))
+                    deadzone_fail_events += int(i.get("deadzone_fail_step_count", 0))
+                    simultaneous_entry_fail_events += int(i.get("simultaneous_entry_fail_step_count", 0))
                     if i["Fail"][0]:
                         termination_reason = "fail"
                         rew += r
@@ -369,6 +410,12 @@ def main_gym(args, logger):
                         predicted_stop_total += 1
                         local_predicted_stop += 1
                     o, r, d, i = eval_env.step(action_int)
+                    local_hard_fail_events += int(i.get("hard_fail_step_count", 0))
+                    local_deadzone_fail_events += int(i.get("deadzone_fail_step_count", 0))
+                    local_simultaneous_entry_fail_events += int(i.get("simultaneous_entry_fail_step_count", 0))
+                    hard_fail_events += int(i.get("hard_fail_step_count", 0))
+                    deadzone_fail_events += int(i.get("deadzone_fail_step_count", 0))
+                    simultaneous_entry_fail_events += int(i.get("simultaneous_entry_fail_step_count", 0))
                     if (ts in vis_id) or (-1 in vis_id):
                         cached_observation["Time_Obs"][step] = i
                     if i["Fail"][0]:
@@ -421,6 +468,9 @@ def main_gym(args, logger):
                 "mean_reward": rew,
                 "termination_reason": termination_reason,
                 "fail": int(termination_reason == "fail"),
+                "hard_fail_events": local_hard_fail_events,
+                "deadzone_fail_events": local_deadzone_fail_events,
+                "simultaneous_entry_fail_events": local_simultaneous_entry_fail_events,
                 "timeout": int(termination_reason == "overtime"),
                 "truncated": int(step >= max_steps),
                 "policy_stop_count": local_predicted_stop,
@@ -440,7 +490,7 @@ def main_gym(args, logger):
             })
             if (ts in vis_id) or (-1 in vis_id):
                 # worlds[ts] = cached_observation
-                with open(os.path.join(args.log_dir, "{}_{}.pkl".format(args.exp, ts)), "wb") as f:
+                with open(os.path.join(rollout_world_dir, "{}_{}.pkl".format(args.exp, ts)), "wb") as f:
                     pkl.dump(cached_observation, f)
         mean_reward = np.mean(rew_list)
         np.save(os.path.join(args.log_dir, "{}_rewards.npy".format(args.exp)), rew_list)
@@ -451,6 +501,13 @@ def main_gym(args, logger):
         logger.info("Mean Decision Succ: {}".format(mSuccD))
         logger.info("Average Decision Succ: {}".format(aSuccD))
         logger.info("Decision Succ for each action: {}".format(SuccDAct))
+        logger.info("Hard fail events: {}".format(hard_fail_events))
+        logger.info(
+            "Hard fail breakdown deadzone/simultaneous_entry: {}/{}".format(
+                deadzone_fail_events,
+                simultaneous_entry_fail_events,
+            )
+        )
         logger.info("Test metrics CSV: {}".format(test_csv_path))
         summary_row = {
             "row_type": "summary",
@@ -459,6 +516,9 @@ def main_gym(args, logger):
             "dsr": SuccDAct.get(stop_action_id, 0.0) if decision_step.get(stop_action_id, 0) > 0 else None,
             "mean_reward": mean_reward,
             "fail": fail_episodes,
+            "hard_fail_events": hard_fail_events,
+            "deadzone_fail_events": deadzone_fail_events,
+            "simultaneous_entry_fail_events": simultaneous_entry_fail_events,
             "timeout": timeout_episodes,
             "truncated": truncated_episodes,
             "policy_stop_count": predicted_stop_total,
@@ -513,11 +573,13 @@ def cal_step_metric(decision_step, succ_decision):
 if __name__ == '__main__':
     args = parse_arguments()
     logger = setup_logger(log_dir=args.log_dir, log_name=args.exp)
+    config_preview = load_config(args.config)
+    is_rl_config = ("stable_baselines" in config_preview)
     if args.collect_only:
         logger.info("Running in data collection mode.")
         logger.info("Loading simulation config from {}.".format(args.config))
         main_collect(args, logger)
-    elif args.use_gym:
+    elif args.use_gym or is_rl_config:
         logger.info("Running in RL mode.")
         logger.info("Loading RL config from {}.".format(args.config))
         # RL mode, will use gym wrapper to learn and test an agent

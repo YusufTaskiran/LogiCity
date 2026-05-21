@@ -1,6 +1,7 @@
 from stable_baselines3.common.callbacks import CheckpointCallback
 from logicity.utils.load import CityLoader
 from logicity.utils.gym_wrapper import GymCityWrapper
+from logicity.utils.pred_converter.z3 import global_stop_required_conflict_witness
 import numpy as np
 import torch
 import os
@@ -9,6 +10,16 @@ import logging
 import pickle as pkl
 import time
 logger = logging.getLogger(__name__)
+
+
+def _episode_eval_horizon(simulation_config, episode_cache):
+    rl_cfg = simulation_config.get("rl_agent", {})
+    default_horizon = max(int(rl_cfg.get("max_horizon", 250)), 1)
+    label_info = episode_cache.get("label_info", {})
+    oracle_step = label_info.get("oracle_step")
+    if oracle_step is None:
+        return default_horizon, None
+    return max(int(np.ceil(float(oracle_step) * 2.5)), 1), int(oracle_step)
 
 def _extract_action_probs(model, obs):
     policy = getattr(model, "policy", None)
@@ -58,11 +69,19 @@ class EvalCheckpointCallback(CheckpointCallback):
         self.train_success = 0
         self.train_truncated = 0
         self.train_completed = 0
+        self.train_hard_fail_events = 0
+        self.train_rule_based_fail_events = 0
+        self.train_deadzone_fail_events = 0
+        self.train_simultaneous_entry_fail_events = 0
         self._last_eval_train_fail = 0
         self._last_eval_train_timeout = 0
         self._last_eval_train_success = 0
         self._last_eval_train_truncated = 0
         self._last_eval_train_completed = 0
+        self._last_eval_train_hard_fail_events = 0
+        self._last_eval_train_rule_based_fail_events = 0
+        self._last_eval_train_deadzone_fail_events = 0
+        self._last_eval_train_simultaneous_entry_fail_events = 0
 
     def _update_training_episode_counters(self):
         infos = self.locals.get("infos")
@@ -70,6 +89,10 @@ class EvalCheckpointCallback(CheckpointCallback):
         if infos is None or dones is None:
             return
         for done, info in zip(dones, infos):
+            self.train_hard_fail_events += int(info.get("hard_fail_step_count", 0))
+            self.train_rule_based_fail_events += int(info.get("rule_based_fail_step_count", 0))
+            self.train_deadzone_fail_events += int(info.get("deadzone_fail_step_count", 0))
+            self.train_simultaneous_entry_fail_events += int(info.get("simultaneous_entry_fail_step_count", 0))
             if not done:
                 continue
             self.train_completed += 1
@@ -90,6 +113,10 @@ class EvalCheckpointCallback(CheckpointCallback):
             "dsr",
             "mean_reward",
             "fail",
+            "hard_fail_events",
+            "rule_based_fail_events",
+            "deadzone_fail_events",
+            "simultaneous_entry_fail_events",
             "timeout",
             "truncated",
             "policy_stop_count",
@@ -112,11 +139,19 @@ class EvalCheckpointCallback(CheckpointCallback):
             "train_success",
             "train_truncated",
             "train_completed",
+            "train_hard_fail_events",
+            "train_rule_based_fail_events",
+            "train_deadzone_fail_events",
+            "train_simultaneous_entry_fail_events",
             "train_fail_since_last_eval",
             "train_timeout_since_last_eval",
             "train_success_since_last_eval",
             "train_truncated_since_last_eval",
             "train_completed_since_last_eval",
+            "train_hard_fail_events_since_last_eval",
+            "train_rule_based_fail_events_since_last_eval",
+            "train_deadzone_fail_events_since_last_eval",
+            "train_simultaneous_entry_fail_events_since_last_eval",
         ]
         row = {
             "step": step,
@@ -124,6 +159,10 @@ class EvalCheckpointCallback(CheckpointCallback):
             "dsr": SuccDAct.get(self.stop_action_id, 0.0),
             "mean_reward": mean_reward,
             "fail": 0,
+            "hard_fail_events": 0,
+            "rule_based_fail_events": 0,
+            "deadzone_fail_events": 0,
+            "simultaneous_entry_fail_events": 0,
             "timeout": 0,
             "truncated": 0,
             "policy_stop_count": 0,
@@ -146,11 +185,19 @@ class EvalCheckpointCallback(CheckpointCallback):
             "train_success": 0,
             "train_truncated": 0,
             "train_completed": 0,
+            "train_hard_fail_events": 0,
+            "train_rule_based_fail_events": 0,
+            "train_deadzone_fail_events": 0,
+            "train_simultaneous_entry_fail_events": 0,
             "train_fail_since_last_eval": 0,
             "train_timeout_since_last_eval": 0,
             "train_success_since_last_eval": 0,
             "train_truncated_since_last_eval": 0,
             "train_completed_since_last_eval": 0,
+            "train_hard_fail_events_since_last_eval": 0,
+            "train_rule_based_fail_events_since_last_eval": 0,
+            "train_deadzone_fail_events_since_last_eval": 0,
+            "train_simultaneous_entry_fail_events_since_last_eval": 0,
         }
         if extra_metrics is not None:
             for key, value in extra_metrics.items():
@@ -197,6 +244,10 @@ class EvalCheckpointCallback(CheckpointCallback):
             policy_action_hist = {}
             expert_action_hist = {}
             fail_episodes = 0
+            hard_fail_events = 0
+            rule_based_fail_events = 0
+            deadzone_fail_events = 0
+            simultaneous_entry_fail_events = 0
             timeout_episodes = 0
             truncated_episodes = 0
             episode_lengths = []
@@ -214,8 +265,9 @@ class EvalCheckpointCallback(CheckpointCallback):
                 episode_cache = self.episode_data[ts]
                 if "label_info" in episode_cache:
                     logger.info("Episode label: {}".format(episode_cache["label_info"]))
-                max_steps = episode_cache["label_info"]["oracle_step"] * 2
-                oracle_steps.append(int(episode_cache["label_info"]["oracle_step"]))
+                max_steps, oracle_step = _episode_eval_horizon(self.simulation_config, episode_cache)
+                if oracle_step is not None:
+                    oracle_steps.append(oracle_step)
                 eval_env = make_env(self.simulation_config, episode_cache, False)
                 obs = eval_env.init()
                 episode_rewards = 0
@@ -224,6 +276,10 @@ class EvalCheckpointCallback(CheckpointCallback):
                 local_succ_decision = {}
                 local_policy_action_hist = {}
                 local_expert_action_hist = {}
+                local_hard_fail_events = 0
+                local_rule_based_fail_events = 0
+                local_deadzone_fail_events = 0
+                local_simultaneous_entry_fail_events = 0
                 local_predicted_stop = 0
                 local_expert_stop = 0
                 local_matched_stop = 0
@@ -276,7 +332,7 @@ class EvalCheckpointCallback(CheckpointCallback):
                         )
                     if shield_snapshot is not None:
                         logger.info(
-                            "Eval shield snapshot episode=%s step=%s safe_bits=%s shield_facts=%s base_probs=%s shielded_probs=%s safe_probs=%s base_safety=%.4f shielded_safety=%.4f action=%s expert=%s",
+                            "Eval shield snapshot episode=%s step=%s safe_bits=%s shield_facts=%s shield_debug=%s base_probs=%s shielded_probs=%s safe_probs=%s base_safety=%.4f shielded_safety=%.4f action=%s expert=%s",
                             ts,
                             step,
                             {
@@ -285,6 +341,7 @@ class EvalCheckpointCallback(CheckpointCallback):
                                 if key in shield_snapshot
                             },
                             shield_snapshot.get("shield_facts", {}),
+                            shield_snapshot.get("shield_debug", {}),
                             shield_snapshot.get("base_probs"),
                             shield_snapshot.get("shielded_probs"),
                             shield_snapshot.get("safe_probs"),
@@ -303,11 +360,18 @@ class EvalCheckpointCallback(CheckpointCallback):
                                 self.model.set_shield_context_from_env(eval_env, obs)
                             try:
                                 stop_snapshot = self.model.debug_action_snapshot(obs)
+                                stop_witness = global_stop_required_conflict_witness(
+                                    eval_env.env.city_grid,
+                                    eval_env.env.intersection_matrix,
+                                    eval_env.env.agents,
+                                    f"Entity_{eval_env.agent.type}_{eval_env.agent.layer_id}",
+                                )
                                 logger.info(
-                                    "Eval first required-stop snapshot episode=%s step=%s shield_facts=%s base_probs=%s shielded_probs=%s safe_probs=%s base_safety=%.4f shielded_safety=%.4f action=%s expert=%s",
+                                    "Eval first required-stop snapshot episode=%s step=%s shield_facts=%s stop_witness=%s base_probs=%s shielded_probs=%s safe_probs=%s base_safety=%.4f shielded_safety=%.4f action=%s expert=%s",
                                     ts,
                                     step,
                                     stop_snapshot.get("shield_facts", {}),
+                                    stop_witness,
                                     stop_snapshot.get("base_probs"),
                                     stop_snapshot.get("shielded_probs"),
                                     stop_snapshot.get("safe_probs"),
@@ -332,6 +396,14 @@ class EvalCheckpointCallback(CheckpointCallback):
                         predicted_stop_total += 1
                         local_predicted_stop += 1
                     obs, reward, done, info = eval_env.step(action_int)
+                    local_hard_fail_events += int(info.get("hard_fail_step_count", 0))
+                    local_rule_based_fail_events += int(info.get("rule_based_fail_step_count", 0))
+                    local_deadzone_fail_events += int(info.get("deadzone_fail_step_count", 0))
+                    local_simultaneous_entry_fail_events += int(info.get("simultaneous_entry_fail_step_count", 0))
+                    hard_fail_events += int(info.get("hard_fail_step_count", 0))
+                    rule_based_fail_events += int(info.get("rule_based_fail_step_count", 0))
+                    deadzone_fail_events += int(info.get("deadzone_fail_step_count", 0))
+                    simultaneous_entry_fail_events += int(info.get("simultaneous_entry_fail_step_count", 0))
                     if info["Fail"][0]:
                         failed_reason = "fail"
                         episode_rewards += reward
@@ -386,6 +458,14 @@ class EvalCheckpointCallback(CheckpointCallback):
             logger.info("Decision Succ for each action: {}".format(SuccDAct))
             logger.info("Mean Episode Length: {}".format(float(np.mean(episode_lengths)) if episode_lengths else 0.0))
             logger.info("Termination Counts fail/overtime/truncated: {}/{}/{}".format(fail_episodes, timeout_episodes, truncated_episodes))
+            logger.info("Hard fail events: {}".format(hard_fail_events))
+            logger.info(
+                "Hard fail breakdown rule_based/deadzone/simultaneous_entry: {}/{}/{}".format(
+                    rule_based_fail_events,
+                    deadzone_fail_events,
+                    simultaneous_entry_fail_events,
+                )
+            )
             logger.info("Policy Action Hist: {}".format(policy_action_hist))
             logger.info("Expert Action Hist: {}".format(expert_action_hist))
             logger.info(
@@ -409,6 +489,14 @@ class EvalCheckpointCallback(CheckpointCallback):
                 file.write("Decision Succ for each action: {}\n".format(SuccDAct))
                 file.write("Mean Episode Length: {}\n".format(float(np.mean(episode_lengths)) if episode_lengths else 0.0))
                 file.write("Termination Counts fail/overtime/truncated: {}/{}/{}\n".format(fail_episodes, timeout_episodes, truncated_episodes))
+                file.write("Hard fail events: {}\n".format(hard_fail_events))
+                file.write(
+                    "Hard fail breakdown rule_based/deadzone/simultaneous_entry: {}/{}/{}\n".format(
+                        rule_based_fail_events,
+                        deadzone_fail_events,
+                        simultaneous_entry_fail_events,
+                    )
+                )
                 file.write("Policy Action Hist: {}\n".format(policy_action_hist))
                 file.write("Expert Action Hist: {}\n".format(expert_action_hist))
                 file.write("Stop Counts policy/expert/matched: {}/{}/{}\n".format(predicted_stop_total, expert_stop_total, matched_stop_total))
@@ -421,6 +509,10 @@ class EvalCheckpointCallback(CheckpointCallback):
                     )
             extra_metrics = {
                 "fail": fail_episodes,
+                "hard_fail_events": hard_fail_events,
+                "rule_based_fail_events": rule_based_fail_events,
+                "deadzone_fail_events": deadzone_fail_events,
+                "simultaneous_entry_fail_events": simultaneous_entry_fail_events,
                 "timeout": timeout_episodes,
                 "truncated": truncated_episodes,
                 "policy_stop_count": predicted_stop_total,
@@ -445,11 +537,27 @@ class EvalCheckpointCallback(CheckpointCallback):
                 "train_success": int(self.train_success),
                 "train_truncated": int(self.train_truncated),
                 "train_completed": int(self.train_completed),
+                "train_hard_fail_events": int(self.train_hard_fail_events),
+                "train_rule_based_fail_events": int(self.train_rule_based_fail_events),
+                "train_deadzone_fail_events": int(self.train_deadzone_fail_events),
+                "train_simultaneous_entry_fail_events": int(self.train_simultaneous_entry_fail_events),
                 "train_fail_since_last_eval": int(self.train_fail - self._last_eval_train_fail),
                 "train_timeout_since_last_eval": int(self.train_timeout - self._last_eval_train_timeout),
                 "train_success_since_last_eval": int(self.train_success - self._last_eval_train_success),
                 "train_truncated_since_last_eval": int(self.train_truncated - self._last_eval_train_truncated),
                 "train_completed_since_last_eval": int(self.train_completed - self._last_eval_train_completed),
+                "train_hard_fail_events_since_last_eval": int(
+                    self.train_hard_fail_events - self._last_eval_train_hard_fail_events
+                ),
+                "train_rule_based_fail_events_since_last_eval": int(
+                    self.train_rule_based_fail_events - self._last_eval_train_rule_based_fail_events
+                ),
+                "train_deadzone_fail_events_since_last_eval": int(
+                    self.train_deadzone_fail_events - self._last_eval_train_deadzone_fail_events
+                ),
+                "train_simultaneous_entry_fail_events_since_last_eval": int(
+                    self.train_simultaneous_entry_fail_events - self._last_eval_train_simultaneous_entry_fail_events
+                ),
             }
             if hasattr(self.model, "get_shield_metrics"):
                 extra_metrics.update(self.model.get_shield_metrics())
@@ -465,6 +573,10 @@ class EvalCheckpointCallback(CheckpointCallback):
             self._last_eval_train_success = self.train_success
             self._last_eval_train_truncated = self.train_truncated
             self._last_eval_train_completed = self.train_completed
+            self._last_eval_train_hard_fail_events = self.train_hard_fail_events
+            self._last_eval_train_rule_based_fail_events = self.train_rule_based_fail_events
+            self._last_eval_train_deadzone_fail_events = self.train_deadzone_fail_events
+            self._last_eval_train_simultaneous_entry_fail_events = self.train_simultaneous_entry_fail_events
 
             # Update the best model if current mean reward is better
             if mean_reward > self.best_mean_reward:
@@ -547,7 +659,7 @@ class DreamerEvalCheckpointCallback(CheckpointCallback):
                 episode_cache = self.episode_data[ts]
                 if "label_info" in episode_cache:
                     logger.info("Episode label: {}".format(episode_cache["label_info"]))
-                max_steps = episode_cache["label_info"]["oracle_step"] * 2
+                max_steps, _ = _episode_eval_horizon(self.simulation_config, episode_cache)
                 eval_env = make_env(self.simulation_config, episode_cache, False)
                 obs = eval_env.init()
                 episode_rewards = 0

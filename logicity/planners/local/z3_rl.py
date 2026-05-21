@@ -11,6 +11,8 @@ from ...core.config import *
 from multiprocessing import Pool
 from ...utils.find import find_agent
 from ...utils.sample import split_into_subsets
+from ...utils.pred_converter.z3 import global_in_intersection_higher_pri_conflict
+from ...utils.pred_converter.z3 import IsAtInter, IsInInter
 from .z3 import Z3Planner
 from .z3 import PesudoAgent
 
@@ -24,6 +26,33 @@ class Z3PlannerRL(Z3Planner):
 
     def reset(self):
         self.last_rl_obs = None
+
+    def _build_joint_shield_context(self, world_matrix, intersect_matrix, agents, ego_agent):
+        ego_entity = f"Entity_{ego_agent.type}_{ego_agent.layer_id}"
+        context = {
+            "ego_at_inter": float(IsAtInter(world_matrix, intersect_matrix, agents, ego_entity)),
+            "ego_in_inter": float(IsInInter(world_matrix, intersect_matrix, agents, ego_entity)),
+            "other_at_inter": [],
+            "other_in_inter": [],
+            "other_is_car": [],
+            "higher_pri": [],
+            "ordered_other_entities": [],
+        }
+        other_agents = [agent for agent in agents if agent.layer_id != ego_agent.layer_id]
+        other_agents.sort(key=lambda agent: agent.layer_id)
+        for other_agent in other_agents:
+            other_entity = f"Entity_{other_agent.type}_{other_agent.layer_id}"
+            context["ordered_other_entities"].append(other_entity)
+            context["other_at_inter"].append(float(IsAtInter(world_matrix, intersect_matrix, agents, other_entity)))
+            context["other_in_inter"].append(float(IsInInter(world_matrix, intersect_matrix, agents, other_entity)))
+            context["other_is_car"].append(float(other_agent.type == "Car"))
+            context["higher_pri"].append(float(other_agent.priority < ego_agent.priority))
+        while len(context["other_at_inter"]) < self.fov_entities["Entity"] - 1:
+            context["other_at_inter"].append(0.0)
+            context["other_in_inter"].append(0.0)
+            context["other_is_car"].append(0.0)
+            context["higher_pri"].append(0.0)
+        return context
 
     def _create_rules(self):
         assert "Task" in self.data["Rules"].keys(), "Make sure the task rule is defined"
@@ -121,10 +150,24 @@ class Z3PlannerRL(Z3Planner):
                                             self.rules['Task'], self.entity_types, self.predicates, self.z3_vars,
                                             partial_agents[ego_name], partial_world[ego_name], partial_intersections[ego_name], 
                                             self.fov_entities, True, rl_input_shape=self.rl_input_shape)
+                    shield_key = "{}_shield_context".format(ego_name)
+                    if shield_key in result:
+                        result[shield_key]["joint_intersection_context"] = self._build_joint_shield_context(
+                            local_world_matrix,
+                            local_intersections,
+                            agents,
+                            ego_agent[ego_name],
+                        )
                     self.last_rl_obs = {
                         "last_obs_dict": copy.deepcopy(result["{}_grounding_dic".format(ego_name)]),
                         "last_obs": result["{}_grounding".format(ego_name)].copy(),
                         "shield_context": copy.deepcopy(result.get("{}_shield_context".format(ego_name))),
+                        "full_context": {
+                            "world_matrix": local_world_matrix.clone(),
+                            "intersect_matrix": local_intersections.clone(),
+                            "agents": copy.deepcopy(agents),
+                            "ego_entity": f"Entity_{ego_agent[ego_name].type}_{ego_agent[ego_name].layer_id}",
+                        },
                     }
                 else:
                     result = solve_sub_problem(ego_name, ego_agent[ego_name].action_mapping, ego_agent[ego_name].action_dist,
@@ -141,7 +184,7 @@ class Z3PlannerRL(Z3Planner):
         if self.last_rl_obs is None:
             return 0
         fail, reward = eval_action(rl_action, self.rules['Task'], self.entity_types, self.predicates, self.z3_vars, self.fov_entities,
-                             self.last_rl_obs["last_obs_dict"], self.last_rl_obs["last_obs"])
+                             self.last_rl_obs["last_obs_dict"], self.last_rl_obs["last_obs"], self.last_rl_obs.get("full_context"))
         self.last_rl_obs = None
         return fail, reward
 
@@ -159,33 +202,46 @@ class Z3PlannerRL(Z3Planner):
             assert len((ego_layer == TYPE_MAP[agent.type]).nonzero()) == 1, ValueError("Ego agent {}_{} should be unique in the world matrix, now it is {}".format(agent.type, agent.layer_id, (ego_layer == TYPE_MAP[agent.type]).nonzero()))
             ego_position = (ego_layer == TYPE_MAP[agent.type]).nonzero()[0]
             ego_direction = agent.last_move_dir
-            x_start, y_start, x_end, y_end = self.get_fov(ego_position, ego_direction, world_matrix.shape[1], world_matrix.shape[2])
+            current_obs_fov = self.rl_obs_fov if rl_flag[ego_name] else self.obs_fov
+            x_start, y_start, x_end, y_end = self.get_fov(
+                ego_position,
+                ego_direction,
+                world_matrix.shape[1],
+                world_matrix.shape[2],
+                obs_fov=current_obs_fov,
+            )
             partial_world_all = world_matrix[:, x_start:x_end, y_start:y_end].clone()
             partial_intersections = intersect_matrix[:, x_start:x_end, y_start:y_end].clone()
+            ego_local_position = (partial_world_all[agent.layer_id] == TYPE_MAP[agent.type]).nonzero()[0]
             partial_world_nonzero_int = torch.logical_and(partial_world_all != 0, \
                                                           partial_world_all == partial_world_all.to(torch.int64))
             # Apply torch.any across dimensions 1 and 2 sequentially
             non_zero_layers = partial_world_nonzero_int.any(dim=1).any(dim=1)
             non_zero_layer_indices = torch.where(non_zero_layers)[0]
-            partial_world_squeezed = partial_world_all[non_zero_layers]
+            agent_layer_indices = [int(idx) for idx in non_zero_layer_indices.tolist() if int(idx) in layerid2listid]
+            partial_world_squeezed = partial_world_all[agent_layer_indices]
             partial_agent = {}
             for layer_id in range(partial_world_squeezed.shape[0]):
                 layer = partial_world_squeezed[layer_id]
-                layer_nonzero_int = torch.logical_and(layer != 0, layer == layer.to(torch.int64))
-                if layer_nonzero_int.nonzero().shape[0] > 1:
+                other_agent_layer_id = agent_layer_indices[layer_id]
+                other_agent = agents[layerid2listid[other_agent_layer_id]]
+                live_agent_mask = layer == TYPE_MAP[other_agent.type]
+                live_agent_cells = live_agent_mask.nonzero()
+                if live_agent_cells.shape[0] != 1:
                     continue
                 if len(partial_agent) >= self.fov_entities["Entity"] and rl_flag[ego_name]:
                     # can only handle fixed number of agents
                     break
-                non_zero_values = int(layer[layer_nonzero_int.nonzero()[0][0], layer_nonzero_int.nonzero()[0][1]])
-                agent_type = LABEL_MAP[non_zero_values]
-                # find this agent
-                other_agent_layer_id = int(non_zero_layer_indices[layer_id])
-                other_agent = agents[layerid2listid[other_agent_layer_id]]
+                agent_type = other_agent.type
                 assert other_agent.type == agent_type
                 if other_agent_layer_id == agent.layer_id:
                     partial_agent["ego_{}".format(layer_id)] = PesudoAgent(agent_type, layer_id, other_agent.concepts, other_agent.last_move_dir)
                 else:
+                    if self.entity_detect_min_radius > 0.0:
+                        other_local_position = live_agent_cells[0]
+                        distance = float(torch.sqrt(torch.sum((other_local_position - ego_local_position).float() ** 2)).item())
+                        if distance <= self.entity_detect_min_radius:
+                            continue
                     partial_agent[str(layer_id)] = PesudoAgent(agent_type, layer_id, other_agent.concepts, other_agent.last_move_dir)
             if rl_flag[ego_name]:
                 # RL agent needs fixed number of entities
@@ -439,7 +495,8 @@ def eval_action(rl_action,
                 var_names,
                 fov_entities,
                 last_obs_dict,
-                last_obs):
+                last_obs,
+                full_context=None):
     grounding = []
     # 1. create sorts and variables
     entity_sorts = {}
@@ -526,13 +583,14 @@ def eval_action(rl_action,
     assert np.all(obs == last_obs), print(obs, last_obs)
     fail = False
     reward = 0
-    for rule_name, rule_solver in local_solvers.items():
-        if rule_solver.check() == sat:
-                continue
-        else:
-            if rule_tem[rule_name]["dead"]:
-                fail = True
-            reward += local_rule_tem[rule_name]["reward"]
+    if full_context is None:
+        for rule_name, rule_solver in local_solvers.items():
+            if rule_solver.check() == sat:
+                    continue
+            else:
+                if rule_tem[rule_name]["dead"]:
+                    fail = True
+                reward += local_rule_tem[rule_name]["reward"]
 
     return fail, reward
 

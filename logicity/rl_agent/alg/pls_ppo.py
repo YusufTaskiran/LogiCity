@@ -64,11 +64,12 @@ class PLSPPO(SB3PPO):
                 self._pls_pred_grounding_index,
                 num_actions=int(getattr(self.action_space, "n", 4)),
                 stop_action=stop_action,
-                backend=str(self._shield_cfg.get("backend", "heuristic")),
+                backend=str(self._shield_cfg.get("backend", "problog")),
                 use_privileged_internal_safety=bool(self._shield_cfg.get("use_privileged_internal_safety", False)),
                 stop_priority_scale=float(self._shield_cfg.get("stop_priority_scale", 0.2)),
                 graded_safety=bool(self._shield_cfg.get("graded_safety", False)),
                 graded_safety_weights=self._shield_cfg.get("graded_safety_weights"),
+                action_space=self._shield_cfg.get("action_space"),
             )
         except Exception as exc:
             self._pls_enabled = False
@@ -89,11 +90,12 @@ class PLSPPO(SB3PPO):
                 self._pls_pred_grounding_index,
                 num_actions=int(getattr(self.action_space, "n", 4)),
                 stop_action=stop_action,
-                backend=str((self._shield_cfg or {}).get("backend", "heuristic")),
+                backend=str((self._shield_cfg or {}).get("backend", "problog")),
                 use_privileged_internal_safety=bool((self._shield_cfg or {}).get("use_privileged_internal_safety", False)),
                 stop_priority_scale=float((self._shield_cfg or {}).get("stop_priority_scale", 0.2)),
                 graded_safety=bool((self._shield_cfg or {}).get("graded_safety", False)),
                 graded_safety_weights=(self._shield_cfg or {}).get("graded_safety_weights"),
+                action_space=(self._shield_cfg or {}).get("action_space"),
             )
 
     def _register_shield_context(self, observation: np.ndarray, env_source: Any | None = None) -> None:
@@ -126,11 +128,12 @@ class PLSPPO(SB3PPO):
             self._pls_pred_grounding_index,
             num_actions=int(getattr(self.action_space, "n", 4)),
             stop_action=stop_action,
-            backend=str((self._shield_cfg or {}).get("backend", "heuristic")),
+            backend=str((self._shield_cfg or {}).get("backend", "problog")),
             use_privileged_internal_safety=bool((self._shield_cfg or {}).get("use_privileged_internal_safety", False)),
             stop_priority_scale=float((self._shield_cfg or {}).get("stop_priority_scale", 0.2)),
             graded_safety=bool((self._shield_cfg or {}).get("graded_safety", False)),
             graded_safety_weights=(self._shield_cfg or {}).get("graded_safety_weights"),
+            action_space=(self._shield_cfg or {}).get("action_space"),
         )
 
     def _temperature_adjusted_safe_probs(self, safe_probs: th.Tensor) -> th.Tensor:
@@ -243,6 +246,7 @@ class PLSPPO(SB3PPO):
         }
         if self._shield is not None:
             snapshot["shield_facts"] = self._shield.debug_state_facts(obs_np)
+            snapshot["shield_debug"] = self._shield.debug_snapshot(obs_np)
         if self._pls_pred_grounding_index is not None:
             for pred_name in ("IsSafeStep1", "IsSafeStep2", "IsSafeStep3", "IsSafeWait"):
                 if pred_name in self._pls_pred_grounding_index:

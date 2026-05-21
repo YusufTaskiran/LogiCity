@@ -28,11 +28,18 @@ class GymCityWrapper(gym.core.Env):
         self.grounding_mode = env.rl_agent.get("grounding_mode")
         if self.grounding_mode is None:
             self.grounding_mode = "ego_only" if self.ego_only_grounding else "full"
+        self.excluded_observation_predicates = set(
+            env.rl_agent.get("excluded_observation_predicates", ["CollidingClose"])
+        )
         self.obs_indices = None
         if self.grounding_mode == "ego_only":
             self._configure_ego_only_grounding()
         elif self.grounding_mode == "compact_relational":
             self._configure_compact_relational_grounding()
+        elif self.grounding_mode == "thesis_minimal":
+            self._configure_thesis_minimal_grounding()
+        elif self.excluded_observation_predicates:
+            self._configure_full_grounding_exclusions()
         # self.observation_space = Dict({
         #     "map": Box(low=-1.0, high=1.0, shape=(3, self.fov, self.fov), dtype=np.float32),  # Adjust the shape as needed
         #     "position": Box(low=0.0, high=1.0, shape=(6,), dtype=np.float32)
@@ -74,6 +81,10 @@ class GymCityWrapper(gym.core.Env):
         self.t = 0
         self.current_episode_reward = 0
         self.current_episode_length = 0
+        self.current_episode_hard_fail_count = 0
+        self.current_episode_rule_based_fail_count = 0
+        self.current_episode_deadzone_fail_count = 0
+        self.current_episode_simultaneous_entry_fail_count = 0
         self.last_route_index = None
         self.require_route_intersection = env.rl_agent.get("require_route_intersection", False)
         self.reset_attempts = env.rl_agent.get("reset_attempts", 20)
@@ -189,8 +200,84 @@ class GymCityWrapper(gym.core.Env):
         self.pred_grounding_index = new_pred_grounding_index
         self.logic_grounding_shape = len(obs_indices)
 
+    def _configure_full_grounding_exclusions(self):
+        obs_indices = []
+        new_pred_grounding_index = {}
+        cursor = 0
+
+        for pred_name, (start, end) in self.pred_grounding_index.items():
+            if pred_name in self.excluded_observation_predicates:
+                continue
+            selected = list(range(start, end))
+            if not selected:
+                continue
+            obs_indices.extend(selected)
+            new_pred_grounding_index[pred_name] = (cursor, cursor + len(selected))
+            cursor += len(selected)
+
+        self.obs_indices = np.asarray(obs_indices, dtype=np.int64)
+        self.pred_grounding_index = new_pred_grounding_index
+        self.logic_grounding_shape = len(obs_indices)
+
+    def _configure_thesis_minimal_grounding(self):
+        self.logic_grounding_shape = 6
+        self.pred_grounding_index = {
+            "ego_in_inter": (0, 1),
+            "other_in_inter": (1, 2),
+            "ego_at_inter": (2, 3),
+            "close_ahead": (3, 4),
+            "ahead": (4, 5),
+            "higher_pri": (5, 6),
+        }
+
+    def _build_thesis_minimal_obs(self, grounding_dic):
+        entity_slots = int(self.env.rl_agent["fov_entities"]["Entity"])
+
+        def _binary_idx(first_idx, second_idx):
+            return first_idx * entity_slots + second_idx
+
+        ego_in_inter = float(grounding_dic.get("IsInInter_0", 0.0))
+        other_in_inter = max(
+            max(
+                float(grounding_dic.get(f"IsCar_{idx}", 0.0)),
+                float(grounding_dic.get(f"IsPedestrian_{idx}", 0.0)),
+            )
+            * float(grounding_dic.get(f"IsInInter_{idx}", 0.0))
+            for idx in range(1, entity_slots)
+        )
+        ego_at_inter = float(grounding_dic.get("IsAtInter_0", 0.0))
+        close_ahead = max(
+            float(grounding_dic.get(f"IsCloseAhead_{_binary_idx(0, idx)}", 0.0))
+            for idx in range(1, entity_slots)
+        )
+        ahead = max(
+            float(grounding_dic.get(f"IsAhead_{_binary_idx(0, idx)}", 0.0))
+            for idx in range(1, entity_slots)
+        )
+        higher_pri = max(
+            max(
+                float(grounding_dic.get(f"IsCar_{idx}", 0.0)),
+                float(grounding_dic.get(f"IsPedestrian_{idx}", 0.0)),
+            )
+            * max(
+                float(grounding_dic.get(f"IsAtInter_{idx}", 0.0)),
+                float(grounding_dic.get(f"IsInInter_{idx}", 0.0)),
+            )
+            * float(grounding_dic.get(f"HigherPri_{_binary_idx(idx, 0)}", 0.0))
+            for idx in range(1, entity_slots)
+        )
+
+        return np.asarray(
+            [ego_in_inter, other_in_inter, ego_at_inter, close_ahead, ahead, higher_pri],
+            dtype=np.float32,
+        )
+
     def _flatten_obs(self, obs_dict):
-        world_state = np.asarray(obs_dict["World_state"][0], dtype=np.float32)
+        if self.grounding_mode == "thesis_minimal":
+            grounding_dic = obs_dict["Ground_dic"][0]
+            world_state = self._build_thesis_minimal_obs(grounding_dic)
+        else:
+            world_state = np.asarray(obs_dict["World_state"][0], dtype=np.float32)
         if self.obs_indices is not None:
             world_state = world_state[self.obs_indices]
         if self.cat_length:
@@ -229,7 +316,7 @@ class GymCityWrapper(gym.core.Env):
             return obs_dict["Reward"][0] + self.step_cost + progress_reward
         else:
             moving_cost = self.action2cost(obs_dict["Agent_actions"][0])
-            return self.step_cost + progress_reward + (moving_cost + obs_dict["Reward"][0])/self.path_length
+            return self.step_cost + progress_reward + ((moving_cost + obs_dict["Reward"][0])/self.path_length)
     
     def get_reward(self, obs_array, action):
         ''' Get the reward for the current step.
@@ -340,6 +427,10 @@ class GymCityWrapper(gym.core.Env):
         self.last_route_index = self._current_route_index()
         self.current_episode_reward = 0
         self.current_episode_length = 0
+        self.current_episode_hard_fail_count = 0
+        self.current_episode_rule_based_fail_count = 0
+        self.current_episode_deadzone_fail_count = 0
+        self.current_episode_simultaneous_entry_fail_count = 0
         self.current_grounding_dic = ob_dict["Ground_dic"][0] if len(ob_dict["Ground_dic"]) > 0 else None
         self.current_shield_context = ob_dict["Shield_context"][0] if len(ob_dict.get("Shield_context", [])) > 0 else None
         if self.use_expert:
@@ -370,6 +461,10 @@ class GymCityWrapper(gym.core.Env):
         self.current_obs = obs
         self.current_grounding_dic = ob_dict["Ground_dic"][0] if len(ob_dict["Ground_dic"]) > 0 else None
         self.current_shield_context = ob_dict["Shield_context"][0] if len(ob_dict.get("Shield_context", [])) > 0 else None
+        self.current_episode_hard_fail_count = 0
+        self.current_episode_rule_based_fail_count = 0
+        self.current_episode_deadzone_fail_count = 0
+        self.current_episode_simultaneous_entry_fail_count = 0
         return self.current_obs
 
     def step(self, action):
@@ -380,6 +475,22 @@ class GymCityWrapper(gym.core.Env):
         current_obs = self.env.move_rl_agent(one_hot_action, self.agent_layer_id)
         rew = self._get_reward(current_obs)
         info.update(current_obs)
+        hard_fail_step_count = int(current_obs.get("Hard_fail_count", [0])[0])
+        rule_based_fail_step_count = int(current_obs.get("Rule_based_fail_count", [0])[0])
+        deadzone_fail_step_count = int(current_obs.get("Deadzone_fail_count", [0])[0])
+        simultaneous_entry_fail_step_count = int(current_obs.get("Simultaneous_entry_fail_count", [0])[0])
+        self.current_episode_hard_fail_count += hard_fail_step_count
+        self.current_episode_rule_based_fail_count += rule_based_fail_step_count
+        self.current_episode_deadzone_fail_count += deadzone_fail_step_count
+        self.current_episode_simultaneous_entry_fail_count += simultaneous_entry_fail_step_count
+        info["hard_fail_step_count"] = hard_fail_step_count
+        info["hard_fail_total"] = self.current_episode_hard_fail_count
+        info["rule_based_fail_step_count"] = rule_based_fail_step_count
+        info["rule_based_fail_total"] = self.current_episode_rule_based_fail_count
+        info["deadzone_fail_step_count"] = deadzone_fail_step_count
+        info["simultaneous_entry_fail_step_count"] = simultaneous_entry_fail_step_count
+        info["deadzone_fail_total"] = self.current_episode_deadzone_fail_count
+        info["simultaneous_entry_fail_total"] = self.current_episode_simultaneous_entry_fail_count
         new_ob_dict = self.env.update(self.agent_layer_id)
         if self.use_expert:
             self.expert_action = self.full_action2index(new_ob_dict["Expert_actions"][0])

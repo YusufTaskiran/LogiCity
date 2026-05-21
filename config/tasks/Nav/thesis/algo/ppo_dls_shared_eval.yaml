@@ -15,7 +15,7 @@ simulation:
     require_ped_route_intersection: true
     require_car_route_intersection: true
     sample_attempts: 50
-    max_horizon: 200
+    max_horizon: 250
     action_space: 4
     action_mapping:
       0: [1, 1, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0]

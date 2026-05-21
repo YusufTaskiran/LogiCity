@@ -8,20 +8,21 @@ from tools.pkl2city import main as render_episode
 from tools.img2video import create_gif
 
 
-def infer_ego_id(pkl_path):
+def infer_ego_ids(pkl_path):
     with open(pkl_path, "rb") as f:
         data = pkl.load(f)
     agents = data.get("Static Info", {}).get("Agents", {})
     if not agents:
-        return 3
+        return [3, 4]
     car_agents = [
         info["layer_id"]
         for info in agents.values()
         if info.get("type") == "Car"
     ]
     if car_agents:
-        return min(car_agents)
-    return min(info["layer_id"] for info in agents.values())
+        # Shared-policy rollouts control the first two car layers.
+        return sorted(int(layer_id) for layer_id in car_agents)[:2]
+    return [min(int(info["layer_id"]) for info in agents.values())]
 
 
 def parse_ego_ids(ego_ids):
@@ -46,7 +47,7 @@ def batch_render(input_dir, output_dir, ego_id=None, ego_ids=None, keep_frames=F
     output_dir = Path(output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
 
-    pkl_files = sorted(input_dir.glob("*.pkl"))
+    pkl_files = sorted(input_dir.rglob("*.pkl"))
     if not pkl_files:
         raise FileNotFoundError(f"No .pkl files found in {input_dir}")
 
@@ -54,7 +55,8 @@ def batch_render(input_dir, output_dir, ego_id=None, ego_ids=None, keep_frames=F
         if not is_visualizable_world_pkl(pkl_file):
             print(f"Skipping non-visualizable pickle: {pkl_file}")
             continue
-        base_name = pkl_file.stem
+        rel_name = pkl_file.relative_to(input_dir).with_suffix("")
+        base_name = "__".join(rel_name.parts)
         temp_frames = output_dir / f"{base_name}_frames"
         gif_path = output_dir / f"{base_name}.gif"
         local_ego_ids = parse_ego_ids(ego_ids)
@@ -62,7 +64,7 @@ def batch_render(input_dir, output_dir, ego_id=None, ego_ids=None, keep_frames=F
             if ego_id is not None:
                 local_ego_ids = [int(ego_id)]
             else:
-                local_ego_ids = [infer_ego_id(pkl_file)]
+                local_ego_ids = infer_ego_ids(pkl_file)
 
         print(f"Rendering {pkl_file} -> {gif_path} (ego_ids={local_ego_ids})")
         temp_frames.mkdir(parents=True, exist_ok=True)

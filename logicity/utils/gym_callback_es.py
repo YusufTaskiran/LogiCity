@@ -120,7 +120,7 @@ class EvalCheckpointCallbackES(CheckpointCallback):
                 episode_cache = self.episode_data[ts]
                 if "label_info" in episode_cache:
                     logger.info("Episode label: {}".format(episode_cache["label_info"]))
-                max_steps = episode_cache["label_info"]["oracle_step"] * 2
+                max_steps = max(int(np.ceil(episode_cache["label_info"]["oracle_step"] * 2.5)), 1)
                 oracle_steps.append(int(episode_cache["label_info"]["oracle_step"]))
                 eval_env = make_env(self.simulation_config, episode_cache, False)
                 obs = eval_env.init()
@@ -352,7 +352,7 @@ class DreamerEvalCheckpointCallback(CheckpointCallback):
                 episode_cache = self.episode_data[ts]
                 if "label_info" in episode_cache:
                     logger.info("Episode label: {}".format(episode_cache["label_info"]))
-                max_steps = episode_cache["label_info"]["oracle_step"] * 2
+                max_steps = max(int(np.ceil(episode_cache["label_info"]["oracle_step"] * 2.5)), 1)
                 eval_env = make_env(self.simulation_config, episode_cache, False)
                 obs = eval_env.init()
                 episode_rewards = 0

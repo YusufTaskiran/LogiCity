@@ -256,6 +256,9 @@ def load_latest_training_row(path: str, label: str | None = None) -> dict[str, f
         "elapsed_wall_clock_seconds": to_float(latest.get("elapsed_wall_clock_seconds")),
         "seconds_per_1k_timesteps": to_float(latest.get("seconds_per_1k_timesteps")),
         "train_fail": to_float(latest.get("train_fail")),
+        "train_hard_fail_events": to_float(latest.get("train_hard_fail_events")),
+        "train_deadzone_fail_events": to_float(latest.get("train_deadzone_fail_events")),
+        "train_simultaneous_entry_fail_events": to_float(latest.get("train_simultaneous_entry_fail_events")),
         "train_timeout": to_float(latest.get("train_timeout")),
         "train_success": to_float(latest.get("train_success")),
     }
@@ -267,6 +270,9 @@ def average_latest_training_rows(paths: list[str], label: str) -> dict[str, floa
         "elapsed_wall_clock_seconds",
         "seconds_per_1k_timesteps",
         "train_fail",
+        "train_hard_fail_events",
+        "train_deadzone_fail_events",
+        "train_simultaneous_entry_fail_events",
         "train_timeout",
         "train_success",
     ]
@@ -318,8 +324,8 @@ def load_shared_test_summary(path: str, label: str | None = None) -> dict[str, f
     series_label = label or infer_method_label(path)
     return {
         "label": series_label,
-        "joint_tsr": to_float(summary.get("joint_tsr")),
-        "joint_dsr": to_float(summary.get("joint_dsr")),
+        "joint_tsr": to_float(summary.get("joint_tsr") or summary.get("tsr")),
+        "joint_dsr": to_float(summary.get("joint_dsr") or summary.get("dsr")),
         "car_1_tsr": to_float(summary.get("car_1_tsr")),
         "car_1_dsr": to_float(summary.get("car_1_dsr")),
         "car_2_tsr": to_float(summary.get("car_2_tsr")),
@@ -519,16 +525,40 @@ def main() -> None:
         dsr_series = [average_series(paths, "dsr", label) for label, paths in avg_training_inputs]
         reward_series = [average_series(paths, "mean_reward", label) for label, paths in avg_training_inputs]
         eval_fail_cumulative_series = [average_cumulative_series(paths, "fail", label) for label, paths in avg_training_inputs]
+        eval_hard_fail_series = [average_series(paths, "hard_fail_events", label) for label, paths in avg_training_inputs]
+        eval_deadzone_fail_series = [average_series(paths, "deadzone_fail_events", label) for label, paths in avg_training_inputs]
+        eval_simultaneous_entry_fail_series = [average_series(paths, "simultaneous_entry_fail_events", label) for label, paths in avg_training_inputs]
+        eval_hard_fail_cumulative_series = [average_cumulative_series(paths, "hard_fail_events", label) for label, paths in avg_training_inputs]
+        eval_deadzone_fail_cumulative_series = [average_cumulative_series(paths, "deadzone_fail_events", label) for label, paths in avg_training_inputs]
+        eval_simultaneous_entry_fail_cumulative_series = [average_cumulative_series(paths, "simultaneous_entry_fail_events", label) for label, paths in avg_training_inputs]
         train_fail_series = [average_series(paths, "train_fail", label) for label, paths in avg_training_inputs]
+        train_hard_fail_series = [average_series(paths, "train_hard_fail_events", label) for label, paths in avg_training_inputs]
+        train_deadzone_fail_series = [average_series(paths, "train_deadzone_fail_events", label) for label, paths in avg_training_inputs]
+        train_simultaneous_entry_fail_series = [average_series(paths, "train_simultaneous_entry_fail_events", label) for label, paths in avg_training_inputs]
         train_fail_delta_series = [average_series(paths, "train_fail_since_last_eval", label) for label, paths in avg_training_inputs]
+        train_hard_fail_delta_series = [average_series(paths, "train_hard_fail_events_since_last_eval", label) for label, paths in avg_training_inputs]
+        train_deadzone_fail_delta_series = [average_series(paths, "train_deadzone_fail_events_since_last_eval", label) for label, paths in avg_training_inputs]
+        train_simultaneous_entry_fail_delta_series = [average_series(paths, "train_simultaneous_entry_fail_events_since_last_eval", label) for label, paths in avg_training_inputs]
         runtime_rows = [average_latest_training_rows(paths, label) for label, paths in avg_training_inputs]
     else:
         tsr_series = [load_training_series(path, "tsr", label) for label, path in training_inputs]
         dsr_series = [load_training_series(path, "dsr", label) for label, path in training_inputs]
         reward_series = [load_training_series(path, "mean_reward", label) for label, path in training_inputs]
         eval_fail_cumulative_series = [load_cumulative_training_series(path, "fail", label) for label, path in training_inputs]
+        eval_hard_fail_series = [load_training_series(path, "hard_fail_events", label) for label, path in training_inputs]
+        eval_deadzone_fail_series = [load_training_series(path, "deadzone_fail_events", label) for label, path in training_inputs]
+        eval_simultaneous_entry_fail_series = [load_training_series(path, "simultaneous_entry_fail_events", label) for label, path in training_inputs]
+        eval_hard_fail_cumulative_series = [load_cumulative_training_series(path, "hard_fail_events", label) for label, path in training_inputs]
+        eval_deadzone_fail_cumulative_series = [load_cumulative_training_series(path, "deadzone_fail_events", label) for label, path in training_inputs]
+        eval_simultaneous_entry_fail_cumulative_series = [load_cumulative_training_series(path, "simultaneous_entry_fail_events", label) for label, path in training_inputs]
         train_fail_series = [load_training_series(path, "train_fail", label) for label, path in training_inputs]
+        train_hard_fail_series = [load_training_series(path, "train_hard_fail_events", label) for label, path in training_inputs]
+        train_deadzone_fail_series = [load_training_series(path, "train_deadzone_fail_events", label) for label, path in training_inputs]
+        train_simultaneous_entry_fail_series = [load_training_series(path, "train_simultaneous_entry_fail_events", label) for label, path in training_inputs]
         train_fail_delta_series = [load_training_series(path, "train_fail_since_last_eval", label) for label, path in training_inputs]
+        train_hard_fail_delta_series = [load_training_series(path, "train_hard_fail_events_since_last_eval", label) for label, path in training_inputs]
+        train_deadzone_fail_delta_series = [load_training_series(path, "train_deadzone_fail_events_since_last_eval", label) for label, path in training_inputs]
+        train_simultaneous_entry_fail_delta_series = [load_training_series(path, "train_simultaneous_entry_fail_events_since_last_eval", label) for label, path in training_inputs]
         runtime_rows = [load_latest_training_row(path, label) for label, path in training_inputs]
 
     save_line_plot(tsr_series, "TSR Learning Curve", "TSR", os.path.join(args.output_dir, "tsr_learning_curve.png"))
@@ -540,8 +570,80 @@ def main() -> None:
         "cumulative eval fail",
         os.path.join(args.output_dir, "eval_fail_cumulative.png"),
     )
+    save_line_plot(
+        eval_hard_fail_series,
+        "Validation Hard-Fail Events",
+        "hard_fail_events",
+        os.path.join(args.output_dir, "eval_hard_fail_events.png"),
+    )
+    save_line_plot(
+        eval_deadzone_fail_series,
+        "Validation Deadzone Fail Events",
+        "deadzone_fail_events",
+        os.path.join(args.output_dir, "eval_deadzone_fail_events.png"),
+    )
+    save_line_plot(
+        eval_simultaneous_entry_fail_series,
+        "Validation Simultaneous-Entry Fail Events",
+        "simultaneous_entry_fail_events",
+        os.path.join(args.output_dir, "eval_simultaneous_entry_fail_events.png"),
+    )
+    save_line_plot(
+        eval_hard_fail_cumulative_series,
+        "Cumulative Validation Hard-Fail Events",
+        "cumulative hard_fail_events",
+        os.path.join(args.output_dir, "eval_hard_fail_events_cumulative.png"),
+    )
+    save_line_plot(
+        eval_deadzone_fail_cumulative_series,
+        "Cumulative Validation Deadzone Fail Events",
+        "cumulative deadzone_fail_events",
+        os.path.join(args.output_dir, "eval_deadzone_fail_events_cumulative.png"),
+    )
+    save_line_plot(
+        eval_simultaneous_entry_fail_cumulative_series,
+        "Cumulative Validation Simultaneous-Entry Fail Events",
+        "cumulative simultaneous_entry_fail_events",
+        os.path.join(args.output_dir, "eval_simultaneous_entry_fail_events_cumulative.png"),
+    )
     save_line_plot(train_fail_series, "Cumulative Training Failures", "train_fail", os.path.join(args.output_dir, "train_fail_cumulative.png"))
+    save_line_plot(
+        train_hard_fail_series,
+        "Cumulative Training Hard-Fail Events",
+        "train_hard_fail_events",
+        os.path.join(args.output_dir, "train_hard_fail_events_cumulative.png"),
+    )
+    save_line_plot(
+        train_deadzone_fail_series,
+        "Cumulative Training Deadzone Fail Events",
+        "train_deadzone_fail_events",
+        os.path.join(args.output_dir, "train_deadzone_fail_events_cumulative.png"),
+    )
+    save_line_plot(
+        train_simultaneous_entry_fail_series,
+        "Cumulative Training Simultaneous-Entry Fail Events",
+        "train_simultaneous_entry_fail_events",
+        os.path.join(args.output_dir, "train_simultaneous_entry_fail_events_cumulative.png"),
+    )
     save_line_plot(train_fail_delta_series, "Training Failures Since Last Eval", "train_fail_since_last_eval", os.path.join(args.output_dir, "train_fail_since_last_eval.png"))
+    save_line_plot(
+        train_hard_fail_delta_series,
+        "Training Hard-Fail Events Since Last Eval",
+        "train_hard_fail_events_since_last_eval",
+        os.path.join(args.output_dir, "train_hard_fail_events_since_last_eval.png"),
+    )
+    save_line_plot(
+        train_deadzone_fail_delta_series,
+        "Training Deadzone Fail Events Since Last Eval",
+        "train_deadzone_fail_events_since_last_eval",
+        os.path.join(args.output_dir, "train_deadzone_fail_events_since_last_eval.png"),
+    )
+    save_line_plot(
+        train_simultaneous_entry_fail_delta_series,
+        "Training Simultaneous-Entry Fail Events Since Last Eval",
+        "train_simultaneous_entry_fail_events_since_last_eval",
+        os.path.join(args.output_dir, "train_simultaneous_entry_fail_events_since_last_eval.png"),
+    )
     save_grouped_bar_chart(
         runtime_rows,
         ["elapsed_wall_clock_seconds", "seconds_per_1k_timesteps"],

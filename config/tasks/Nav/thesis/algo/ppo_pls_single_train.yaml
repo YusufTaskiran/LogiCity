@@ -1,7 +1,7 @@
 simulation:
   map_yaml_file: "config/maps/square_2x2.yaml"
   agent_yaml_file: "config/agents/thesis/main_3cars_1ped.yaml"
-  ontology_yaml_file: "config/rules/ontology_simple.yaml"
+  ontology_yaml_file: "config/rules/ontology_simple_weak.yaml"
   rule_type: "Z3_Expert"
   rule_yaml_file: "config/rules/Nav/easy/expert_minimal_4action.yaml"
   rl: true
@@ -12,13 +12,15 @@ simulation:
     max_priority: 3
     use_expert: false
     agent_name: "Car_1"
-    max_horizon: 200
+    max_horizon: 150
     action_space: 4
     action_mapping:
       0: [1, 1, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0]
       1: [0, 0, 0, 0, 1, 1, 1, 1, 0, 0, 0, 0, 0]
       2: [0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 0]
       3: [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1]
+    obs_fov: 25
+    grounding_mode: "thesis_minimal"
     fov_entities:
       Entity: 4
     training_episode_data: "dataset/thesis/main_3cars_1ped/train_100_episodes.pkl"
@@ -37,16 +39,16 @@ simulation:
 
 eval_checkpoint:
   # previous: 500
-  eval_freq: 200
+  eval_freq: 500
   # previous: 500
-  save_freq: 200
+  save_freq: 500
   save_path: "./checkpoints/"
   name_prefix: "thesis_ppo_pls_single"
   episode_data: "dataset/thesis/main_3cars_1ped/val_20_episodes.pkl"
   simulation_config:
     map_yaml_file: "config/maps/square_2x2.yaml"
     agent_yaml_file: "config/agents/thesis/main_3cars_1ped.yaml"
-    ontology_yaml_file: "config/rules/ontology_simple.yaml"
+    ontology_yaml_file: "config/rules/ontology_simple_weak.yaml"
     rule_type: "Z3_Expert"
     rule_yaml_file: "config/rules/Nav/easy/expert_minimal_4action.yaml"
     rl: true
@@ -57,13 +59,15 @@ eval_checkpoint:
       max_priority: 3
       use_expert: true
       agent_name: "Car_1"
-      max_horizon: 200
+      max_horizon: 150
       action_space: 4
       action_mapping:
         0: [1, 1, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0]
         1: [0, 0, 0, 0, 1, 1, 1, 1, 0, 0, 0, 0, 0]
         2: [0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 0]
         3: [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1]
+      obs_fov: 25
+      grounding_mode: "thesis_minimal"
       fov_entities:
         Entity: 4
       step_cost: 0
@@ -76,7 +80,7 @@ eval_checkpoint:
         3: 0
       overtime_cost: -6
       debug_shield_snapshot: true
-      debug_shield_snapshot_steps: 12
+      debug_shield_snapshot_steps: 20
   eval_actions: {"Stop": 3}
 
 stable_baselines:
@@ -101,7 +105,7 @@ stable_baselines:
   checkpoint_path: ""
   num_envs: 1
   # previous: 30000
-  total_timesteps: 6000
+  total_timesteps: 20000
 
 shield:
   enabled: true
@@ -119,24 +123,24 @@ shield:
       fast: 0.0
       stop: 1.0
     warning:
-      slow: 0.95
-      normal: 0.55
+      slow: 1.00
+      normal: 0.65
       fast: 0.10
-      stop: 1.0
+      stop: 0.45
     fast_zone:
-      slow: 0.65
-      normal: 0.85
-      fast: 0.98
-      stop: 1.0
+      slow: 0.55
+      normal: 0.80
+      fast: 1.00
+      stop: 0.25
     normal_zone:
-      slow: 0.80
-      normal: 0.97
-      fast: 0.25
-      stop: 1.0
+      slow: 0.75
+      normal: 1.00
+      fast: 0.35
+      stop: 0.40
   stop_priority_scale: 1.0
   safety_coefficient: 0.1
   use_safety_loss: true
-  action_space: ["slow", "normal", "fast", "stop"]
+  action_space: ["fast", "normal", "slow", "stop"]
   unsafe_action: "fast"
   safe_fallback_action: "stop"
   threshold: 0.5

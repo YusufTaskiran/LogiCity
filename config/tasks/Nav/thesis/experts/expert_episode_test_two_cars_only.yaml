@@ -1,0 +1,40 @@
+simulation:
+  map_yaml_file: "config/maps/square_2x2.yaml"
+  agent_yaml_file: "config/agents/thesis/two_cars_only.yaml"
+  ontology_yaml_file: "config/rules/ontology_simple_weak.yaml"
+  rule_type: "Z3_Expert"
+  rule_yaml_file: "config/rules/Nav/easy/expert_minimal_4action.yaml"
+  rl: true
+  debug: false
+  use_multi: false
+  agent_region: 100
+  rl_agent:
+    max_priority: 2
+    use_expert: true
+    agent_name: "Car_1"
+    max_horizon: 250
+    action_space: 4
+    action_mapping:
+      0: [1, 1, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+      1: [0, 0, 0, 0, 1, 1, 1, 1, 0, 0, 0, 0, 0]
+      2: [0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 0]
+      3: [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1]
+    obs_fov: 25
+    grounding_mode: "thesis_minimal"
+    fov_entities:
+      Entity: 4
+    action_cost:
+      0: 0
+      1: 0
+      2: 0
+      3: 0
+    overtime_cost: -6
+
+stable_baselines:
+  algorithm: "ExpertCollector"
+  train: false
+  policy_kwargs:
+    num_episodes: -1
+    return_full_world: false
+  hyperparameters:
+    None

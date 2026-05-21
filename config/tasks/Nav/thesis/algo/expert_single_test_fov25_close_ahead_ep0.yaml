@@ -1,0 +1,48 @@
+simulation:
+  map_yaml_file: "config/maps/square_2x2.yaml"
+  agent_yaml_file: "config/agents/thesis/main_3cars_1ped.yaml"
+  ontology_yaml_file: "config/rules/ontology_simple_weak.yaml"
+  rule_type: "Z3_Expert"
+  rule_yaml_file: "config/rules/Nav/easy/expert_minimal_4action.yaml"
+  rl: true
+  debug: false
+  use_multi: false
+  agent_region: 100
+  rl_agent:
+    max_priority: 3
+    use_expert: true
+    agent_name: "Car_1"
+    require_ped_route_intersection: true
+    require_car_route_intersection: true
+    sample_attempts: 50
+    max_horizon: 225
+    action_space: 4
+    action_mapping:
+      0: [1, 1, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+      1: [0, 0, 0, 0, 1, 1, 1, 1, 0, 0, 0, 0, 0]
+      2: [0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 0]
+      3: [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1]
+    obs_fov: 25
+    grounding_mode: "thesis_minimal"
+    fov_entities:
+      Entity: 4
+    step_cost: 0
+    progress_reward: 0.1
+    goal_reward: 10
+    action_cost:
+      0: 0
+      1: 0
+      2: 0
+      3: 0
+    overtime_cost: -6
+
+stable_baselines:
+  algorithm: "ExpertCollector"
+  train: false
+  policy_kwargs: {}
+  hyperparameters: {}
+  checkpoint_path: ""
+  num_envs: 1
+  episode_data: "dataset/thesis/main_3cars_1ped/test_close_ahead_ep0.pkl"
+  eval_actions: {"Stop": 3}
+  vis_id: [-1]

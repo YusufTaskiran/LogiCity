@@ -5,8 +5,20 @@ import os
 import matplotlib.pyplot as plt
 
 
-METHOD_ORDER = ["PPO", "PPO + DLS", "PPO + PLS"]
+METHOD_ORDER = [
+    "PPO (3000)",
+    "PPO (17500)",
+    "PPO + PLS (3000)",
+    "PPO + PLS (6500)",
+    "PPO",
+    "PPO + DLS",
+    "PPO + PLS",
+]
 DISPLAY_LABELS = {
+    "PPO (3000)": "PPO 3k",
+    "PPO (17500)": "PPO 17.5k",
+    "PPO + PLS (3000)": "PLS 3k",
+    "PPO + PLS (6500)": "PLS 6.5k",
     "PPO": "PPO",
     "PPO + DLS": "DS",
     "PPO + PLS": "PLS",
@@ -54,13 +66,14 @@ def build_order(single_map, multi_map):
     return labels
 
 
-def add_bar_labels(ax, values, positions, side):
+def add_bar_labels(ax, values, positions, side, limit):
     for value, pos in zip(values, positions):
         text = f"{abs(value) * 100:.1f}%"
+        outer_offset = max(0.025, limit * 0.025)
         if side == "left":
-            ax.text(value - 0.025, pos, text, va="center", ha="right", fontsize=10)
+            ax.text(value - outer_offset, pos, text, va="center", ha="right", fontsize=10)
         else:
-            ax.text(value + 0.025, pos, text, va="center", ha="left", fontsize=10)
+            ax.text(value + outer_offset, pos, text, va="center", ha="left", fontsize=10)
 
 
 def plot_chart(single_csv, multi_csv, output_path, title):
@@ -82,7 +95,7 @@ def plot_chart(single_csv, multi_csv, output_path, title):
     ax.invert_yaxis()
 
     max_value = max(max(abs(v) for v in single_values), max(abs(v) for v in multi_values))
-    limit = min(1.15, max(0.75, max_value + 0.12))
+    limit = min(1.22, max(0.82, max_value + 0.18))
     ax.set_xlim(-limit, limit)
 
     tick_values = [-1.0, -0.5, 0.0, 0.5, 1.0]
@@ -95,8 +108,8 @@ def plot_chart(single_csv, multi_csv, output_path, title):
     ax.set_axisbelow(True)
     ax.legend(loc="lower center", ncol=2, frameon=False, bbox_to_anchor=(0.5, -0.18))
 
-    add_bar_labels(ax, single_values, positions, side="left")
-    add_bar_labels(ax, multi_values, positions, side="right")
+    add_bar_labels(ax, single_values, positions, side="left", limit=limit)
+    add_bar_labels(ax, multi_values, positions, side="right", limit=limit)
 
     fig.text(0.26, 0.02, "Single-Agent", ha="center", fontsize=10)
     fig.text(0.74, 0.02, "Multi-Agent", ha="center", fontsize=10)

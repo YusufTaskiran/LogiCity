@@ -11,6 +11,15 @@ from ...core.config import *
 from multiprocessing import Pool
 from ...utils.find import find_agent
 from ...utils.sample import split_into_subsets
+from ...utils.pred_converter.z3 import (
+    global_in_intersection_higher_pri_conflict,
+    global_stop_required_conflict,
+    global_deadzone_stop_required_conflict,
+    global_close_ahead_stop_required_conflict,
+    global_soft_stop_required_conflict,
+    global_soft_stop_violation_count,
+    global_soft_stop_violation_breakdown,
+)
 from .z3_rl import Z3PlannerRL, world2entity, get_action_name
 
 logger = logging.getLogger(__name__)
@@ -23,6 +32,46 @@ class Z3PlannerExpert(Z3PlannerRL):
 
     def reset(self):
         self.last_rl_obs = None
+
+    @staticmethod
+    def _force_action(action_dist, action_mapping, target_name):
+        forced = torch.zeros_like(action_dist)
+        for action_id, action_name in action_mapping.items():
+            if target_name in action_name:
+                forced[action_id] = 1.0
+                return forced
+        return action_dist
+
+    @staticmethod
+    def _full_state_motion_action(world_matrix, intersect_matrix, agents, ego_entity):
+        from ...utils.pred_converter.z3 import IsAtInter, IsInInter, IsAhead
+
+        if IsAtInter(world_matrix, intersect_matrix, agents, ego_entity):
+            return "Normal"
+        if IsInInter(world_matrix, intersect_matrix, agents, ego_entity):
+            return "Normal"
+
+        if isinstance(agents, dict):
+            agent_iter = agents.values()
+        else:
+            agent_iter = agents
+
+        seen_layer_ids = set()
+        for other_record in agent_iter:
+            other_layer_id = str(other_record.layer_id)
+            if other_layer_id in seen_layer_ids:
+                continue
+            seen_layer_ids.add(other_layer_id)
+            other_type = getattr(other_record, "type", None)
+            if other_type in (None, "PH"):
+                continue
+            other_entity = f"Entity_{other_type}_{other_layer_id}"
+            if other_entity == ego_entity:
+                continue
+            if IsAhead(world_matrix, intersect_matrix, agents, ego_entity, other_entity):
+                return "Slow"
+
+        return "Fast"
 
     def _create_rules(self):
         assert "Task" in self.data["Rules"].keys(), "Make sure the task rule is defined"
@@ -143,10 +192,49 @@ class Z3PlannerExpert(Z3PlannerRL):
                                             self.rules['Expert'], self.entity_types, self.predicates, self.z3_vars,
                                             partial_agents[ego_name], partial_world[ego_name], partial_intersections[ego_name], 
                                             self.fov_entities, True, rl_input_shape=self.rl_input_shape)
+                    ego_entity = f"Entity_{ego_agent[ego_name].type}_{ego_agent[ego_name].layer_id}"
+                    if global_stop_required_conflict(
+                        local_world_matrix,
+                        local_intersections,
+                        agents,
+                        ego_entity,
+                    ):
+                        result["{}_action".format(ego_name)] = self._force_action(
+                            result["{}_action".format(ego_name)],
+                            ego_agent[ego_name].action_mapping,
+                            "Stop",
+                        )
+                    else:
+                        motion_action = self._full_state_motion_action(
+                            local_world_matrix,
+                            local_intersections,
+                            agents,
+                            ego_entity,
+                        )
+                        result["{}_action".format(ego_name)] = self._force_action(
+                            result["{}_action".format(ego_name)],
+                            ego_agent[ego_name].action_mapping,
+                            motion_action,
+                        )
+                    shield_key = "{}_shield_context".format(ego_name)
+                    if shield_key in result:
+                        result[shield_key]["joint_intersection_context"] = self._build_joint_shield_context(
+                            local_world_matrix,
+                            local_intersections,
+                            agents,
+                            ego_agent[ego_name],
+                        )
                     self.last_rl_obs = {
                         "last_obs_dict": copy.deepcopy(result["{}_grounding_dic".format(ego_name)]),
                         "last_obs": result["{}_grounding".format(ego_name)].copy(),
                         "expert_action": result["{}_action".format(ego_name)].clone(),
+                        "shield_context": copy.deepcopy(result.get("{}_shield_context".format(ego_name))),
+                        "full_context": {
+                            "world_matrix": local_world_matrix.clone(),
+                            "intersect_matrix": local_intersections.clone(),
+                            "agents": copy.deepcopy(agents),
+                            "ego_entity": f"Entity_{ego_agent[ego_name].type}_{ego_agent[ego_name].layer_id}",
+                        },
                     }
                 else:
                     result = solve_sub_problem(ego_name, ego_agent[ego_name].action_mapping, ego_agent[ego_name].action_dist,
@@ -162,10 +250,19 @@ class Z3PlannerExpert(Z3PlannerRL):
     def eval(self, rl_action):
         if self.last_rl_obs is None:
             return 0
-        fail, reward = eval_action(rl_action, self.rules['Task'], self.entity_types, self.predicates, self.z3_vars, self.fov_entities,
-                             self.last_rl_obs["last_obs_dict"], self.last_rl_obs["last_obs"])
+        fail, reward, details = eval_action(
+            rl_action,
+            self.rules['Task'],
+            self.entity_types,
+            self.predicates,
+            self.z3_vars,
+            self.fov_entities,
+            self.last_rl_obs["last_obs_dict"],
+            self.last_rl_obs["last_obs"],
+            self.last_rl_obs.get("full_context"),
+        )
         self.last_rl_obs = None
-        return fail, reward
+        return fail, reward, details
     
     def eval_state_action(self, state, action):
         """
@@ -176,8 +273,16 @@ class Z3PlannerExpert(Z3PlannerRL):
         # 1. conver the state to the last_rl_obs dict format
         last_obs_dict = self.grounding2dict(state)
         # 2. evaluate the action similar to the eval method
-        fail, reward = eval_action(action, self.rules['Task'], self.entity_types, self.predicates, self.z3_vars, self.fov_entities,
-                                last_obs_dict, state)
+        fail, reward, _ = eval_action(
+            action,
+            self.rules['Task'],
+            self.entity_types,
+            self.predicates,
+            self.z3_vars,
+            self.fov_entities,
+            last_obs_dict,
+            state,
+        )
         del last_obs_dict
         return fail, reward
 
@@ -427,6 +532,18 @@ def solve_sub_problem(ego_name,
             "{}_grounding_dic".format(ego_name): grounding_dic,
             "{}_scene_graph".format(ego_name): scene_graph
         }
+        ego_agent = None
+        for key, agent in partial_agents.items():
+            if "ego" in key:
+                ego_agent = agent
+                break
+        if ego_agent is not None:
+            agents_actions["{}_shield_context".format(ego_name)] = {
+                "world_matrix": partial_world.clone(),
+                "intersect_matrix": partial_intersections.clone(),
+                "agents": copy.deepcopy(partial_agents),
+                "ego_entity": f"Entity_{ego_agent.type}_{ego_agent.layer_id}",
+            }
         assert len(grounding) == rl_input_shape
 
         return agents_actions
@@ -438,7 +555,8 @@ def eval_action(rl_action,
                 var_names,
                 fov_entities,
                 last_obs_dict,
-                last_obs):
+                last_obs,
+                full_context=None):
     grounding = []
     # 1. create sorts and variables
     entity_sorts = {}
@@ -525,14 +643,21 @@ def eval_action(rl_action,
     assert np.all(obs == last_obs), print(obs, last_obs)
     fail = False
     reward = 0
-    for rule_name, rule_solver in local_solvers.items():
-        if rule_solver.check() == sat:
-                continue
-        else:
-            if rule_tem[rule_name]["dead"]:
-                fail = True
-            reward += local_rule_tem[rule_name]["reward"]
+    hard_fail_count = 0
+    if full_context is None:
+        for rule_name, rule_solver in local_solvers.items():
+            if rule_solver.check() == sat:
+                    continue
+            else:
+                if rule_tem[rule_name]["dead"]:
+                    fail = True
+                    hard_fail_count += 1
+                reward += local_rule_tem[rule_name]["reward"]
 
     # When really use the expert policy, enable this checking
     # assert not fail, "Expert never obeys rules"
-    return fail, reward
+    return fail, reward, {
+        "hard_fail_count": int(hard_fail_count),
+        "deadzone_fail_count": 0,
+        "simultaneous_entry_fail_count": 0,
+    }

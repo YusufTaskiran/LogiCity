@@ -181,6 +181,8 @@ def get_pos(local_layer):
     local_layer[local_layer==0] += 0.1
     pos_layer = local_layer == local_layer.astype(np.int64)
     pixels = torch.nonzero(torch.tensor(pos_layer.astype(np.float32)))
+    if pixels.numel() == 0:
+        return None
     rows = pixels[:, 0]
     cols = pixels[:, 1]
     left = torch.min(cols).item()
@@ -340,9 +342,16 @@ def gridmap2img_agents(gridmap, gridmap_, icon_dict, static_map, last_icons=None
 
     for i in range(resized_grid.shape[0]):
         local_layer = resized_grid[i]
-        left, top, right, bottom = get_pos(local_layer)
+        current_pos = get_pos(local_layer)
+        if current_pos is None:
+            continue
+        left, top, right, bottom = current_pos
         local_layer_ = resized_grid_[i]
-        left_, top_, right_, bottom_ = get_pos(local_layer_)
+        next_pos = get_pos(local_layer_)
+        if next_pos is None:
+            left_, top_, right_, bottom_ = left, top, right, bottom
+        else:
+            left_, top_, right_, bottom_ = next_pos
         direction = get_direction(left, left_, top, top_)
         pos = (left, top, right, bottom)
         
@@ -464,13 +473,28 @@ def main(pkl_path, ego_ids, output_folder):
     print(obs.keys())
     time_steps = list(obs.keys())
     time_steps.sort()
+    if len(time_steps) == 0:
+        return
     static_map = gridmap2img_static(obs[time_steps[0]]["World"].numpy(), icon_dict, ego_ids)
     static_map_img = Image.fromarray(static_map)
     # static_map_img.save("{}/static_layout.png".format(output_folder))
     last_icons = None
-    for key in trange(time_steps[0], time_steps[-2]):
+    if len(time_steps) == 1:
+        output_path = "{}/step_{}.png".format(output_folder, time_steps[0])
+        static_map_img.save(output_path)
+        cv2.destroyAllWindows()
+        return
+    for idx, key in enumerate(trange(time_steps[0], time_steps[-1] + 1)):
+        if idx >= len(time_steps):
+            break
+        if key not in obs:
+            continue
         grid = obs[key]["World"].numpy()
-        grid_ = obs[key+1]["World"].numpy()
+        if idx + 1 < len(time_steps):
+            next_key = time_steps[idx + 1]
+            grid_ = obs[next_key]["World"].numpy()
+        else:
+            grid_ = grid
         img, last_icons = gridmap2img_agents(grid, grid_, icon_dict, static_map, last_icons, agents, ego_ids=ego_ids)
         # Define the text to be added
         text = "#{}".format(key)

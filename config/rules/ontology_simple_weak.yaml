@@ -1,0 +1,72 @@
+EntityTypes:
+  - Entity
+
+Predicates:
+  - IsPedestrian:
+      arity: 1
+      method: IsPed(Entity)
+      function: logicity.utils.pred_converter.z3.IsPed
+      description: Checks if entity x is a pedestrian.
+      semantic: true
+  - IsCar:
+      arity: 1
+      method: IsCar(Entity)
+      function: logicity.utils.pred_converter.z3.IsCar
+      description: Checks if agent x is a car.
+      semantic: true
+  - IsAtInter:
+      arity: 1
+      method: IsAtInter(Entity)
+      function: logicity.utils.pred_converter.z3.IsAtInter
+      description: Checks if agent x is at the intersection.
+      semantic: false
+  - IsInInter:
+      arity: 1
+      method: IsInInter(Entity)
+      function: logicity.utils.pred_converter.z3.IsInInter
+      description: Checks if agent x is in the intersection.
+      semantic: false
+  - HigherPri:
+      arity: 2
+      method: HigherPri(Entity, Entity)
+      function: logicity.utils.pred_converter.z3.HigherPri
+      description: Checks if agent x has higher priority than y.
+      semantic: false
+  - IsAhead:
+      arity: 2
+      method: IsAhead(Entity, Entity)
+      function: logicity.utils.pred_converter.z3.IsAhead
+      description: Checks whether a car lies 3 to FOV-limit cells ahead of agent x on the same lane.
+      semantic: false
+  - IsCloseAhead:
+      arity: 2
+      method: IsCloseAhead(Entity, Entity)
+      function: logicity.utils.pred_converter.z3.IsCloseAhead
+      description: Checks whether a car lies exactly 3 cells ahead of agent x on the same lane.
+      semantic: false
+  - CollidingClose:
+      arity: 2
+      method: CollidingClose(Entity, Entity)
+      function: logicity.utils.pred_converter.z3.CollidingClose
+      description: Checks whether another agent is strictly inside the 3-cell deadzone around agent x.
+      semantic: false
+  - Stop:
+      arity: 1
+      method: Stop(Entity)
+      function: None
+      description: Stop action.
+  - Fast:
+      arity: 1
+      method: Fast(Entity)
+      function: None
+      description: Fast action.
+  - Normal:
+      arity: 1
+      method: Normal(Entity)
+      function: None
+      description: Normal action.
+  - Slow:
+      arity: 1
+      method: Slow(Entity)
+      function: None
+      description: Slow action.

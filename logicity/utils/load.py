@@ -66,6 +66,10 @@ class CityLoader:
         else:
             city = City(grid_size=grid_size, local_planner=rule_type, \
                         logic_engine_file=logic_engine_file, use_multi=use_multi)
+        if rl_agent is not None and hasattr(city.local_planner, "set_obs_fov"):
+            city.local_planner.set_obs_fov(rl_agent.get("obs_fov"))
+        if rl_agent is not None and hasattr(city.local_planner, "set_entity_detect_min_radius"):
+            city.local_planner.set_entity_detect_min_radius(rl_agent.get("entity_detect_min_radius"))
         cached_observation["Static Info"]["Logic"]["Predicates"] = list(city.local_planner.predicates.keys())
         cached_observation["Static Info"]["Logic"]["Rules"] = city.local_planner.data["Rules"]
         logger.info("Local planner constructed!")

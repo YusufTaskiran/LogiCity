@@ -1,0 +1,6 @@
+episode,joint_success,joint_dsr,mean_reward,ppo_steps,oracle_step,termination_reason,fail,timeout,truncated,car_1_success,car_1_dsr,car_1_policy_stop_count,car_1_expert_stop_count,car_1_matched_stop_count,car_1_policy_action_hist_0,car_1_expert_action_hist_0,car_1_policy_action_hist_1,car_1_expert_action_hist_1,car_1_policy_action_hist_2,car_1_expert_action_hist_2,car_1_policy_action_hist_3,car_1_expert_action_hist_3,car_2_success,car_2_dsr,car_2_policy_stop_count,car_2_expert_stop_count,car_2_matched_stop_count,car_2_policy_action_hist_0,car_2_expert_action_hist_0,car_2_policy_action_hist_1,car_2_expert_action_hist_1,car_2_policy_action_hist_2,car_2_expert_action_hist_2,car_2_policy_action_hist_3,car_2_expert_action_hist_3,eval_wall_clock_seconds
+0,1,1.0,0.0,94,225,success,0,0,0,1,1.0,39,39,39,0,0,13,13,22,22,39,39,1,1.0,61,61,61,0,0,11,11,22,22,61,61,0.0
+10,1,1.0,0.0,96,94,success,0,0,0,1,1.0,52,52,52,0,0,12,12,32,32,52,52,1,1.0,53,53,53,0,0,10,10,13,13,53,53,0.0
+20,1,1.0,0.0,95,225,success,0,0,0,1,1.0,70,70,70,0,0,12,12,13,13,70,70,1,1.0,50,50,50,0,0,11,11,22,22,50,50,0.0
+30,1,1.0,0.0,66,68,success,0,0,0,1,1.0,32,32,32,0,0,13,13,21,21,32,32,1,,0,0,0,0,0,17,17,34,34,0,0,0.0
+40,1,1.0,0.0,76,225,success,0,0,0,1,1.0,53,53,53,1,1,10,10,12,12,53,53,1,1.0,44,44,44,0,0,10,10,12,12,44,44,0.0

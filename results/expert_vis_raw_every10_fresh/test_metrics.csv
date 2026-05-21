@@ -1,0 +1,7 @@
+row_type,episode,tsr,dsr,mean_reward,fail,hard_fail_events,deadzone_fail_events,simultaneous_entry_fail_events,timeout,truncated,policy_stop_count,expert_stop_count,matched_stop_count,policy_action_hist_0,policy_action_hist_1,policy_action_hist_2,policy_action_hist_3,expert_action_hist_0,expert_action_hist_1,expert_action_hist_2,expert_action_hist_3,shield_intervention_count,shield_intervention_rate,eval_wall_clock_seconds,termination_reason
+episode,0,1,1.0,18.0,0,0,0,0,0,0,43,43,43,0,13,22,43,0,13,22,43,0,0.0,0.0,success
+episode,10,1,1.0,20.0,0,0,0,0,0,0,51,51,51,0,12,32,51,0,12,32,51,0,0.0,0.0,success
+episode,20,1,1.0,15.600000000000001,0,0,0,0,0,0,68,68,68,0,12,13,68,0,12,13,68,0,0.0,0.0,success
+episode,30,1,1.0,18.0,0,0,0,0,0,0,31,31,31,0,13,23,31,0,13,23,31,0,0.0,0.0,success
+episode,40,1,1.0,15.200000000000001,0,0,0,0,0,0,51,51,51,4,10,11,51,4,10,11,51,0,0.0,0.0,success
+summary,all,1.0,1.0,17.36,0,0,0,0,0,0,244,244,244,4,60,101,244,4,60,101,244,0,0.0,139.03045058250427,

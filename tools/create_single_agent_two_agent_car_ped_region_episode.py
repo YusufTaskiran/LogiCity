@@ -4,6 +4,7 @@ import yaml
 import torch
 import argparse
 import importlib
+import copy
 import numpy as np
 import pickle as pkl
 
@@ -11,6 +12,9 @@ from logicity.utils.logger import setup_logger
 from logicity.utils.load import CityLoader
 from logicity.utils.gym_wrapper import GymCityWrapper
 from tools.create_two_agent_car_ped_region_episode import build_episode_cache
+
+
+MIN_START_SEPARATION = 6.0
 
 
 def parse_arguments():
@@ -48,6 +52,21 @@ def make_env(simulation_config, episode_cache=None, return_cache=False):
     return env
 
 
+def _agent_pos(episode_cache, agent_name):
+    return np.asarray(episode_cache["agents"][agent_name]["pos"], dtype=np.float32)
+
+
+def _passes_spawn_separation(episode_cache):
+    agent_names = ["Car_1", "Car_2", "Car_3", "Pedestrian_1"]
+    for idx, name_a in enumerate(agent_names):
+        pos_a = _agent_pos(episode_cache, name_a)
+        for name_b in agent_names[idx + 1 :]:
+            pos_b = _agent_pos(episode_cache, name_b)
+            if float(np.linalg.norm(pos_a - pos_b)) < MIN_START_SEPARATION:
+                return False
+    return True
+
+
 def main(args, logger):
     torch.manual_seed(args.seed)
     np.random.seed(args.seed)
@@ -76,6 +95,9 @@ def main(args, logger):
         logger.info("Attempt %s | accepted %s/%s", attempts, key, args.max_episodes)
         base_city, _ = CityLoader.from_yaml(**simulation_config)
         episode_cache = build_episode_cache(base_city, controlled_agent_names, rng)
+        if not _passes_spawn_separation(episode_cache):
+            logger.info("Discarding attempt %s because spawned agents are too close together.", attempts)
+            continue
         eval_env, cached_observation = make_env(simulation_config, episode_cache=episode_cache, return_cache=True)
         model = algorithm_class(eval_env)
         obs = eval_env.init()
@@ -102,7 +124,8 @@ def main(args, logger):
             logger.info("Discarding attempt %s because no Stop action was used.", attempts)
             continue
 
-        saved_episode = eval_env.save_episode()
+        saved_episode = copy.deepcopy(episode_cache)
+        saved_episode["city_grid"] = saved_episode["city_grid"].clone()
         saved_episode["label_info"] = {
             "action": 1 if stop_used else 0,
             "oracle_step": int(step),

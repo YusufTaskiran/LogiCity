@@ -28,6 +28,21 @@ class PesudoAgent:
 class Z3Planner(LocalPlanner):
     def __init__(self, yaml_path):        
         super().__init__(yaml_path)
+        self.obs_fov = AGENT_FOV
+        self.rl_obs_fov = AGENT_FOV
+        self.entity_detect_min_radius = 0.0
+
+    def set_obs_fov(self, obs_fov):
+        if obs_fov is None:
+            self.rl_obs_fov = AGENT_FOV
+            return
+        self.rl_obs_fov = max(int(obs_fov), 1)
+
+    def set_entity_detect_min_radius(self, entity_detect_min_radius):
+        if entity_detect_min_radius is None:
+            self.entity_detect_min_radius = 0.0
+            return
+        self.entity_detect_min_radius = max(float(entity_detect_min_radius), 0.0)
 
     def _create_entities(self):
         # Create Z3 sorts for each entity type
@@ -146,33 +161,34 @@ class Z3Planner(LocalPlanner):
         logger.info("Solve sub-problem time: {}".format(e2-e))
         return combined_results
     
-    def get_fov(self, position, direction, width, height):
+    def get_fov(self, position, direction, width, height, obs_fov=None):
         # Calculate the region of the city image that falls within the ego agent's field of view
+        obs_fov = self.obs_fov if obs_fov is None else max(int(obs_fov), 1)
         if direction == None:
-            x_start = max(position[0]-AGENT_FOV, 0)
-            y_start = max(position[1]-AGENT_FOV, 0)
-            x_end = min(position[0]+AGENT_FOV+1, width)
-            y_end = min(position[1]+AGENT_FOV+1, height)
+            x_start = max(position[0]-obs_fov, 0)
+            y_start = max(position[1]-obs_fov, 0)
+            x_end = min(position[0]+obs_fov+1, width)
+            y_end = min(position[1]+obs_fov+1, height)
         elif direction == "Left":
-            x_start = max(position[0]-AGENT_FOV, 0)
-            y_start = max(position[1]-AGENT_FOV, 0)
-            x_end = min(position[0]+AGENT_FOV+1, width)
+            x_start = max(position[0]-obs_fov, 0)
+            y_start = max(position[1]-obs_fov, 0)
+            x_end = min(position[0]+obs_fov+1, width)
             y_end = min(position[1]+2, height)
         elif direction == "Right":
-            x_start = max(position[0]-AGENT_FOV, 0)
+            x_start = max(position[0]-obs_fov, 0)
             y_start = max(position[1]-2, 0)
-            x_end = min(position[0]+AGENT_FOV+1, width)
-            y_end = min(position[1]+AGENT_FOV+1, height)
+            x_end = min(position[0]+obs_fov+1, width)
+            y_end = min(position[1]+obs_fov+1, height)
         elif direction == "Up":
-            x_start = max(position[0]-AGENT_FOV, 0)
-            y_start = max(position[1]-AGENT_FOV, 0)
+            x_start = max(position[0]-obs_fov, 0)
+            y_start = max(position[1]-obs_fov, 0)
             x_end = min(position[0]+2, width)
-            y_end = min(position[1]+AGENT_FOV+1, height)
+            y_end = min(position[1]+obs_fov+1, height)
         elif direction == "Down":
             x_start = max(position[0]-2, 0)
-            y_start = max(position[1]-AGENT_FOV, 0)
-            x_end = min(position[0]+AGENT_FOV+1, width)
-            y_end = min(position[1]+AGENT_FOV+1, height)
+            y_start = max(position[1]-obs_fov, 0)
+            x_end = min(position[0]+obs_fov+1, width)
+            y_end = min(position[1]+obs_fov+1, height)
         return x_start, y_start, x_end, y_end
 
     def break_world_matrix(self, world_matrix, agents, intersect_matrix, layerid2listid):
@@ -186,7 +202,13 @@ class Z3Planner(LocalPlanner):
             ego_layer = world_matrix[agent.layer_id]
             ego_position = (ego_layer == TYPE_MAP[agent.type]).nonzero()[0]
             ego_direction = agent.last_move_dir
-            x_start, y_start, x_end, y_end = self.get_fov(ego_position, ego_direction, world_matrix.shape[1], world_matrix.shape[2])
+            x_start, y_start, x_end, y_end = self.get_fov(
+                ego_position,
+                ego_direction,
+                world_matrix.shape[1],
+                world_matrix.shape[2],
+                obs_fov=self.obs_fov,
+            )
             partial_world_all = world_matrix[:, x_start:x_end, y_start:y_end].clone()
             partial_intersections = intersect_matrix[:, x_start:x_end, y_start:y_end].clone()
             partial_world_nonzero_int = torch.logical_and(partial_world_all != 0, \
@@ -194,20 +216,20 @@ class Z3Planner(LocalPlanner):
             # Apply torch.any across dimensions 1 and 2 sequentially
             non_zero_layers = partial_world_nonzero_int.any(dim=1).any(dim=1)
             non_zero_layer_indices = torch.where(non_zero_layers)[0]
-            partial_world_squeezed = partial_world_all[non_zero_layers]
+            agent_layer_indices = [int(idx) for idx in non_zero_layer_indices.tolist() if int(idx) in layerid2listid]
+            partial_world_squeezed = partial_world_all[agent_layer_indices]
             partial_world[ego_name] = partial_world_squeezed
             partial_intersection[ego_name] = partial_intersections
             partial_agent = {}
             for layer_id in range(partial_world_squeezed.shape[0]):
                 layer = partial_world_squeezed[layer_id]
-                layer_nonzero_int = torch.logical_and(layer != 0, layer == layer.to(torch.int64))
-                if layer_nonzero_int.nonzero().shape[0] > 1:
-                    continue
-                non_zero_values = int(layer[layer_nonzero_int.nonzero()[0][0], layer_nonzero_int.nonzero()[0][1]])
-                agent_type = LABEL_MAP[non_zero_values]
-                # find this agent
-                other_agent_layer_id = int(non_zero_layer_indices[layer_id])
+                other_agent_layer_id = agent_layer_indices[layer_id]
                 other_agent = agents[layerid2listid[other_agent_layer_id]]
+                live_agent_mask = layer == TYPE_MAP[other_agent.type]
+                live_agent_cells = live_agent_mask.nonzero()
+                if live_agent_cells.shape[0] != 1:
+                    continue
+                agent_type = other_agent.type
                 assert other_agent.type == agent_type
                 if other_agent_layer_id == agent.layer_id:
                     partial_agent["ego_{}".format(layer_id)] = PesudoAgent(agent_type, layer_id, other_agent.concepts, other_agent.last_move_dir)

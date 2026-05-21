@@ -14,29 +14,76 @@ Rules:
               IsAtInter(dummyEntity),
               HigherPri(dummyEntity, entity),
             ),
-            CollidingClose(entity, dummyEntity)
+            And(
+              IsCar(entity),
+              IsInInter(entity),
+              IsInInter(dummyEntity),
+              IsCar(dummyEntity),
+              HigherPri(dummyEntity, entity),
+            ),
+            And(
+              IsCloseAhead(entity, dummyEntity)
+            )
           )
         )
-      description: Minimal stop rule based on intersection occupancy, priority, and immediate close conflict.
+      description: Minimal stop rule based on occupancy, priority, and colliding forward conflict.
   Task: # how the reward/score is calculated
-    - name: Collision and Intersection
-      description: should not collide.
+    - name: Proximity Collision
+      description: hard safety failure for immediate deadzone or close-ahead collision risk.
       dead: true
       reward: -10
       formula: |
         Implies(Exists(
           [dummyEntity],
             Or(
-              And(
-                IsAtInter(entity),
-                IsInInter(dummyEntity),
-              ),
-              And(
-                IsAtInter(entity),
-                IsAtInter(dummyEntity),
-                HigherPri(dummyEntity, entity),
-              ),
+              IsCloseAhead(entity, dummyEntity),
               CollidingClose(entity, dummyEntity)
+            )
+          ),
+          Stop(entity)
+        )
+    - name: Occupied Intersection Entry
+      description: soft safety violation for entering while another agent is already in the intersection.
+      dead: false
+      reward: -2
+      formula: |
+        Implies(Exists(
+          [dummyEntity],
+            And(
+              IsAtInter(entity),
+              IsInInter(dummyEntity)
+            )
+          ),
+          Stop(entity)
+        )
+    - name: Higher Priority Entry Yield
+      description: soft safety violation for not yielding at the same intersection entry to a higher-priority agent.
+      dead: false
+      reward: -2
+      formula: |
+        Implies(Exists(
+          [dummyEntity],
+            And(
+              IsAtInter(entity),
+              IsAtInter(dummyEntity),
+              HigherPri(dummyEntity, entity)
+            )
+          ),
+          Stop(entity)
+        )
+    - name: Higher Priority In-Intersection Yield
+      description: soft safety violation for not yielding inside the same intersection to a higher-priority car.
+      dead: false
+      reward: -2
+      formula: |
+        Implies(Exists(
+          [dummyEntity],
+            And(
+              IsCar(entity),
+              IsInInter(entity),
+              IsInInter(dummyEntity),
+              IsCar(dummyEntity),
+              HigherPri(dummyEntity, entity)
             )
           ),
           Stop(entity)
@@ -57,17 +104,26 @@ Rules:
               IsAtInter(dummyEntity),
               HigherPri(dummyEntity, entity),
             ),
-            CollidingClose(entity, dummyEntity)
+            And(
+              IsCar(entity),
+              IsInInter(entity),
+              IsInInter(dummyEntity),
+              IsCar(dummyEntity),
+              HigherPri(dummyEntity, entity),
+            ),
+            And(
+              IsCloseAhead(entity, dummyEntity)
+            )
           )
         )
     - name: Slow
-      description: If not stop, slow down for early forward warnings.
+      description: If not stop, slow down for forward warnings.
       formula: |
         Slow(entity) == And(
           Not(Stop(entity)),
           Exists(
             [dummyEntity],
-            IsCloseAhead(entity, dummyEntity)
+            IsAhead(entity, dummyEntity)
           )
         )
     - name: Fast
