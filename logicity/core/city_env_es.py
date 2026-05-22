@@ -31,10 +31,17 @@ class CityEnvES(CityEnv):
         current_obs["Fail"] = []
         current_obs["Agent_actions"] = []
         current_obs["Reward"] = []
+        current_obs["FailRuleNames"] = []
         
-        fail, reward = self.local_planner.eval(action)
+        fail_eval = self.local_planner.eval(action)
+        if isinstance(fail_eval, tuple) and len(fail_eval) == 3:
+            fail, reward, fail_rule_names = fail_eval
+        else:
+            fail, reward = fail_eval
+            fail_rule_names = []
         current_obs["Fail"].append(fail)
         current_obs["Reward"].append(reward)
+        current_obs["FailRuleNames"].append(fail_rule_names)
         new_matrix = torch.zeros_like(self.city_grid)
         
         for agent in self.agents:

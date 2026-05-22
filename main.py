@@ -29,6 +29,7 @@ def parse_arguments():
     parser.add_argument('--max-steps', type=int, default=300)
     # RL
     parser.add_argument('--collect_only', action='store_true', help='Only collect expert data.')
+    parser.add_argument('--collect_num_episodes', type=int, default=None, help='Override collecting_config.num_episodes for expert data collection.')
     parser.add_argument('--use_gym', action='store_true', help='In gym mode, we can use RL alg. to control certain agents.')
     parser.add_argument('--save_steps', action='store_true', help='Save step-wise decision for each trajectory.')
     parser.add_argument('--config', default='config/tasks/Nav/medium/algo/maxsynthtest.yaml', help='Configure file for this RL exp.')
@@ -74,6 +75,9 @@ def main_collect(args, logger):
     simulation_config = config["simulation"]
     logger.info("Simulation config: {}".format(simulation_config))
     collection_config = config['collecting_config']
+    if args.collect_num_episodes is not None:
+        collection_config = copy.deepcopy(collection_config)
+        collection_config["num_episodes"] = args.collect_num_episodes
     logger.info("RL config: {}".format(collection_config))
 
     # Check if expert data collection is requested
@@ -152,7 +156,7 @@ def main_gym(args, logger):
         rl_config["algorithm"]
     )
     # Load the entire eval_checkpoint configuration as a dictionary
-    eval_checkpoint_config = config.get('eval_checkpoint', {})
+    eval_checkpoint_config = config.get('eval_checkpoint')
     # Hyperparameters
     hyperparameters = rl_config["hyperparameters"]
     train = rl_config["train"]
@@ -180,15 +184,20 @@ def main_gym(args, logger):
                                     policy_kwargs=policy_kwargs)
         # RL training mode
         # Create the custom checkpoint and evaluation callback
-        if "Dreamer" == rl_config["algorithm"]:
-            eval_checkpoint_callback = DreamerEvalCheckpointCallback(exp_name=args.exp, **eval_checkpoint_config)
-        else:
-            eval_checkpoint_callback = EvalCheckpointCallback(exp_name=args.exp, **eval_checkpoint_config)
+        eval_checkpoint_callback = None
+        if eval_checkpoint_config:
+            eval_checkpoint_config = copy.deepcopy(eval_checkpoint_config)
+            base_save_path = eval_checkpoint_config.get("save_path", "./checkpoints/")
+            eval_checkpoint_config["save_path"] = os.path.join(base_save_path, args.exp)
+            if "Dreamer" == rl_config["algorithm"]:
+                eval_checkpoint_callback = DreamerEvalCheckpointCallback(exp_name=args.exp, **eval_checkpoint_config)
+            else:
+                eval_checkpoint_callback = EvalCheckpointCallback(exp_name=args.exp, **eval_checkpoint_config)
         # Train the model
-        model.learn(total_timesteps=total_timesteps, callback=eval_checkpoint_callback\
-                    , tb_log_name=args.exp)
+        model.learn(total_timesteps=total_timesteps, callback=eval_checkpoint_callback, tb_log_name=args.exp)
         # Save the model
-        model.save(eval_checkpoint_config["name_prefix"])
+        save_name = args.exp if not eval_checkpoint_config else eval_checkpoint_config.get("name_prefix", args.exp)
+        model.save(save_name)
         return
     # model evaluation
     else:

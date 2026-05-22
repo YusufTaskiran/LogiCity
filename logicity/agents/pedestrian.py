@@ -49,8 +49,7 @@ class Pedestrian(Agent):
                 self.start, self.goal = sample_determine_start_goal(self.type, self.id)
                 self.pos = self.start.clone()
             else:
-                self.start = torch.tensor(self.get_start(world_state_matrix))
-                self.goal = torch.tensor(self.get_goal(world_state_matrix, self.start))
+                self.start, self.goal = self._sample_start_and_goal(world_state_matrix)
                 self.pos = self.start.clone()
         # specify the occupacy map
         self.movable_region = (world_state_matrix[STREET_ID] == WALKING_STREET) | (world_state_matrix[STREET_ID] == CROSSING_STREET)
@@ -60,15 +59,36 @@ class Pedestrian(Agent):
         self.last_move_dir = None
         logger.info("{}_{} initialization done!".format(self.type, self.id))
 
-    def get_start(self, world_state_matrix):
-        # Define the labels for different entities
-        building = [TYPE_MAP[b] for b in PEDES_GOAL_START]
-        # Find cells that are walking streets and have a house or office around them
-        desired_locations = sample_start_goal(world_state_matrix, TYPE_MAP['Walking Street'], building, kernel_size=PED_GOAL_START_INCLUDE_KERNEL)
+    def _sample_start_and_goal(self, world_state_matrix, max_attempts=64):
+        for _ in range(max_attempts):
+            start = torch.tensor(self.get_start(world_state_matrix))
+            goal = self.get_goal(world_state_matrix, start)
+            if goal is not None:
+                return start, torch.tensor(goal)
+        raise RuntimeError("Failed to sample a valid pedestrian start/goal pair after {} attempts.".format(max_attempts))
+
+    def _pedestrian_candidate_mask(self, world_state_matrix, building_types):
+        building = [TYPE_MAP[b] for b in building_types]
+        desired_locations = sample_start_goal(
+            world_state_matrix,
+            TYPE_MAP['Walking Street'],
+            building,
+            kernel_size=PED_GOAL_START_INCLUDE_KERNEL,
+        )
         desired_locations[self.region:, :] = False
         desired_locations[:, self.region:] = False
+        return desired_locations
+
+    def get_start(self, world_state_matrix):
+        # Prefer house/office-adjacent starts, but relax to any building-adjacent
+        # walking street when the small map makes the preferred set empty.
+        desired_locations = self._pedestrian_candidate_mask(world_state_matrix, PEDES_GOAL_START)
+        if torch.nonzero(desired_locations).numel() == 0:
+            desired_locations = self._pedestrian_candidate_mask(world_state_matrix, BUILDING_TYPES)
         
         self.start_point_list = torch.nonzero(desired_locations).tolist()
+        if len(self.start_point_list) == 0:
+            raise RuntimeError("No valid pedestrian start positions found for the current map/region.")
         random_index = torch.randint(0, len(self.start_point_list), (1,)).item()
         
         # Fetch the corresponding location
@@ -78,10 +98,11 @@ class Pedestrian(Agent):
         return start_point
     
     def get_goal(self, world_state_matrix, start_point):
-        # Define the labels for different entities
-        building = [TYPE_MAP[b] for b in PEDES_GOAL_START]
-        # Find cells that are walking streets and have a house or office around them
-        self.desired_locations = sample_start_goal(world_state_matrix, TYPE_MAP['Walking Street'], building, kernel_size=PED_GOAL_START_INCLUDE_KERNEL)
+        # Prefer house/office-adjacent goals, but relax to any building-adjacent
+        # walking street when the preferred set is too small on compact maps.
+        self.desired_locations = self._pedestrian_candidate_mask(world_state_matrix, PEDES_GOAL_START)
+        if torch.nonzero(self.desired_locations).numel() == 0:
+            self.desired_locations = self._pedestrian_candidate_mask(world_state_matrix, BUILDING_TYPES)
         desired_locations = self.desired_locations.detach().clone()
         
         # Determine the nearest building to the start point
@@ -100,7 +121,16 @@ class Pedestrian(Agent):
         desired_locations[self.region:, :] = False
         desired_locations[:, self.region:] = False
         # Return the indices of the desired locations
-        goal_point_list = torch.nonzero(desired_locations).tolist()        
+        goal_point_list = torch.nonzero(desired_locations).tolist()
+        if len(goal_point_list) == 0:
+            # On the 2x2 map the exclusion kernel can wipe out every preferred
+            # candidate, so relax by allowing any building-adjacent walking street
+            # outside the exact start cell.
+            relaxed_locations = self._pedestrian_candidate_mask(world_state_matrix, BUILDING_TYPES)
+            relaxed_locations[start_point[0], start_point[1]] = False
+            goal_point_list = torch.nonzero(relaxed_locations).tolist()
+        if len(goal_point_list) == 0:
+            return None
         random_index = torch.randint(0, len(goal_point_list), (1,)).item()
         
         # Fetch the corresponding location
@@ -149,6 +179,19 @@ class Pedestrian(Agent):
 
             # Return the indices of the desired locations
             goal_point_list = torch.nonzero(desired_locations).tolist()
+            if len(goal_point_list) == 0:
+                self.start, self.goal = self._sample_start_and_goal(world_state_matrix)
+                self.pos = self.start.clone()
+                self.global_traj = self.global_planner(self.movable_region, self.start, self.goal)
+                self.reach_goal = False
+                self.last_move_dir = None
+                world_state_matrix[self.layer_id] *= 0
+                world_state_matrix[self.layer_id][self.goal[0], self.goal[1]] = TYPE_MAP[self.type] + AGENT_GOAL_PLUS
+                for way_points in self.global_traj[1:-1]:
+                    world_state_matrix[self.layer_id][way_points[0], way_points[1]] \
+                        = TYPE_MAP[self.type] + AGENT_GLOBAL_PATH_PLUS
+                world_state_matrix[self.layer_id][self.start[0], self.start[1]] = TYPE_MAP[self.type]
+                return self.get_action(local_action_dist), world_state_matrix[self.layer_id]
             random_index = torch.randint(0, len(goal_point_list), (1,)).item()
             
             # Fetch the corresponding location

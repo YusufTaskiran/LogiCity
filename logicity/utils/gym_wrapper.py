@@ -54,6 +54,11 @@ class GymCityWrapper(gym.core.Env):
         self.action_cost = env.rl_agent["action_cost"]
         self.reset_dist = env.rl_agent["reset_dist"] if "reset_dist" in env.rl_agent else None
         self.overtime_cost = env.rl_agent["overtime_cost"] if "overtime_cost" in env.rl_agent else -3
+        self.reward_scheme = env.rl_agent.get("reward_scheme", "default")
+        self.goal_reward = env.rl_agent.get("goal_reward", 0.0)
+        self.progress_reward_scale = env.rl_agent.get("progress_reward_scale", 0.0)
+        self.time_penalty = env.rl_agent.get("time_penalty", 0.0)
+        self.reset_prefilter = env.rl_agent.get("reset_prefilter", None)
         self.type2label = {v: k for k, v in LABEL_MAP.items()}
         self.scale = [25, 7, 3.5, 8.3]
         self.mini_scale = [0, 0, -1, 0]
@@ -89,6 +94,98 @@ class GymCityWrapper(gym.core.Env):
         else:
             moving_cost = self.action2cost(obs_dict["Agent_actions"][0])
             return (moving_cost + obs_dict["Reward"][0])/self.path_length
+
+    def _trajectory_distance_remaining(self):
+        if self.agent.reach_goal:
+            return 0.0
+        traj = self.agent.global_traj
+        pos = self.agent.pos
+        matches = torch.all(traj == pos, dim=1).nonzero(as_tuple=False)
+        if matches.numel() > 0:
+            current_idx = int(matches[0].item())
+            if current_idx >= len(traj) - 1:
+                return 0.0
+            deltas = traj[current_idx + 1:] - traj[current_idx:-1]
+            return float(torch.abs(deltas).sum().item())
+        return float(torch.abs(self.agent.goal - pos).sum().item())
+
+    def _get_spf_reward(self, obs_dict, prev_distance, curr_distance, reached_goal):
+        if obs_dict["Fail"][0]:
+            return obs_dict["Reward"][0]
+        progress = prev_distance - curr_distance
+        reward = self.progress_reward_scale * progress + self.time_penalty
+        if reached_goal:
+            reward += self.goal_reward
+        return reward
+
+    def _get_center_intersection_mask(self, selector="center"):
+        intersection_blocks = self.env.intersection_matrix[2]
+        labels = torch.unique(intersection_blocks)
+        labels = labels[labels > 0]
+        if labels.numel() == 0:
+            return None
+        if selector != "center":
+            raise ValueError("Unsupported intersection selector: {}".format(selector))
+        grid_center = torch.tensor(
+            [intersection_blocks.shape[0] / 2.0, intersection_blocks.shape[1] / 2.0],
+            dtype=torch.float32,
+        )
+        best_label = None
+        best_distance = None
+        for label in labels.tolist():
+            coords = (intersection_blocks == label).nonzero(as_tuple=False).float()
+            centroid = coords.mean(dim=0)
+            distance = torch.norm(centroid - grid_center).item()
+            if best_distance is None or distance < best_distance:
+                best_distance = distance
+                best_label = label
+        return intersection_blocks == best_label
+
+    def _agent_route_crosses_mask(self, agent, mask):
+        traj = agent.global_traj
+        if traj is None or len(traj) == 0:
+            return False
+        coords = traj.long()
+        return bool(mask[coords[:, 0], coords[:, 1]].any().item())
+
+    def _passes_reset_prefilter(self):
+        if not self.reset_prefilter:
+            return True
+        selector = self.reset_prefilter.get("intersection_selector", "center")
+        require_ego = self.reset_prefilter.get("require_ego_intersection", True)
+        require_all = self.reset_prefilter.get("require_all_agents_intersection", False)
+        min_other = self.reset_prefilter.get("min_other_intersection_agents", 1)
+        mask = self._get_center_intersection_mask(selector=selector)
+        if mask is None:
+            return False
+        ego_crosses = False
+        other_crosses = 0
+        for agent in self.env.agents:
+            crosses = self._agent_route_crosses_mask(agent, mask)
+            if agent.layer_id == self.agent_layer_id:
+                ego_crosses = crosses
+            elif crosses:
+                other_crosses += 1
+            if require_all and not crosses:
+                return False
+        if require_ego and not ego_crosses:
+            return False
+        if other_crosses < min_other:
+            return False
+        return True
+
+    def _redraw_all_agent_layers(self):
+        for env_agent in self.env.agents:
+            agent_code = self.type2label[env_agent.type]
+            agent_layer = torch.zeros((self.env.grid_size[0], self.env.grid_size[1]))
+            agent_layer[env_agent.start[0], env_agent.start[1]] = agent_code
+            agent_layer[env_agent.goal[0], env_agent.goal[1]] = agent_code + AGENT_GOAL_PLUS
+            for way_points in env_agent.global_traj[1:-1]:
+                if torch.all(way_points == env_agent.start) or torch.all(way_points == env_agent.goal):
+                    continue
+                agent_layer[way_points[0], way_points[1]] = agent_code + AGENT_GLOBAL_PATH_PLUS
+            agent_layer[env_agent.pos[0], env_agent.pos[1]] = agent_code
+            self.env.city_grid[env_agent.layer_id] = agent_layer
     
     def get_reward(self, obs_array, action):
         ''' Get the reward for the current step.
@@ -97,7 +194,11 @@ class GymCityWrapper(gym.core.Env):
         :return: the reward
         '''
         # get the SAT reward/fail
-        fail, sat_reward = self.env.local_planner.eval_state_action(obs_array, action)
+        reward_eval = self.env.local_planner.eval_state_action(obs_array, action)
+        if isinstance(reward_eval, tuple) and len(reward_eval) == 3:
+            fail, sat_reward, _ = reward_eval
+        else:
+            fail, sat_reward = reward_eval
         if fail:
             return sat_reward
         moving_cost = self.action2cost(action)
@@ -124,23 +225,23 @@ class GymCityWrapper(gym.core.Env):
     
     def reset(self, return_info=False):
         logger.info("***Reset RL Agent in Env***")
-        self.t = 0
-        self.agent.init(self.env.city_grid)
-        self.agent.reset_concepts(self.max_priority, self.reset_dist)
+        max_attempts = 128
+        for _ in range(max_attempts):
+            self.t = 0
+            for env_agent in self.env.agents:
+                env_agent.init(self.env.city_grid)
+                if env_agent.layer_id == self.agent_layer_id:
+                    env_agent.reset_concepts(self.max_priority, self.reset_dist)
+            if self._passes_reset_prefilter():
+                break
+        else:
+            raise RuntimeError("Failed to sample a reset satisfying reset_prefilter after {} attempts.".format(max_attempts))
         logger.info("Agent reset priority to {}/{}".format(self.agent.priority, self.max_priority))
         logger.info("Agent reset concepts to {}".format(self.agent.concepts))
         self.path_length = len(self.agent.global_traj)*4
         self.normed_path_length = len(self.agent.global_traj)/(2*self.agent.region)
-        agent_code = self.type2label[self.agent_type]
         self.env.local_planner.reset()
-        # draw agent
-        # print('start: ', self.agent.start, 'pos: ', self.agent.pos)
-        agent_layer = torch.zeros((self.env.grid_size[0], self.env.grid_size[1]))
-        start = self.agent.start
-        goal = self.agent.goal
-        agent_layer[start[0], start[1]] = agent_code
-        agent_layer[goal[0], goal[1]] = agent_code + AGENT_GOAL_PLUS
-        self.env.city_grid[self.agent_layer_id] = agent_layer
+        self._redraw_all_agent_layers()
         if return_info:
             episode = self.save_episode()
         ob_dict = self.env.update(self.agent_layer_id)
@@ -181,9 +282,15 @@ class GymCityWrapper(gym.core.Env):
         self.t += 1
         info = {}
         one_hot_action = torch.tensor(self.action_mapping[action], dtype=torch.float32)
+        prev_distance = self._trajectory_distance_remaining()
         # move and get reward
         current_obs = self.env.move_rl_agent(one_hot_action, self.agent_layer_id)
-        rew = self._get_reward(current_obs)
+        curr_distance = self._trajectory_distance_remaining()
+        reached_goal = self.agent.reach_goal
+        if self.reward_scheme == "safe_path_following":
+            rew = self._get_spf_reward(current_obs, prev_distance, curr_distance, reached_goal)
+        else:
+            rew = self._get_reward(current_obs)
         info.update(current_obs)
         new_ob_dict = self.env.update(self.agent_layer_id)
         if self.use_expert:
@@ -197,7 +304,7 @@ class GymCityWrapper(gym.core.Env):
         self.current_obs = obs
         
         # offset the index by 3 layers 0,1,2 are static in world matrix
-        done = self.agent.reach_goal
+        done = reached_goal
         info["is_success"] = False
 
         if done:

@@ -78,9 +78,8 @@ class Car(Agent):
                 self.start, self.goal = sample_determine_start_goal(self.type, self.id)
                 self.pos = self.start.clone()
             else:
-                self.start = torch.tensor(self.get_start(world_state_matrix))
+                self.start, self.goal = self._sample_start_and_goal(world_state_matrix)
                 self.pos = self.start.clone()
-                self.goal = torch.tensor(self.get_goal(world_state_matrix, self.start))
         # specify the occupacy map
         self.movable_region = (world_state_matrix[STREET_ID] == Traffic_STREET) | (world_state_matrix[STREET_ID] == CROSSING_STREET)
         self.midline_matrix = (world_state_matrix[STREET_ID] == Traffic_STREET+MID_LINE_CODE_PLUS)
@@ -91,6 +90,14 @@ class Car(Agent):
         self.reach_goal = False
         self.last_move_dir = None
         logger.info("{}_{} initialization done!".format(self.type, self.id))
+
+    def _sample_start_and_goal(self, world_state_matrix, max_attempts=64):
+        for _ in range(max_attempts):
+            start = torch.tensor(self.get_start(world_state_matrix))
+            goal = self.get_goal(world_state_matrix, start)
+            if goal is not None:
+                return start, torch.tensor(goal)
+        raise RuntimeError("Failed to sample a valid car start/goal pair after {} attempts.".format(max_attempts))
 
     def reset_concepts(self, max_priority, concepts_dist=None):
         self.priority = np.random.randint(1, max_priority)
@@ -118,6 +125,8 @@ class Car(Agent):
         desired_locations[:, self.region:] = False
 
         self.start_point_list = torch.nonzero(desired_locations).tolist()
+        if len(self.start_point_list) == 0:
+            raise RuntimeError("No valid car start positions found for the current map/region.")
         random_index = torch.randint(0, len(self.start_point_list), (1,)).item()
         
         # Fetch the corresponding location
@@ -154,6 +163,8 @@ class Car(Agent):
 
         # Return the indices of the desired locations
         goal_point_list = torch.nonzero(desired_locations).tolist()
+        if len(goal_point_list) == 0:
+            return None
         random_index = torch.randint(0, len(goal_point_list), (1,)).item()
         
         # Fetch the corresponding location
@@ -202,6 +213,19 @@ class Car(Agent):
 
             # Return the indices of the desired locations
             goal_point_list = torch.nonzero(desired_locations).tolist()
+            if len(goal_point_list) == 0:
+                self.start, self.goal = self._sample_start_and_goal(world_state_matrix)
+                self.pos = self.start.clone()
+                self.global_traj = self.global_planner.plan(self.start, self.goal, 1)
+                self.reach_goal = False
+                self.last_move_dir = None
+                world_state_matrix[self.layer_id] *= 0
+                world_state_matrix[self.layer_id][self.goal[0], self.goal[1]] = TYPE_MAP[self.type] + AGENT_GOAL_PLUS
+                for way_points in self.global_traj[1:-1]:
+                    world_state_matrix[self.layer_id][way_points[0], way_points[1]] \
+                        = TYPE_MAP[self.type] + AGENT_GLOBAL_PATH_PLUS
+                world_state_matrix[self.layer_id][self.start[0], self.start[1]] = TYPE_MAP[self.type]
+                return self.get_action(local_action_dist), world_state_matrix[self.layer_id]
             random_index = torch.randint(0, len(goal_point_list), (1,)).item()
             
             # Fetch the corresponding location

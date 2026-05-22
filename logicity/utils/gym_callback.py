@@ -6,7 +6,17 @@ import torch
 import os
 import logging
 import pickle as pkl
+import csv
+import yaml
 logger = logging.getLogger(__name__)
+
+def _sanitize_rule_name(rule_name):
+    return str(rule_name).replace(" ", "_")
+
+def _load_task_rule_names(rule_yaml_file):
+    with open(rule_yaml_file, "r") as handle:
+        data = yaml.safe_load(handle) or {}
+    return [rule["name"] for rule in data.get("Rules", {}).get("Task", []) if "name" in rule]
 
 def make_env(simulation_config, episode_cache=None, return_cache=False): 
     # Unpack arguments from simulation_config and pass them to CityLoader
@@ -27,9 +37,41 @@ class EvalCheckpointCallback(CheckpointCallback):
         with open(episode_data, "rb") as f:
             self.episode_data = pkl.load(f)
         self.eval_actions = eval_actions
+        self.eval_csv_path = os.path.join(self.save_path, "{}_eval_metrics.csv".format(self.exp_name))
+        self._last_eval_timestep = 0
+        self._last_save_timestep = 0
+        self.failure_rule_names = _load_task_rule_names(self.simulation_config["rule_yaml_file"])
+
+    def _append_eval_csv_row(self, row_dict):
+        file_exists = os.path.isfile(self.eval_csv_path)
+        base_fieldnames = [
+            "timestep",
+            "num_eval_episodes",
+            "tsr",
+            "mean_reward",
+            "failure_rate",
+            "timeout_rate",
+            "mean_episode_length",
+            "action_0_count",
+            "action_1_count",
+            "action_2_count",
+            "action_3_count",
+            "mean_decision_succ",
+        ]
+        decision_fields = sorted([k for k in row_dict.keys() if k.startswith("decision_succ_action_")])
+        fail_rule_fields = ["fail_rule_{}".format(_sanitize_rule_name(rule_name)) for rule_name in self.failure_rule_names]
+        fieldnames = base_fieldnames + decision_fields + fail_rule_fields
+        with open(self.eval_csv_path, "a", newline="") as csvfile:
+            writer = csv.DictWriter(csvfile, fieldnames=fieldnames)
+            if not file_exists:
+                writer.writeheader()
+            writer.writerow(row_dict)
 
     def _on_step(self) -> bool:
-        if self.n_calls % self.save_freq == 0 and (self.model.num_timesteps > self.model.learning_starts):
+        learning_starts = getattr(self.model, "learning_starts", 0)
+        current_timestep = self.model.num_timesteps
+        if (current_timestep - self._last_save_timestep) >= self.save_freq and (current_timestep > learning_starts):
+            self._last_save_timestep = current_timestep
             model_path = self._checkpoint_path(extension="zip")
             self.model.save(model_path)
             if self.verbose >= 2:
@@ -50,11 +92,17 @@ class EvalCheckpointCallback(CheckpointCallback):
                     print(f"Saving model VecNormalize to {vec_normalize_path}")
 
         # Perform evaluation at specified intervals
-        if self.n_calls % self.eval_freq == 0:
+        if (current_timestep - self._last_eval_timestep) >= self.eval_freq:
+            self._last_eval_timestep = current_timestep
             rewards_list = []
             success = []
+            failures = []
+            timeouts = []
+            episode_lengths = []
             decision_step = {}
             succ_decision = {}
+            action_hist = {0: 0, 1: 0, 2: 0, 3: 0}
+            fail_rule_counts = {}
             for action, id in self.eval_actions.items():
                 decision_step[id] = 0
                 succ_decision[id] = 0
@@ -77,6 +125,7 @@ class EvalCheckpointCallback(CheckpointCallback):
                 while (not done) and (step < max_steps):
                     oracle_action = eval_env.expert_action
                     action, _states = self.model.predict(obs, deterministic=True)
+                    action_hist[int(action)] = action_hist.get(int(action), 0) + 1
                     if oracle_action in local_decision_step.keys():
                         local_decision_step[oracle_action] = 1
                         if int(action) != oracle_action:
@@ -90,11 +139,19 @@ class EvalCheckpointCallback(CheckpointCallback):
                 if info["is_success"]:
                     logger.info("Episode {} success.".format(ts))
                     success.append(1)
+                    failures.append(0)
+                    timeouts.append(1 if info.get("overtime", False) else 0)
                 else:
                     logger.info("Episode {} failed.".format(ts))
                     success.append(0)
+                    failures.append(1 if info["Fail"][0] else 0)
+                    timeouts.append(1 if info.get("overtime", False) else 0)
+                    for rule_name in info.get("FailRuleNames", [[]])[0]:
+                        fail_rule_counts[rule_name] = fail_rule_counts.get(rule_name, 0) + 1
                 if step >= max_steps:
                     episode_rewards -= 3
+                    timeouts[-1] = 1
+                episode_lengths.append(step)
                 for acc, id in self.eval_actions.items():
                     if local_decision_step[id] == 0:
                         local_succ_decision[id] = 0
@@ -109,18 +166,47 @@ class EvalCheckpointCallback(CheckpointCallback):
 
             mean_reward = np.mean(rewards_list)
             sr = np.mean(success)
+            failure_rate = np.mean(failures)
+            timeout_rate = np.mean(timeouts)
+            mean_length = np.mean(episode_lengths)
             mSuccD, aSuccD, SuccDAct = cal_step_metric(decision_step, succ_decision)
-            logger.info(f"Step: {self.n_calls} - Success Rate: {sr} - Mean Reward: {mean_reward} \n")
+            logger.info(f"Timestep: {current_timestep} - Success Rate: {sr} - Mean Reward: {mean_reward} \n")
+            logger.info("Failure Rate: {} - Timeout Rate: {} - Mean Episode Length: {}".format(failure_rate, timeout_rate, mean_length))
             logger.info("Mean Decision Succ: {}".format(mSuccD))
             logger.info("Average Decision Succ: {}".format(aSuccD))
             logger.info("Decision Succ for each action: {}".format(SuccDAct))
+            logger.info("Action Histogram: {}".format(action_hist))
+            logger.info("Failure Rule Counts: {}".format(fail_rule_counts))
 
             # Log the mean reward
             with open(os.path.join(self.save_path, "{}_eval_rewards.txt".format(self.exp_name)), "a") as file:
-                file.write(f"Step: {self.n_calls} - Success Rate: {sr} - Mean Reward: {mean_reward} \n")
+                file.write(f"Timestep: {current_timestep} - Success Rate: {sr} - Mean Reward: {mean_reward} \n")
+                file.write("Failure Rate: {} - Timeout Rate: {} - Mean Episode Length: {}\n".format(failure_rate, timeout_rate, mean_length))
                 file.write("Mean Decision Succ: {}\n".format(mSuccD))
                 file.write("Average Decision Succ: {}\n".format(aSuccD))
                 file.write("Decision Succ for each action: {}\n".format(SuccDAct))
+                file.write("Action Histogram: {}\n".format(action_hist))
+                file.write("Failure Rule Counts: {}\n".format(fail_rule_counts))
+
+            csv_row = {
+                "timestep": current_timestep,
+                "num_eval_episodes": len(rewards_list),
+                "tsr": sr,
+                "mean_reward": mean_reward,
+                "failure_rate": failure_rate,
+                "timeout_rate": timeout_rate,
+                "mean_episode_length": mean_length,
+                "action_0_count": action_hist.get(0, 0),
+                "action_1_count": action_hist.get(1, 0),
+                "action_2_count": action_hist.get(2, 0),
+                "action_3_count": action_hist.get(3, 0),
+                "mean_decision_succ": mSuccD,
+            }
+            for action_id, value in SuccDAct.items():
+                csv_row["decision_succ_action_{}".format(action_id)] = value
+            for rule_name in self.failure_rule_names:
+                csv_row["fail_rule_{}".format(_sanitize_rule_name(rule_name))] = fail_rule_counts.get(rule_name, 0)
+            self._append_eval_csv_row(csv_row)
 
             # Update the best model if current mean reward is better
             if mean_reward > self.best_mean_reward:
@@ -139,9 +225,40 @@ class DreamerEvalCheckpointCallback(CheckpointCallback):
         with open(episode_data, "rb") as f:
             self.episode_data = pkl.load(f)
         self.eval_actions = eval_actions
+        self.eval_csv_path = os.path.join(self.save_path, "{}_eval_metrics.csv".format(self.exp_name))
+        self._last_eval_timestep = 0
+        self._last_save_timestep = 0
+        self.failure_rule_names = _load_task_rule_names(self.simulation_config["rule_yaml_file"])
+
+    def _append_eval_csv_row(self, row_dict):
+        file_exists = os.path.isfile(self.eval_csv_path)
+        base_fieldnames = [
+            "timestep",
+            "num_eval_episodes",
+            "tsr",
+            "mean_reward",
+            "failure_rate",
+            "timeout_rate",
+            "mean_episode_length",
+            "action_0_count",
+            "action_1_count",
+            "action_2_count",
+            "action_3_count",
+            "mean_decision_succ",
+        ]
+        decision_fields = sorted([k for k in row_dict.keys() if k.startswith("decision_succ_action_")])
+        fail_rule_fields = ["fail_rule_{}".format(_sanitize_rule_name(rule_name)) for rule_name in self.failure_rule_names]
+        fieldnames = base_fieldnames + decision_fields + fail_rule_fields
+        with open(self.eval_csv_path, "a", newline="") as csvfile:
+            writer = csv.DictWriter(csvfile, fieldnames=fieldnames)
+            if not file_exists:
+                writer.writeheader()
+            writer.writerow(row_dict)
 
     def _on_step(self) -> bool:
-        if self.n_calls % self.save_freq == 0:
+        current_timestep = self.model.num_timesteps
+        if (current_timestep - self._last_save_timestep) >= self.save_freq:
+            self._last_save_timestep = current_timestep
             model_path = self._checkpoint_path(extension="zip")
             self.model.save(model_path)
             if self.verbose >= 2:
@@ -162,11 +279,17 @@ class DreamerEvalCheckpointCallback(CheckpointCallback):
                     print(f"Saving model VecNormalize to {vec_normalize_path}")
 
         # Perform evaluation at specified intervals
-        if self.n_calls % self.eval_freq == 0:
+        if (current_timestep - self._last_eval_timestep) >= self.eval_freq:
+            self._last_eval_timestep = current_timestep
             rewards_list = []
             success = []
+            failures = []
+            timeouts = []
+            episode_lengths = []
             decision_step = {}
             succ_decision = {}
+            action_hist = {0: 0, 1: 0, 2: 0, 3: 0}
+            fail_rule_counts = {}
             for action, id in self.eval_actions.items():
                 decision_step[id] = 0
                 succ_decision[id] = 0
@@ -198,6 +321,7 @@ class DreamerEvalCheckpointCallback(CheckpointCallback):
                         prev_rssmstate = posterior_rssm_state
                         prev_action = action
                     env_action = torch.argmax(action, dim=-1).cpu().numpy()
+                    action_hist[int(env_action)] = action_hist.get(int(env_action), 0) + 1
                     if oracle_action in local_decision_step.keys():
                         local_decision_step[oracle_action] = 1
                         if int(env_action) != oracle_action:
@@ -211,11 +335,19 @@ class DreamerEvalCheckpointCallback(CheckpointCallback):
                 if info["success"]:
                     logger.info("Episode {} success.".format(ts))
                     success.append(1)
+                    failures.append(0)
+                    timeouts.append(1 if info.get("overtime", False) else 0)
                 else:
                     logger.info("Episode {} failed.".format(ts))
                     success.append(0)
+                    failures.append(1 if info["Fail"][0] else 0)
+                    timeouts.append(1 if info.get("overtime", False) else 0)
+                    for rule_name in info.get("FailRuleNames", [[]])[0]:
+                        fail_rule_counts[rule_name] = fail_rule_counts.get(rule_name, 0) + 1
                 if step >= max_steps:
                     episode_rewards -= 3
+                    timeouts[-1] = 1
+                episode_lengths.append(step)
                 for acc, id in self.eval_actions.items():
                     if local_decision_step[id] == 0:
                         local_succ_decision[id] = 0
@@ -230,18 +362,47 @@ class DreamerEvalCheckpointCallback(CheckpointCallback):
 
             mean_reward = np.mean(rewards_list)
             sr = np.mean(success)
+            failure_rate = np.mean(failures)
+            timeout_rate = np.mean(timeouts)
+            mean_length = np.mean(episode_lengths)
             mSuccD, aSuccD, SuccDAct = cal_step_metric(decision_step, succ_decision)
-            logger.info(f"Step: {self.n_calls} - Success Rate: {sr} - Mean Reward: {mean_reward} \n")
+            logger.info(f"Timestep: {current_timestep} - Success Rate: {sr} - Mean Reward: {mean_reward} \n")
+            logger.info("Failure Rate: {} - Timeout Rate: {} - Mean Episode Length: {}".format(failure_rate, timeout_rate, mean_length))
             logger.info("Mean Decision Succ: {}".format(mSuccD))
             logger.info("Average Decision Succ: {}".format(aSuccD))
             logger.info("Decision Succ for each action: {}".format(SuccDAct))
+            logger.info("Action Histogram: {}".format(action_hist))
+            logger.info("Failure Rule Counts: {}".format(fail_rule_counts))
 
             # Log the mean reward
             with open(os.path.join(self.save_path, "{}_eval_rewards.txt".format(self.exp_name)), "a") as file:
-                file.write(f"Step: {self.n_calls} - Success Rate: {sr} - Mean Reward: {mean_reward} \n")
+                file.write(f"Timestep: {current_timestep} - Success Rate: {sr} - Mean Reward: {mean_reward} \n")
+                file.write("Failure Rate: {} - Timeout Rate: {} - Mean Episode Length: {}\n".format(failure_rate, timeout_rate, mean_length))
                 file.write("Mean Decision Succ: {}\n".format(mSuccD))
                 file.write("Average Decision Succ: {}\n".format(aSuccD))
                 file.write("Decision Succ for each action: {}\n".format(SuccDAct))
+                file.write("Action Histogram: {}\n".format(action_hist))
+                file.write("Failure Rule Counts: {}\n".format(fail_rule_counts))
+
+            csv_row = {
+                "timestep": current_timestep,
+                "num_eval_episodes": len(rewards_list),
+                "tsr": sr,
+                "mean_reward": mean_reward,
+                "failure_rate": failure_rate,
+                "timeout_rate": timeout_rate,
+                "mean_episode_length": mean_length,
+                "action_0_count": action_hist.get(0, 0),
+                "action_1_count": action_hist.get(1, 0),
+                "action_2_count": action_hist.get(2, 0),
+                "action_3_count": action_hist.get(3, 0),
+                "mean_decision_succ": mSuccD,
+            }
+            for action_id, value in SuccDAct.items():
+                csv_row["decision_succ_action_{}".format(action_id)] = value
+            for rule_name in self.failure_rule_names:
+                csv_row["fail_rule_{}".format(_sanitize_rule_name(rule_name))] = fail_rule_counts.get(rule_name, 0)
+            self._append_eval_csv_row(csv_row)
 
             # Update the best model if current mean reward is better
             if mean_reward > self.best_mean_reward:

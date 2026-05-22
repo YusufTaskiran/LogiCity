@@ -164,4 +164,4 @@ class LNNPlanner(LocalPlanner):
                 for i in unique_intersections:
                     entity_name = "{}_{}".format(entity_type, i)
                     self.entity_list.append(entity_name)
-                assert len(unique_intersections) == NUM_INTERSECTIONS_BLOCKS
+                assert len(unique_intersections) > 0

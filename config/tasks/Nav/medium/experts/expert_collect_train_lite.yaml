@@ -1,0 +1,40 @@
+simulation:
+  map_yaml_file: "config/maps/square_5x5.yaml"
+  agent_yaml_file: "config/agents/medium_lite/train.yaml"
+  ontology_yaml_file: "config/rules/ontology_medium.yaml"
+  rule_type: "Z3_Expert"
+  rule_yaml_file: "config/rules/Nav/medium/expert.yaml"
+  rl: true
+  debug: false
+  use_multi: false
+  agent_region: 70
+  rl_agent:
+    max_priority: 5
+    use_expert: true
+    agent_name: "Car_1"
+    max_horizon: 160
+    reward_scheme: "safe_path_following"
+    goal_reward: 1.0
+    progress_reward_scale: 0.05
+    time_penalty: -0.01
+    action_space: 4
+    action_mapping:
+      0: [1, 1, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+      1: [0, 0, 0, 0, 1, 1, 1, 1, 0, 0, 0, 0, 0]
+      2: [0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 0]
+      3: [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1]
+    fov_entities:
+      Entity: 4
+    action_cost:
+      0: 0
+      1: 0
+      2: 0
+      3: 0
+    reset_dist:
+      concepts: ['normal']
+      prob: [1.0]
+    overtime_cost: -0.75
+
+collecting_config:
+  num_episodes: 1000
+  return_full_world: false

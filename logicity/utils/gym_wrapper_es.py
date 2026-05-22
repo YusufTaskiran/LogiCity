@@ -57,6 +57,10 @@ class GymCityWrapperES(GymCityWrapper):
         self.action_cost = env.rl_agent["action_cost"]
         self.reset_dist = env.rl_agent["reset_dist"] if "reset_dist" in env.rl_agent else None
         self.overtime_cost = env.rl_agent["overtime_cost"] if "overtime_cost" in env.rl_agent else -3
+        self.reward_scheme = env.rl_agent.get("reward_scheme", "default")
+        self.goal_reward = env.rl_agent.get("goal_reward", 0.0)
+        self.progress_reward_scale = env.rl_agent.get("progress_reward_scale", 0.0)
+        self.time_penalty = env.rl_agent.get("time_penalty", 0.0)
         self.type2label = {v: k for k, v in LABEL_MAP.items()}
         self.scale = [25, 7, 3.5, 8.3]
         self.mini_scale = [0, 0, -1, 0]
@@ -94,6 +98,29 @@ class GymCityWrapperES(GymCityWrapper):
         else:
             moving_cost = self.action2cost(obs_dict["Agent_actions"][0])
             return (moving_cost + obs_dict["Reward"][0])/self.path_length
+
+    def _trajectory_distance_remaining(self):
+        if self.agent.reach_goal:
+            return 0.0
+        traj = self.agent.global_traj
+        pos = self.agent.pos
+        matches = torch.all(traj == pos, dim=1).nonzero(as_tuple=False)
+        if matches.numel() > 0:
+            current_idx = int(matches[0].item())
+            if current_idx >= len(traj) - 1:
+                return 0.0
+            deltas = traj[current_idx + 1:] - traj[current_idx:-1]
+            return float(torch.abs(deltas).sum().item())
+        return float(torch.abs(self.agent.goal - pos).sum().item())
+
+    def _get_spf_reward(self, obs_dict, prev_distance, curr_distance, reached_goal):
+        if obs_dict["Fail"][0]:
+            return obs_dict["Reward"][0]
+        progress = prev_distance - curr_distance
+        reward = self.progress_reward_scale * progress + self.time_penalty
+        if reached_goal:
+            reward += self.goal_reward
+        return reward
     
     def get_reward(self, obs_array, action):
         ''' Get the reward for the current step.
@@ -102,7 +129,11 @@ class GymCityWrapperES(GymCityWrapper):
         :return: the reward
         '''
         # get the SAT reward/fail
-        fail, sat_reward = self.env.local_planner.eval_state_action(obs_array, action)
+        reward_eval = self.env.local_planner.eval_state_action(obs_array, action)
+        if isinstance(reward_eval, tuple) and len(reward_eval) == 3:
+            fail, sat_reward, _ = reward_eval
+        else:
+            fail, sat_reward = reward_eval
         if fail:
             return sat_reward
         moving_cost = self.action2cost(action)
@@ -186,9 +217,15 @@ class GymCityWrapperES(GymCityWrapper):
         self.t += 1
         info = {}
         one_hot_action = torch.tensor(self.action_mapping[action], dtype=torch.float32)
+        prev_distance = self._trajectory_distance_remaining()
         # move and get reward
         current_obs = self.env.move_rl_agent(one_hot_action, self.agent_layer_id)
-        rew = self._get_reward(current_obs)
+        curr_distance = self._trajectory_distance_remaining()
+        reached_goal = self.agent.reach_goal
+        if self.reward_scheme == "safe_path_following":
+            rew = self._get_spf_reward(current_obs, prev_distance, curr_distance, reached_goal)
+        else:
+            rew = self._get_reward(current_obs)
         info.update(current_obs)
         new_ob_dict = self.env.update(self.agent_layer_id)
         if self.use_expert:
@@ -200,7 +237,7 @@ class GymCityWrapperES(GymCityWrapper):
         self.current_obs = obs
         
         # offset the index by 3 layers 0,1,2 are static in world matrix
-        done = self.agent.reach_goal
+        done = reached_goal
         info["success"] = False
 
         if done:

@@ -139,10 +139,10 @@ class Z3PlannerRL(Z3Planner):
     def eval(self, rl_action):
         if self.last_rl_obs is None:
             return 0
-        fail, reward = eval_action(rl_action, self.rules['Task'], self.entity_types, self.predicates, self.z3_vars, self.fov_entities,
+        fail, reward, violated_rules = eval_action(rl_action, self.rules['Task'], self.entity_types, self.predicates, self.z3_vars, self.fov_entities,
                              self.last_rl_obs["last_obs_dict"], self.last_rl_obs["last_obs"])
         self.last_rl_obs = None
-        return fail, reward
+        return fail, reward, violated_rules
 
     def break_world_matrix(self, world_matrix, agents, intersect_matrix, layerid2listid, rl_agent):
         ego_agent = {}
@@ -513,6 +513,7 @@ def eval_action(rl_action,
     assert np.all(obs == last_obs), print(obs, last_obs)
     fail = False
     reward = 0
+    violated_rules = []
     for rule_name, rule_solver in local_solvers.items():
         if rule_solver.check() == sat:
                 continue
@@ -520,8 +521,9 @@ def eval_action(rl_action,
             if rule_tem[rule_name]["dead"]:
                 fail = True
             reward += local_rule_tem[rule_name]["reward"]
+            violated_rules.append(rule_name)
 
-    return fail, reward
+    return fail, reward, violated_rules
 
 def get_action_name(rl_action):
     # see agents/car.py

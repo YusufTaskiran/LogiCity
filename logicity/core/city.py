@@ -103,8 +103,10 @@ class City:
         """Add a mid lanes to traffic to the city and mark its position on the grid."""
         assert len(self.buildings) > 0
         street_code = self.type2label['Traffic Street'] + MID_LINE_CODE_PLUS
-        for i in range(1, NUM_OF_BLOCKS+1):
-            current_block = self.city_grid[BLOCK_ID] == i
+        unique_blocks = torch.unique(self.city_grid[BLOCK_ID])
+        unique_blocks = unique_blocks[unique_blocks != 0]
+        for block_id in unique_blocks.tolist():
+            current_block = self.city_grid[BLOCK_ID] == block_id
             pixels = torch.nonzero(current_block.float())
             rows = pixels[:, 0]
             cols = pixels[:, 1]
@@ -225,11 +227,11 @@ class City:
         # Label connected regions in the intersection matrix
         # Check if the number of connected regions is correct, car lines, ped lines, and blocks
         _, num_line = label(intersection_matrix[0])
-        assert num_line == NUM_INTERSECTIONS_LINES, "Number of intersection lines for cars is not {}".format(NUM_INTERSECTIONS_LINES)
-        _, num_line = label(intersection_matrix[1])
+        _, num_line_ped = label(intersection_matrix[1])
         labeled_matrix_block, num_block = label(intersection_matrix[2])
-        assert num_block == NUM_INTERSECTIONS_BLOCKS, "Number of intersection blocks is not {}".format(NUM_INTERSECTIONS_BLOCKS)
-        assert num_line == NUM_INTERSECTIONS_BLOCKS, "Number of intersection lines for peds is not {}".format(NUM_INTERSECTIONS_BLOCKS)
+        assert num_line > 0, "No intersection lines were detected for cars."
+        assert num_block > 0, "No intersection blocks were detected."
+        assert num_line_ped == num_block, "Pedestrian intersection lines and intersection blocks should match."
         # Label the intersection matrix, they share the same ID
         labeled_matrix_line = intersection_matrix[0].numpy().astype(labeled_matrix_block.dtype) * labeled_matrix_block
         labeled_matrix_line_ped = intersection_matrix[1].numpy().astype(labeled_matrix_block.dtype) * labeled_matrix_block

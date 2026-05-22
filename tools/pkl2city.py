@@ -298,7 +298,7 @@ def paste_car_on_map(map_image, car_image, position, direction, type, position_l
 
     return rotated_car, map_image, list(new_position)
 
-def gridmap2img_agents(gridmap, gridmap_, icon_dict, static_map, last_icons=None, agents=None):
+def gridmap2img_agents(gridmap, gridmap_, icon_dict, static_map, ego_id, last_icons=None, agents=None):
     current_map = static_map.copy()
     current_map = Image.fromarray(current_map)
     agent_layer = gridmap[BASIC_LAYER:]
@@ -354,6 +354,8 @@ def gridmap2img_agents(gridmap, gridmap_, icon_dict, static_map, last_icons=None
                 icon = icon_dict["Ambulance"]
             elif is_bus:
                 icon = icon_dict["Bus"]
+            elif agent_type == "Car" and BASIC_LAYER + i == ego_id:
+                icon = icon_dict["Tiro"]
             elif is_tiro:
                 icon = icon_dict["Tiro"]
             elif is_old:
@@ -405,7 +407,7 @@ def gridmap2img_agents(gridmap, gridmap_, icon_dict, static_map, last_icons=None
     else:
         return current_map, icon_dict_local
 
-def main(pkl_path, ego_id, output_folder):
+def main(pkl_path, ego_id, output_folder, scale_factor=1, crop_size=None):
     icon_dict = {}
     os.path.exists(output_folder) or os.makedirs(output_folder)
     for key in PATH_DICT.keys():
@@ -433,7 +435,7 @@ def main(pkl_path, ego_id, output_folder):
     for key in trange(time_steps[0], time_steps[-2]):
         grid = obs[key]["World"].numpy()
         grid_ = obs[key+1]["World"].numpy()
-        img, last_icons = gridmap2img_agents(grid, grid_, icon_dict, static_map, last_icons, agents)
+        img, last_icons = gridmap2img_agents(grid, grid_, icon_dict, static_map, ego_id, last_icons, agents)
         # Define the text to be added
         text = "#{}".format(key)
 
@@ -455,9 +457,17 @@ def main(pkl_path, ego_id, output_folder):
         # Add text to image
         draw.text(position, text, fill=color, font=font)
 
+        if crop_size is not None:
+            img = img.crop((0, 0, min(crop_size, img.width), min(crop_size, img.height)))
+        if scale_factor != 1:
+            img = img.resize(
+                (int(img.width * scale_factor), int(img.height * scale_factor)),
+                Image.Resampling.NEAREST,
+            )
+
         # Save the image
         output_path = "{}/step_{}.png".format(output_folder, key)
-        img.crop((0, 0, 1190, 1190)).save(output_path)
+        img.save(output_path)
     cv2.destroyAllWindows()
 
     return
@@ -468,8 +478,10 @@ if __name__ == "__main__":
     parser.add_argument("--pkl", default='log_rl/oracle_test_train_hard_1.pkl', help="Path to the folder containing image files.")
     parser.add_argument("--ego_id", type=int, default=3, help="which agent is ego agent. Visualize the ego agent's start and goal. This is layer_id")
     parser.add_argument("--output_folder", default="vis", help="Output folder.")
+    parser.add_argument("--scale_factor", type=float, default=1.0, help="Upscale rendered frames by this factor.")
+    parser.add_argument("--crop_size", type=int, default=None, help="Optional top-left square crop size. Defaults to full frame.")
     
     args = parser.parse_args()
 
     # Call the function with provided arguments
-    main(args.pkl, args.ego_id, args.output_folder)
+    main(args.pkl, args.ego_id, args.output_folder, scale_factor=args.scale_factor, crop_size=args.crop_size)
