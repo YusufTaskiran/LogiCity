@@ -1,0 +1,2219 @@
+2026-05-21 23:53:05 [INFO]: Running in RL mode.
+2026-05-21 23:53:05 [INFO]: Loading RL config from config/tasks/Nav/easy/algo/ppo_lite_smoke.yaml.
+2026-05-21 23:53:05 [INFO]: Simulation config: {'map_yaml_file': 'config/maps/square_2x2.yaml', 'agent_yaml_file': 'config/agents/easy_lite/train.yaml', 'ontology_yaml_file': 'config/rules/ontology_easy.yaml', 'rule_type': 'Z3_Expert', 'rule_yaml_file': 'config/rules/Nav/easy/expert.yaml', 'rl': True, 'debug': False, 'use_multi': False, 'agent_region': 103, 'rl_agent': {'max_priority': 4, 'use_expert': False, 'agent_name': 'Car_1', 'max_horizon': 120, 'reward_scheme': 'safe_path_following', 'goal_reward': 1.0, 'progress_reward_scale': 0.05, 'time_penalty': -0.01, 'action_space': 4, 'action_mapping': {0: [1, 1, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0], 1: [0, 0, 0, 0, 1, 1, 1, 1, 0, 0, 0, 0, 0], 2: [0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 0], 3: [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1]}, 'fov_entities': {'Entity': 3}, 'action_cost': {0: 0, 1: 0, 2: 0, 3: 0}, 'reset_dist': {'concepts': ['normal'], 'prob': [1.0]}, 'reset_prefilter': {'intersection_selector': 'center', 'require_ego_intersection': True, 'require_all_agents_intersection': False, 'min_other_intersection_agents': 1}, 'overtime_cost': -0.5}}
+2026-05-21 23:53:05 [INFO]: RL config: {'algorithm': 'PPO', 'policy_network': 'MlpPolicy', 'policy_kwargs': {'features_extractor_module': 'logicity.rl_agent.policy.neural', 'features_extractor_class': 'MLPFeatureExtractor', 'features_extractor_kwargs': {'features_dim': 64}}, 'hyperparameters': {'learning_rate': 3e-05, 'clip_range': 0.2, 'vf_coef': 0.5, 'batch_size': 128, 'n_steps': 64, 'n_epochs': 4, 'ent_coef': 0.01, 'verbose': 1, 'tensorboard_log': './tb_logs'}, 'train': True, 'checkpoint_path': '', 'num_envs': 2, 'total_timesteps': 20000}
+2026-05-21 23:53:05 [INFO]: Running in RL mode with 2 parallel environments.
+2026-05-21 23:54:06 [INFO]: Evaluating episode 0...
+2026-05-21 23:54:06 [INFO]: Episode label: {'oracle_step': 40, 'stop_count': 0, 'has_stop': False, 'ego_crosses': True, 'ego_eta': 12, 'ego_direction': 'up', 'other_crosses': 3, 'close_other_count': 0, 'pedestrian_close': None, 'conflicting_approach': False, 'total_crosses': 4}
+2026-05-21 23:54:06 [INFO]: Get map info from config/maps/square_2x2.yaml
+2026-05-21 23:54:06 [INFO]: Get agent info from config/agents/easy_lite/val.yaml
+2026-05-21 23:54:06 [INFO]: Get onology and rules info from config/rules/ontology_easy.yaml, config/rules/Nav/easy/expert.yaml
+2026-05-21 23:54:06 [INFO]: Number of Entity Types: 1
+Entity Types:
+- Entity
+2026-05-21 23:54:06 [INFO]: Number of Predicates: 13
+Predicates:
+- IsPedestrian: {'instance': "Function('IsPed', entity_sorts['Entity'], BoolSort())", 'arity': 1, 'method': 'IsPed(Entity)', 'function': 'logicity.utils.pred_converter.z3.IsPed'}
+- IsCar: {'instance': "Function('IsCar', entity_sorts['Entity'], BoolSort())", 'arity': 1, 'method': 'IsCar(Entity)', 'function': 'logicity.utils.pred_converter.z3.IsCar'}
+- IsAmbulance: {'instance': "Function('IsAmb', entity_sorts['Entity'], BoolSort())", 'arity': 1, 'method': 'IsAmb(Entity)', 'function': 'logicity.utils.pred_converter.z3.IsAmb'}
+- IsOld: {'instance': "Function('IsOld', entity_sorts['Entity'], BoolSort())", 'arity': 1, 'method': 'IsOld(Entity)', 'function': 'logicity.utils.pred_converter.z3.IsOld'}
+- IsTiro: {'instance': "Function('IsTiro', entity_sorts['Entity'], BoolSort())", 'arity': 1, 'method': 'IsTiro(Entity)', 'function': 'logicity.utils.pred_converter.z3.IsTiro'}
+- IsAtInter: {'instance': "Function('IsAtInter', entity_sorts['Entity'], BoolSort())", 'arity': 1, 'method': 'IsAtInter(Entity)', 'function': 'logicity.utils.pred_converter.z3.IsAtInter'}
+- IsInInter: {'instance': "Function('IsInInter', entity_sorts['Entity'], BoolSort())", 'arity': 1, 'method': 'IsInInter(Entity)', 'function': 'logicity.utils.pred_converter.z3.IsInInter'}
+- HigherPri: {'instance': "Function('HigherPri', entity_sorts['Entity'], entity_sorts['Entity'], BoolSort())", 'arity': 2, 'method': 'HigherPri(Entity, Entity)', 'function': 'logicity.utils.pred_converter.z3.HigherPri'}
+- CollidingClose: {'instance': "Function('CollidingClose', entity_sorts['Entity'], entity_sorts['Entity'], BoolSort())", 'arity': 2, 'method': 'CollidingClose(Entity, Entity)', 'function': 'logicity.utils.pred_converter.z3.CollidingClose'}
+- Stop: {'instance': "Function('Stop', entity_sorts['Entity'], BoolSort())", 'arity': 1, 'method': 'Stop(Entity)', 'function': 'None'}
+- Fast: {'instance': "Function('Fast', entity_sorts['Entity'], BoolSort())", 'arity': 1, 'method': 'Fast(Entity)', 'function': 'None'}
+- Normal: {'instance': "Function('Normal', entity_sorts['Entity'], BoolSort())", 'arity': 1, 'method': 'Normal(Entity)', 'function': 'None'}
+- Slow: {'instance': "Function('Slow', entity_sorts['Entity'], BoolSort())", 'arity': 1, 'method': 'Slow(Entity)', 'function': 'None'}
+2026-05-21 23:54:06 [INFO]: *** Sim Rule ***: Stop -> 
+ Stop(entity) == Exists(
+  [dummyEntity], 
+  Or(
+    And(
+      IsAtInter(entity), 
+      IsInInter(dummyEntity), 
+    ),
+    And(
+      IsAtInter(entity), 
+      IsAtInter(dummyEntity), 
+      HigherPri(dummyEntity, entity),
+    ),
+    CollidingClose(entity, dummyEntity)
+  )
+)
+
+2026-05-21 23:54:06 [INFO]: *** Task Rule ***: Collision and Intersection -> 
+ Implies(Exists(
+  [dummyEntity], 
+    Or(
+      And(
+        IsAtInter(entity), 
+        IsInInter(dummyEntity), 
+      ),
+      And(
+        IsAtInter(entity), 
+        IsAtInter(dummyEntity), 
+        HigherPri(dummyEntity, entity),
+      ),
+      CollidingClose(entity, dummyEntity)
+    )
+  ),
+  Stop(entity)
+)
+
+2026-05-21 23:54:06 [INFO]: *** Expert Rule ***: Stop -> 
+ Stop(entity) == Exists(
+[dummyEntity], 
+  Or(
+    And(
+      IsAtInter(entity), 
+      IsInInter(dummyEntity), 
+    ),
+    And(
+      IsAtInter(entity), 
+      IsAtInter(dummyEntity), 
+      HigherPri(dummyEntity, entity),
+    ),
+    CollidingClose(entity, dummyEntity)
+  )
+)
+
+2026-05-21 23:54:06 [INFO]: *** Expert Rule ***: Slow -> 
+ Not(Slow(entity))
+
+2026-05-21 23:54:06 [INFO]: *** Expert Rule ***: Fast -> 
+ Not(Fast(entity))
+
+2026-05-21 23:54:06 [INFO]: *** Expert Rule ***: Normal -> 
+ Normal(entity) == Not(Stop(entity))
+2026-05-21 23:54:06 [INFO]: Rules created successfully
+2026-05-21 23:54:06 [INFO]: Rules will be grounded later...
+2026-05-21 23:54:06 [INFO]: Given Predicates {'IsPedestrian': {'instance': IsPed, 'arity': 1, 'method': 'IsPed(Entity)', 'function': 'logicity.utils.pred_converter.z3.IsPed'}, 'IsCar': {'instance': IsCar, 'arity': 1, 'method': 'IsCar(Entity)', 'function': 'logicity.utils.pred_converter.z3.IsCar'}, 'IsAmbulance': {'instance': IsAmb, 'arity': 1, 'method': 'IsAmb(Entity)', 'function': 'logicity.utils.pred_converter.z3.IsAmb'}, 'IsOld': {'instance': IsOld, 'arity': 1, 'method': 'IsOld(Entity)', 'function': 'logicity.utils.pred_converter.z3.IsOld'}, 'IsTiro': {'instance': IsTiro, 'arity': 1, 'method': 'IsTiro(Entity)', 'function': 'logicity.utils.pred_converter.z3.IsTiro'}, 'IsAtInter': {'instance': IsAtInter, 'arity': 1, 'method': 'IsAtInter(Entity)', 'function': 'logicity.utils.pred_converter.z3.IsAtInter'}, 'IsInInter': {'instance': IsInInter, 'arity': 1, 'method': 'IsInInter(Entity)', 'function': 'logicity.utils.pred_converter.z3.IsInInter'}, 'HigherPri': {'instance': HigherPri, 'arity': 2, 'method': 'HigherPri(Entity, Entity)', 'function': 'logicity.utils.pred_converter.z3.HigherPri'}, 'CollidingClose': {'instance': CollidingClose, 'arity': 2, 'method': 'CollidingClose(Entity, Entity)', 'function': 'logicity.utils.pred_converter.z3.CollidingClose'}, 'Stop': {'instance': Stop, 'arity': 1, 'method': 'Stop(Entity)', 'function': 'None'}, 'Fast': {'instance': Fast, 'arity': 1, 'method': 'Fast(Entity)', 'function': 'None'}, 'Normal': {'instance': Normal, 'arity': 1, 'method': 'Normal(Entity)', 'function': 'None'}, 'Slow': {'instance': Slow, 'arity': 1, 'method': 'Slow(Entity)', 'function': 'None'}}, the FOV entities {'Entity': 3}, The logic grounding shape is: 39
+2026-05-21 23:54:06 [INFO]: Local planner constructed!
+2026-05-21 23:54:06 [INFO]: Constructing 22 streets
+2026-05-21 23:54:06 [INFO]: Constructing 16 buildings
+2026-05-21 23:54:07 [INFO]: Adding 4 agents, they are constrained in 103 region
+2026-05-21 23:54:07 [INFO]: Car_1 initialization done!
+2026-05-21 23:54:07 [INFO]: Pedestrian_1 initialization done!
+2026-05-21 23:54:08 [INFO]: Car_2 initialization done!
+2026-05-21 23:54:08 [INFO]: Car_3 initialization done!
+2026-05-21 23:54:08 [INFO]: Done!
+2026-05-21 23:54:08 [INFO]: ***Init RL Agent in Env***
+2026-05-21 23:54:15 [INFO]: will reset agent by success
+2026-05-21 23:54:15 [INFO]: ***Reset RL Agent in Env***
+2026-05-21 23:54:15 [INFO]: Car_1 initialization done!
+2026-05-21 23:54:15 [INFO]: Pedestrian_1 initialization done!
+2026-05-21 23:54:16 [INFO]: Car_2 initialization done!
+2026-05-21 23:54:16 [INFO]: Car_3 initialization done!
+2026-05-21 23:54:16 [INFO]: Agent reset priority to 3/4
+2026-05-21 23:54:16 [INFO]: Agent reset concepts to {'type': 'Car', 'priority': 3}
+2026-05-21 23:54:16 [INFO]: Episode 0 success.
+2026-05-21 23:54:16 [INFO]: Episode 0 achieved a score of 4.34
+2026-05-21 23:54:16 [INFO]: Episode 0 Success: 1
+2026-05-21 23:54:16 [INFO]: Episode 0 Decision Step: {3: 0}
+2026-05-21 23:54:16 [INFO]: Episode 0 Success Decision: {3: 0}
+2026-05-21 23:54:16 [INFO]: Evaluating episode 1...
+2026-05-21 23:54:16 [INFO]: Episode label: {'oracle_step': 28, 'stop_count': 0, 'has_stop': False, 'ego_crosses': True, 'ego_eta': 24, 'ego_direction': 'right', 'other_crosses': 3, 'close_other_count': 0, 'pedestrian_close': None, 'conflicting_approach': False, 'total_crosses': 4}
+2026-05-21 23:54:16 [INFO]: Get map info from config/maps/square_2x2.yaml
+2026-05-21 23:54:16 [INFO]: Get agent info from config/agents/easy_lite/val.yaml
+2026-05-21 23:54:16 [INFO]: Get onology and rules info from config/rules/ontology_easy.yaml, config/rules/Nav/easy/expert.yaml
+2026-05-21 23:54:16 [INFO]: Number of Entity Types: 1
+Entity Types:
+- Entity
+2026-05-21 23:54:16 [INFO]: Number of Predicates: 13
+Predicates:
+- IsPedestrian: {'instance': "Function('IsPed', entity_sorts['Entity'], BoolSort())", 'arity': 1, 'method': 'IsPed(Entity)', 'function': 'logicity.utils.pred_converter.z3.IsPed'}
+- IsCar: {'instance': "Function('IsCar', entity_sorts['Entity'], BoolSort())", 'arity': 1, 'method': 'IsCar(Entity)', 'function': 'logicity.utils.pred_converter.z3.IsCar'}
+- IsAmbulance: {'instance': "Function('IsAmb', entity_sorts['Entity'], BoolSort())", 'arity': 1, 'method': 'IsAmb(Entity)', 'function': 'logicity.utils.pred_converter.z3.IsAmb'}
+- IsOld: {'instance': "Function('IsOld', entity_sorts['Entity'], BoolSort())", 'arity': 1, 'method': 'IsOld(Entity)', 'function': 'logicity.utils.pred_converter.z3.IsOld'}
+- IsTiro: {'instance': "Function('IsTiro', entity_sorts['Entity'], BoolSort())", 'arity': 1, 'method': 'IsTiro(Entity)', 'function': 'logicity.utils.pred_converter.z3.IsTiro'}
+- IsAtInter: {'instance': "Function('IsAtInter', entity_sorts['Entity'], BoolSort())", 'arity': 1, 'method': 'IsAtInter(Entity)', 'function': 'logicity.utils.pred_converter.z3.IsAtInter'}
+- IsInInter: {'instance': "Function('IsInInter', entity_sorts['Entity'], BoolSort())", 'arity': 1, 'method': 'IsInInter(Entity)', 'function': 'logicity.utils.pred_converter.z3.IsInInter'}
+- HigherPri: {'instance': "Function('HigherPri', entity_sorts['Entity'], entity_sorts['Entity'], BoolSort())", 'arity': 2, 'method': 'HigherPri(Entity, Entity)', 'function': 'logicity.utils.pred_converter.z3.HigherPri'}
+- CollidingClose: {'instance': "Function('CollidingClose', entity_sorts['Entity'], entity_sorts['Entity'], BoolSort())", 'arity': 2, 'method': 'CollidingClose(Entity, Entity)', 'function': 'logicity.utils.pred_converter.z3.CollidingClose'}
+- Stop: {'instance': "Function('Stop', entity_sorts['Entity'], BoolSort())", 'arity': 1, 'method': 'Stop(Entity)', 'function': 'None'}
+- Fast: {'instance': "Function('Fast', entity_sorts['Entity'], BoolSort())", 'arity': 1, 'method': 'Fast(Entity)', 'function': 'None'}
+- Normal: {'instance': "Function('Normal', entity_sorts['Entity'], BoolSort())", 'arity': 1, 'method': 'Normal(Entity)', 'function': 'None'}
+- Slow: {'instance': "Function('Slow', entity_sorts['Entity'], BoolSort())", 'arity': 1, 'method': 'Slow(Entity)', 'function': 'None'}
+2026-05-21 23:54:16 [INFO]: *** Sim Rule ***: Stop -> 
+ Stop(entity) == Exists(
+  [dummyEntity], 
+  Or(
+    And(
+      IsAtInter(entity), 
+      IsInInter(dummyEntity), 
+    ),
+    And(
+      IsAtInter(entity), 
+      IsAtInter(dummyEntity), 
+      HigherPri(dummyEntity, entity),
+    ),
+    CollidingClose(entity, dummyEntity)
+  )
+)
+
+2026-05-21 23:54:16 [INFO]: *** Task Rule ***: Collision and Intersection -> 
+ Implies(Exists(
+  [dummyEntity], 
+    Or(
+      And(
+        IsAtInter(entity), 
+        IsInInter(dummyEntity), 
+      ),
+      And(
+        IsAtInter(entity), 
+        IsAtInter(dummyEntity), 
+        HigherPri(dummyEntity, entity),
+      ),
+      CollidingClose(entity, dummyEntity)
+    )
+  ),
+  Stop(entity)
+)
+
+2026-05-21 23:54:16 [INFO]: *** Expert Rule ***: Stop -> 
+ Stop(entity) == Exists(
+[dummyEntity], 
+  Or(
+    And(
+      IsAtInter(entity), 
+      IsInInter(dummyEntity), 
+    ),
+    And(
+      IsAtInter(entity), 
+      IsAtInter(dummyEntity), 
+      HigherPri(dummyEntity, entity),
+    ),
+    CollidingClose(entity, dummyEntity)
+  )
+)
+
+2026-05-21 23:54:16 [INFO]: *** Expert Rule ***: Slow -> 
+ Not(Slow(entity))
+
+2026-05-21 23:54:16 [INFO]: *** Expert Rule ***: Fast -> 
+ Not(Fast(entity))
+
+2026-05-21 23:54:16 [INFO]: *** Expert Rule ***: Normal -> 
+ Normal(entity) == Not(Stop(entity))
+2026-05-21 23:54:16 [INFO]: Rules created successfully
+2026-05-21 23:54:16 [INFO]: Rules will be grounded later...
+2026-05-21 23:54:16 [INFO]: Given Predicates {'IsPedestrian': {'instance': IsPed, 'arity': 1, 'method': 'IsPed(Entity)', 'function': 'logicity.utils.pred_converter.z3.IsPed'}, 'IsCar': {'instance': IsCar, 'arity': 1, 'method': 'IsCar(Entity)', 'function': 'logicity.utils.pred_converter.z3.IsCar'}, 'IsAmbulance': {'instance': IsAmb, 'arity': 1, 'method': 'IsAmb(Entity)', 'function': 'logicity.utils.pred_converter.z3.IsAmb'}, 'IsOld': {'instance': IsOld, 'arity': 1, 'method': 'IsOld(Entity)', 'function': 'logicity.utils.pred_converter.z3.IsOld'}, 'IsTiro': {'instance': IsTiro, 'arity': 1, 'method': 'IsTiro(Entity)', 'function': 'logicity.utils.pred_converter.z3.IsTiro'}, 'IsAtInter': {'instance': IsAtInter, 'arity': 1, 'method': 'IsAtInter(Entity)', 'function': 'logicity.utils.pred_converter.z3.IsAtInter'}, 'IsInInter': {'instance': IsInInter, 'arity': 1, 'method': 'IsInInter(Entity)', 'function': 'logicity.utils.pred_converter.z3.IsInInter'}, 'HigherPri': {'instance': HigherPri, 'arity': 2, 'method': 'HigherPri(Entity, Entity)', 'function': 'logicity.utils.pred_converter.z3.HigherPri'}, 'CollidingClose': {'instance': CollidingClose, 'arity': 2, 'method': 'CollidingClose(Entity, Entity)', 'function': 'logicity.utils.pred_converter.z3.CollidingClose'}, 'Stop': {'instance': Stop, 'arity': 1, 'method': 'Stop(Entity)', 'function': 'None'}, 'Fast': {'instance': Fast, 'arity': 1, 'method': 'Fast(Entity)', 'function': 'None'}, 'Normal': {'instance': Normal, 'arity': 1, 'method': 'Normal(Entity)', 'function': 'None'}, 'Slow': {'instance': Slow, 'arity': 1, 'method': 'Slow(Entity)', 'function': 'None'}}, the FOV entities {'Entity': 3}, The logic grounding shape is: 39
+2026-05-21 23:54:16 [INFO]: Local planner constructed!
+2026-05-21 23:54:16 [INFO]: Constructing 22 streets
+2026-05-21 23:54:17 [INFO]: Constructing 16 buildings
+2026-05-21 23:54:17 [INFO]: Adding 4 agents, they are constrained in 103 region
+2026-05-21 23:54:17 [INFO]: Car_1 initialization done!
+2026-05-21 23:54:17 [INFO]: Pedestrian_1 initialization done!
+2026-05-21 23:54:18 [INFO]: Car_2 initialization done!
+2026-05-21 23:54:18 [INFO]: Car_3 initialization done!
+2026-05-21 23:54:18 [INFO]: Done!
+2026-05-21 23:54:18 [INFO]: ***Init RL Agent in Env***
+2026-05-21 23:54:23 [INFO]: Reset agent by failing
+2026-05-21 23:54:23 [INFO]: ***Reset RL Agent in Env***
+2026-05-21 23:54:23 [INFO]: Car_1 initialization done!
+2026-05-21 23:54:23 [INFO]: Pedestrian_1 initialization done!
+2026-05-21 23:54:24 [INFO]: Car_2 initialization done!
+2026-05-21 23:54:24 [INFO]: Car_3 initialization done!
+2026-05-21 23:54:24 [INFO]: Agent reset priority to 2/4
+2026-05-21 23:54:24 [INFO]: Agent reset concepts to {'type': 'Car', 'priority': 2}
+2026-05-21 23:54:24 [INFO]: Episode 1 failed.
+2026-05-21 23:54:24 [INFO]: Episode 1 achieved a score of -7.879999999999999
+2026-05-21 23:54:24 [INFO]: Episode 1 Success: 0
+2026-05-21 23:54:24 [INFO]: Episode 1 Decision Step: {3: 1}
+2026-05-21 23:54:24 [INFO]: Episode 1 Success Decision: {3: 0}
+2026-05-21 23:54:24 [INFO]: Evaluating episode 2...
+2026-05-21 23:54:24 [INFO]: Episode label: {'oracle_step': 56, 'stop_count': 0, 'has_stop': False, 'ego_crosses': True, 'ego_eta': 55, 'ego_direction': 'up', 'other_crosses': 3, 'close_other_count': 0, 'pedestrian_close': None, 'conflicting_approach': False, 'total_crosses': 4}
+2026-05-21 23:54:24 [INFO]: Get map info from config/maps/square_2x2.yaml
+2026-05-21 23:54:24 [INFO]: Get agent info from config/agents/easy_lite/val.yaml
+2026-05-21 23:54:24 [INFO]: Get onology and rules info from config/rules/ontology_easy.yaml, config/rules/Nav/easy/expert.yaml
+2026-05-21 23:54:24 [INFO]: Number of Entity Types: 1
+Entity Types:
+- Entity
+2026-05-21 23:54:24 [INFO]: Number of Predicates: 13
+Predicates:
+- IsPedestrian: {'instance': "Function('IsPed', entity_sorts['Entity'], BoolSort())", 'arity': 1, 'method': 'IsPed(Entity)', 'function': 'logicity.utils.pred_converter.z3.IsPed'}
+- IsCar: {'instance': "Function('IsCar', entity_sorts['Entity'], BoolSort())", 'arity': 1, 'method': 'IsCar(Entity)', 'function': 'logicity.utils.pred_converter.z3.IsCar'}
+- IsAmbulance: {'instance': "Function('IsAmb', entity_sorts['Entity'], BoolSort())", 'arity': 1, 'method': 'IsAmb(Entity)', 'function': 'logicity.utils.pred_converter.z3.IsAmb'}
+- IsOld: {'instance': "Function('IsOld', entity_sorts['Entity'], BoolSort())", 'arity': 1, 'method': 'IsOld(Entity)', 'function': 'logicity.utils.pred_converter.z3.IsOld'}
+- IsTiro: {'instance': "Function('IsTiro', entity_sorts['Entity'], BoolSort())", 'arity': 1, 'method': 'IsTiro(Entity)', 'function': 'logicity.utils.pred_converter.z3.IsTiro'}
+- IsAtInter: {'instance': "Function('IsAtInter', entity_sorts['Entity'], BoolSort())", 'arity': 1, 'method': 'IsAtInter(Entity)', 'function': 'logicity.utils.pred_converter.z3.IsAtInter'}
+- IsInInter: {'instance': "Function('IsInInter', entity_sorts['Entity'], BoolSort())", 'arity': 1, 'method': 'IsInInter(Entity)', 'function': 'logicity.utils.pred_converter.z3.IsInInter'}
+- HigherPri: {'instance': "Function('HigherPri', entity_sorts['Entity'], entity_sorts['Entity'], BoolSort())", 'arity': 2, 'method': 'HigherPri(Entity, Entity)', 'function': 'logicity.utils.pred_converter.z3.HigherPri'}
+- CollidingClose: {'instance': "Function('CollidingClose', entity_sorts['Entity'], entity_sorts['Entity'], BoolSort())", 'arity': 2, 'method': 'CollidingClose(Entity, Entity)', 'function': 'logicity.utils.pred_converter.z3.CollidingClose'}
+- Stop: {'instance': "Function('Stop', entity_sorts['Entity'], BoolSort())", 'arity': 1, 'method': 'Stop(Entity)', 'function': 'None'}
+- Fast: {'instance': "Function('Fast', entity_sorts['Entity'], BoolSort())", 'arity': 1, 'method': 'Fast(Entity)', 'function': 'None'}
+- Normal: {'instance': "Function('Normal', entity_sorts['Entity'], BoolSort())", 'arity': 1, 'method': 'Normal(Entity)', 'function': 'None'}
+- Slow: {'instance': "Function('Slow', entity_sorts['Entity'], BoolSort())", 'arity': 1, 'method': 'Slow(Entity)', 'function': 'None'}
+2026-05-21 23:54:24 [INFO]: *** Sim Rule ***: Stop -> 
+ Stop(entity) == Exists(
+  [dummyEntity], 
+  Or(
+    And(
+      IsAtInter(entity), 
+      IsInInter(dummyEntity), 
+    ),
+    And(
+      IsAtInter(entity), 
+      IsAtInter(dummyEntity), 
+      HigherPri(dummyEntity, entity),
+    ),
+    CollidingClose(entity, dummyEntity)
+  )
+)
+
+2026-05-21 23:54:24 [INFO]: *** Task Rule ***: Collision and Intersection -> 
+ Implies(Exists(
+  [dummyEntity], 
+    Or(
+      And(
+        IsAtInter(entity), 
+        IsInInter(dummyEntity), 
+      ),
+      And(
+        IsAtInter(entity), 
+        IsAtInter(dummyEntity), 
+        HigherPri(dummyEntity, entity),
+      ),
+      CollidingClose(entity, dummyEntity)
+    )
+  ),
+  Stop(entity)
+)
+
+2026-05-21 23:54:24 [INFO]: *** Expert Rule ***: Stop -> 
+ Stop(entity) == Exists(
+[dummyEntity], 
+  Or(
+    And(
+      IsAtInter(entity), 
+      IsInInter(dummyEntity), 
+    ),
+    And(
+      IsAtInter(entity), 
+      IsAtInter(dummyEntity), 
+      HigherPri(dummyEntity, entity),
+    ),
+    CollidingClose(entity, dummyEntity)
+  )
+)
+
+2026-05-21 23:54:24 [INFO]: *** Expert Rule ***: Slow -> 
+ Not(Slow(entity))
+
+2026-05-21 23:54:24 [INFO]: *** Expert Rule ***: Fast -> 
+ Not(Fast(entity))
+
+2026-05-21 23:54:24 [INFO]: *** Expert Rule ***: Normal -> 
+ Normal(entity) == Not(Stop(entity))
+2026-05-21 23:54:24 [INFO]: Rules created successfully
+2026-05-21 23:54:24 [INFO]: Rules will be grounded later...
+2026-05-21 23:54:24 [INFO]: Given Predicates {'IsPedestrian': {'instance': IsPed, 'arity': 1, 'method': 'IsPed(Entity)', 'function': 'logicity.utils.pred_converter.z3.IsPed'}, 'IsCar': {'instance': IsCar, 'arity': 1, 'method': 'IsCar(Entity)', 'function': 'logicity.utils.pred_converter.z3.IsCar'}, 'IsAmbulance': {'instance': IsAmb, 'arity': 1, 'method': 'IsAmb(Entity)', 'function': 'logicity.utils.pred_converter.z3.IsAmb'}, 'IsOld': {'instance': IsOld, 'arity': 1, 'method': 'IsOld(Entity)', 'function': 'logicity.utils.pred_converter.z3.IsOld'}, 'IsTiro': {'instance': IsTiro, 'arity': 1, 'method': 'IsTiro(Entity)', 'function': 'logicity.utils.pred_converter.z3.IsTiro'}, 'IsAtInter': {'instance': IsAtInter, 'arity': 1, 'method': 'IsAtInter(Entity)', 'function': 'logicity.utils.pred_converter.z3.IsAtInter'}, 'IsInInter': {'instance': IsInInter, 'arity': 1, 'method': 'IsInInter(Entity)', 'function': 'logicity.utils.pred_converter.z3.IsInInter'}, 'HigherPri': {'instance': HigherPri, 'arity': 2, 'method': 'HigherPri(Entity, Entity)', 'function': 'logicity.utils.pred_converter.z3.HigherPri'}, 'CollidingClose': {'instance': CollidingClose, 'arity': 2, 'method': 'CollidingClose(Entity, Entity)', 'function': 'logicity.utils.pred_converter.z3.CollidingClose'}, 'Stop': {'instance': Stop, 'arity': 1, 'method': 'Stop(Entity)', 'function': 'None'}, 'Fast': {'instance': Fast, 'arity': 1, 'method': 'Fast(Entity)', 'function': 'None'}, 'Normal': {'instance': Normal, 'arity': 1, 'method': 'Normal(Entity)', 'function': 'None'}, 'Slow': {'instance': Slow, 'arity': 1, 'method': 'Slow(Entity)', 'function': 'None'}}, the FOV entities {'Entity': 3}, The logic grounding shape is: 39
+2026-05-21 23:54:24 [INFO]: Local planner constructed!
+2026-05-21 23:54:24 [INFO]: Constructing 22 streets
+2026-05-21 23:54:25 [INFO]: Constructing 16 buildings
+2026-05-21 23:54:25 [INFO]: Adding 4 agents, they are constrained in 103 region
+2026-05-21 23:54:26 [INFO]: Car_1 initialization done!
+2026-05-21 23:54:26 [INFO]: Pedestrian_1 initialization done!
+2026-05-21 23:54:26 [INFO]: Car_2 initialization done!
+2026-05-21 23:54:26 [INFO]: Car_3 initialization done!
+2026-05-21 23:54:26 [INFO]: Done!
+2026-05-21 23:54:26 [INFO]: ***Init RL Agent in Env***
+2026-05-21 23:54:36 [INFO]: will reset agent by success
+2026-05-21 23:54:36 [INFO]: ***Reset RL Agent in Env***
+2026-05-21 23:54:36 [INFO]: Car_1 initialization done!
+2026-05-21 23:54:36 [INFO]: Pedestrian_1 initialization done!
+2026-05-21 23:54:37 [INFO]: Car_2 initialization done!
+2026-05-21 23:54:37 [INFO]: Car_3 initialization done!
+2026-05-21 23:54:37 [INFO]: Agent reset priority to 2/4
+2026-05-21 23:54:37 [INFO]: Agent reset concepts to {'type': 'Car', 'priority': 2}
+2026-05-21 23:54:37 [INFO]: Episode 2 success.
+2026-05-21 23:54:37 [INFO]: Episode 2 achieved a score of 5.669999999999998
+2026-05-21 23:54:37 [INFO]: Episode 2 Success: 1
+2026-05-21 23:54:37 [INFO]: Episode 2 Decision Step: {3: 0}
+2026-05-21 23:54:37 [INFO]: Episode 2 Success Decision: {3: 0}
+2026-05-21 23:54:37 [INFO]: Evaluating episode 3...
+2026-05-21 23:54:37 [INFO]: Episode label: {'oracle_step': 54, 'stop_count': 0, 'has_stop': False, 'ego_crosses': True, 'ego_eta': 12, 'ego_direction': 'down', 'other_crosses': 3, 'close_other_count': 0, 'pedestrian_close': None, 'conflicting_approach': False, 'total_crosses': 4}
+2026-05-21 23:54:37 [INFO]: Get map info from config/maps/square_2x2.yaml
+2026-05-21 23:54:37 [INFO]: Get agent info from config/agents/easy_lite/val.yaml
+2026-05-21 23:54:37 [INFO]: Get onology and rules info from config/rules/ontology_easy.yaml, config/rules/Nav/easy/expert.yaml
+2026-05-21 23:54:37 [INFO]: Number of Entity Types: 1
+Entity Types:
+- Entity
+2026-05-21 23:54:37 [INFO]: Number of Predicates: 13
+Predicates:
+- IsPedestrian: {'instance': "Function('IsPed', entity_sorts['Entity'], BoolSort())", 'arity': 1, 'method': 'IsPed(Entity)', 'function': 'logicity.utils.pred_converter.z3.IsPed'}
+- IsCar: {'instance': "Function('IsCar', entity_sorts['Entity'], BoolSort())", 'arity': 1, 'method': 'IsCar(Entity)', 'function': 'logicity.utils.pred_converter.z3.IsCar'}
+- IsAmbulance: {'instance': "Function('IsAmb', entity_sorts['Entity'], BoolSort())", 'arity': 1, 'method': 'IsAmb(Entity)', 'function': 'logicity.utils.pred_converter.z3.IsAmb'}
+- IsOld: {'instance': "Function('IsOld', entity_sorts['Entity'], BoolSort())", 'arity': 1, 'method': 'IsOld(Entity)', 'function': 'logicity.utils.pred_converter.z3.IsOld'}
+- IsTiro: {'instance': "Function('IsTiro', entity_sorts['Entity'], BoolSort())", 'arity': 1, 'method': 'IsTiro(Entity)', 'function': 'logicity.utils.pred_converter.z3.IsTiro'}
+- IsAtInter: {'instance': "Function('IsAtInter', entity_sorts['Entity'], BoolSort())", 'arity': 1, 'method': 'IsAtInter(Entity)', 'function': 'logicity.utils.pred_converter.z3.IsAtInter'}
+- IsInInter: {'instance': "Function('IsInInter', entity_sorts['Entity'], BoolSort())", 'arity': 1, 'method': 'IsInInter(Entity)', 'function': 'logicity.utils.pred_converter.z3.IsInInter'}
+- HigherPri: {'instance': "Function('HigherPri', entity_sorts['Entity'], entity_sorts['Entity'], BoolSort())", 'arity': 2, 'method': 'HigherPri(Entity, Entity)', 'function': 'logicity.utils.pred_converter.z3.HigherPri'}
+- CollidingClose: {'instance': "Function('CollidingClose', entity_sorts['Entity'], entity_sorts['Entity'], BoolSort())", 'arity': 2, 'method': 'CollidingClose(Entity, Entity)', 'function': 'logicity.utils.pred_converter.z3.CollidingClose'}
+- Stop: {'instance': "Function('Stop', entity_sorts['Entity'], BoolSort())", 'arity': 1, 'method': 'Stop(Entity)', 'function': 'None'}
+- Fast: {'instance': "Function('Fast', entity_sorts['Entity'], BoolSort())", 'arity': 1, 'method': 'Fast(Entity)', 'function': 'None'}
+- Normal: {'instance': "Function('Normal', entity_sorts['Entity'], BoolSort())", 'arity': 1, 'method': 'Normal(Entity)', 'function': 'None'}
+- Slow: {'instance': "Function('Slow', entity_sorts['Entity'], BoolSort())", 'arity': 1, 'method': 'Slow(Entity)', 'function': 'None'}
+2026-05-21 23:54:37 [INFO]: *** Sim Rule ***: Stop -> 
+ Stop(entity) == Exists(
+  [dummyEntity], 
+  Or(
+    And(
+      IsAtInter(entity), 
+      IsInInter(dummyEntity), 
+    ),
+    And(
+      IsAtInter(entity), 
+      IsAtInter(dummyEntity), 
+      HigherPri(dummyEntity, entity),
+    ),
+    CollidingClose(entity, dummyEntity)
+  )
+)
+
+2026-05-21 23:54:37 [INFO]: *** Task Rule ***: Collision and Intersection -> 
+ Implies(Exists(
+  [dummyEntity], 
+    Or(
+      And(
+        IsAtInter(entity), 
+        IsInInter(dummyEntity), 
+      ),
+      And(
+        IsAtInter(entity), 
+        IsAtInter(dummyEntity), 
+        HigherPri(dummyEntity, entity),
+      ),
+      CollidingClose(entity, dummyEntity)
+    )
+  ),
+  Stop(entity)
+)
+
+2026-05-21 23:54:37 [INFO]: *** Expert Rule ***: Stop -> 
+ Stop(entity) == Exists(
+[dummyEntity], 
+  Or(
+    And(
+      IsAtInter(entity), 
+      IsInInter(dummyEntity), 
+    ),
+    And(
+      IsAtInter(entity), 
+      IsAtInter(dummyEntity), 
+      HigherPri(dummyEntity, entity),
+    ),
+    CollidingClose(entity, dummyEntity)
+  )
+)
+
+2026-05-21 23:54:37 [INFO]: *** Expert Rule ***: Slow -> 
+ Not(Slow(entity))
+
+2026-05-21 23:54:37 [INFO]: *** Expert Rule ***: Fast -> 
+ Not(Fast(entity))
+
+2026-05-21 23:54:37 [INFO]: *** Expert Rule ***: Normal -> 
+ Normal(entity) == Not(Stop(entity))
+2026-05-21 23:54:37 [INFO]: Rules created successfully
+2026-05-21 23:54:37 [INFO]: Rules will be grounded later...
+2026-05-21 23:54:37 [INFO]: Given Predicates {'IsPedestrian': {'instance': IsPed, 'arity': 1, 'method': 'IsPed(Entity)', 'function': 'logicity.utils.pred_converter.z3.IsPed'}, 'IsCar': {'instance': IsCar, 'arity': 1, 'method': 'IsCar(Entity)', 'function': 'logicity.utils.pred_converter.z3.IsCar'}, 'IsAmbulance': {'instance': IsAmb, 'arity': 1, 'method': 'IsAmb(Entity)', 'function': 'logicity.utils.pred_converter.z3.IsAmb'}, 'IsOld': {'instance': IsOld, 'arity': 1, 'method': 'IsOld(Entity)', 'function': 'logicity.utils.pred_converter.z3.IsOld'}, 'IsTiro': {'instance': IsTiro, 'arity': 1, 'method': 'IsTiro(Entity)', 'function': 'logicity.utils.pred_converter.z3.IsTiro'}, 'IsAtInter': {'instance': IsAtInter, 'arity': 1, 'method': 'IsAtInter(Entity)', 'function': 'logicity.utils.pred_converter.z3.IsAtInter'}, 'IsInInter': {'instance': IsInInter, 'arity': 1, 'method': 'IsInInter(Entity)', 'function': 'logicity.utils.pred_converter.z3.IsInInter'}, 'HigherPri': {'instance': HigherPri, 'arity': 2, 'method': 'HigherPri(Entity, Entity)', 'function': 'logicity.utils.pred_converter.z3.HigherPri'}, 'CollidingClose': {'instance': CollidingClose, 'arity': 2, 'method': 'CollidingClose(Entity, Entity)', 'function': 'logicity.utils.pred_converter.z3.CollidingClose'}, 'Stop': {'instance': Stop, 'arity': 1, 'method': 'Stop(Entity)', 'function': 'None'}, 'Fast': {'instance': Fast, 'arity': 1, 'method': 'Fast(Entity)', 'function': 'None'}, 'Normal': {'instance': Normal, 'arity': 1, 'method': 'Normal(Entity)', 'function': 'None'}, 'Slow': {'instance': Slow, 'arity': 1, 'method': 'Slow(Entity)', 'function': 'None'}}, the FOV entities {'Entity': 3}, The logic grounding shape is: 39
+2026-05-21 23:54:37 [INFO]: Local planner constructed!
+2026-05-21 23:54:37 [INFO]: Constructing 22 streets
+2026-05-21 23:54:38 [INFO]: Constructing 16 buildings
+2026-05-21 23:54:38 [INFO]: Adding 4 agents, they are constrained in 103 region
+2026-05-21 23:54:38 [INFO]: Car_1 initialization done!
+2026-05-21 23:54:38 [INFO]: Pedestrian_1 initialization done!
+2026-05-21 23:54:39 [INFO]: Car_2 initialization done!
+2026-05-21 23:54:39 [INFO]: Car_3 initialization done!
+2026-05-21 23:54:39 [INFO]: Done!
+2026-05-21 23:54:39 [INFO]: ***Init RL Agent in Env***
+2026-05-21 23:54:48 [INFO]: will reset agent by success
+2026-05-21 23:54:48 [INFO]: ***Reset RL Agent in Env***
+2026-05-21 23:54:49 [INFO]: Car_1 initialization done!
+2026-05-21 23:54:49 [INFO]: Pedestrian_1 initialization done!
+2026-05-21 23:54:49 [INFO]: Car_2 initialization done!
+2026-05-21 23:54:50 [INFO]: Car_3 initialization done!
+2026-05-21 23:54:50 [INFO]: Agent reset priority to 3/4
+2026-05-21 23:54:50 [INFO]: Agent reset concepts to {'type': 'Car', 'priority': 3}
+2026-05-21 23:54:50 [INFO]: Episode 3 success.
+2026-05-21 23:54:50 [INFO]: Episode 3 achieved a score of 5.569999999999998
+2026-05-21 23:54:50 [INFO]: Episode 3 Success: 1
+2026-05-21 23:54:50 [INFO]: Episode 3 Decision Step: {3: 0}
+2026-05-21 23:54:50 [INFO]: Episode 3 Success Decision: {3: 0}
+2026-05-21 23:54:50 [INFO]: Evaluating episode 4...
+2026-05-21 23:54:50 [INFO]: Episode label: {'oracle_step': 72, 'stop_count': 29, 'has_stop': True, 'ego_crosses': True, 'ego_eta': 59, 'ego_direction': 'left', 'other_crosses': 3, 'close_other_count': 0, 'pedestrian_close': None, 'conflicting_approach': False, 'total_crosses': 4}
+2026-05-21 23:54:50 [INFO]: Get map info from config/maps/square_2x2.yaml
+2026-05-21 23:54:50 [INFO]: Get agent info from config/agents/easy_lite/val.yaml
+2026-05-21 23:54:50 [INFO]: Get onology and rules info from config/rules/ontology_easy.yaml, config/rules/Nav/easy/expert.yaml
+2026-05-21 23:54:50 [INFO]: Number of Entity Types: 1
+Entity Types:
+- Entity
+2026-05-21 23:54:50 [INFO]: Number of Predicates: 13
+Predicates:
+- IsPedestrian: {'instance': "Function('IsPed', entity_sorts['Entity'], BoolSort())", 'arity': 1, 'method': 'IsPed(Entity)', 'function': 'logicity.utils.pred_converter.z3.IsPed'}
+- IsCar: {'instance': "Function('IsCar', entity_sorts['Entity'], BoolSort())", 'arity': 1, 'method': 'IsCar(Entity)', 'function': 'logicity.utils.pred_converter.z3.IsCar'}
+- IsAmbulance: {'instance': "Function('IsAmb', entity_sorts['Entity'], BoolSort())", 'arity': 1, 'method': 'IsAmb(Entity)', 'function': 'logicity.utils.pred_converter.z3.IsAmb'}
+- IsOld: {'instance': "Function('IsOld', entity_sorts['Entity'], BoolSort())", 'arity': 1, 'method': 'IsOld(Entity)', 'function': 'logicity.utils.pred_converter.z3.IsOld'}
+- IsTiro: {'instance': "Function('IsTiro', entity_sorts['Entity'], BoolSort())", 'arity': 1, 'method': 'IsTiro(Entity)', 'function': 'logicity.utils.pred_converter.z3.IsTiro'}
+- IsAtInter: {'instance': "Function('IsAtInter', entity_sorts['Entity'], BoolSort())", 'arity': 1, 'method': 'IsAtInter(Entity)', 'function': 'logicity.utils.pred_converter.z3.IsAtInter'}
+- IsInInter: {'instance': "Function('IsInInter', entity_sorts['Entity'], BoolSort())", 'arity': 1, 'method': 'IsInInter(Entity)', 'function': 'logicity.utils.pred_converter.z3.IsInInter'}
+- HigherPri: {'instance': "Function('HigherPri', entity_sorts['Entity'], entity_sorts['Entity'], BoolSort())", 'arity': 2, 'method': 'HigherPri(Entity, Entity)', 'function': 'logicity.utils.pred_converter.z3.HigherPri'}
+- CollidingClose: {'instance': "Function('CollidingClose', entity_sorts['Entity'], entity_sorts['Entity'], BoolSort())", 'arity': 2, 'method': 'CollidingClose(Entity, Entity)', 'function': 'logicity.utils.pred_converter.z3.CollidingClose'}
+- Stop: {'instance': "Function('Stop', entity_sorts['Entity'], BoolSort())", 'arity': 1, 'method': 'Stop(Entity)', 'function': 'None'}
+- Fast: {'instance': "Function('Fast', entity_sorts['Entity'], BoolSort())", 'arity': 1, 'method': 'Fast(Entity)', 'function': 'None'}
+- Normal: {'instance': "Function('Normal', entity_sorts['Entity'], BoolSort())", 'arity': 1, 'method': 'Normal(Entity)', 'function': 'None'}
+- Slow: {'instance': "Function('Slow', entity_sorts['Entity'], BoolSort())", 'arity': 1, 'method': 'Slow(Entity)', 'function': 'None'}
+2026-05-21 23:54:50 [INFO]: *** Sim Rule ***: Stop -> 
+ Stop(entity) == Exists(
+  [dummyEntity], 
+  Or(
+    And(
+      IsAtInter(entity), 
+      IsInInter(dummyEntity), 
+    ),
+    And(
+      IsAtInter(entity), 
+      IsAtInter(dummyEntity), 
+      HigherPri(dummyEntity, entity),
+    ),
+    CollidingClose(entity, dummyEntity)
+  )
+)
+
+2026-05-21 23:54:50 [INFO]: *** Task Rule ***: Collision and Intersection -> 
+ Implies(Exists(
+  [dummyEntity], 
+    Or(
+      And(
+        IsAtInter(entity), 
+        IsInInter(dummyEntity), 
+      ),
+      And(
+        IsAtInter(entity), 
+        IsAtInter(dummyEntity), 
+        HigherPri(dummyEntity, entity),
+      ),
+      CollidingClose(entity, dummyEntity)
+    )
+  ),
+  Stop(entity)
+)
+
+2026-05-21 23:54:50 [INFO]: *** Expert Rule ***: Stop -> 
+ Stop(entity) == Exists(
+[dummyEntity], 
+  Or(
+    And(
+      IsAtInter(entity), 
+      IsInInter(dummyEntity), 
+    ),
+    And(
+      IsAtInter(entity), 
+      IsAtInter(dummyEntity), 
+      HigherPri(dummyEntity, entity),
+    ),
+    CollidingClose(entity, dummyEntity)
+  )
+)
+
+2026-05-21 23:54:50 [INFO]: *** Expert Rule ***: Slow -> 
+ Not(Slow(entity))
+
+2026-05-21 23:54:50 [INFO]: *** Expert Rule ***: Fast -> 
+ Not(Fast(entity))
+
+2026-05-21 23:54:50 [INFO]: *** Expert Rule ***: Normal -> 
+ Normal(entity) == Not(Stop(entity))
+2026-05-21 23:54:50 [INFO]: Rules created successfully
+2026-05-21 23:54:50 [INFO]: Rules will be grounded later...
+2026-05-21 23:54:50 [INFO]: Given Predicates {'IsPedestrian': {'instance': IsPed, 'arity': 1, 'method': 'IsPed(Entity)', 'function': 'logicity.utils.pred_converter.z3.IsPed'}, 'IsCar': {'instance': IsCar, 'arity': 1, 'method': 'IsCar(Entity)', 'function': 'logicity.utils.pred_converter.z3.IsCar'}, 'IsAmbulance': {'instance': IsAmb, 'arity': 1, 'method': 'IsAmb(Entity)', 'function': 'logicity.utils.pred_converter.z3.IsAmb'}, 'IsOld': {'instance': IsOld, 'arity': 1, 'method': 'IsOld(Entity)', 'function': 'logicity.utils.pred_converter.z3.IsOld'}, 'IsTiro': {'instance': IsTiro, 'arity': 1, 'method': 'IsTiro(Entity)', 'function': 'logicity.utils.pred_converter.z3.IsTiro'}, 'IsAtInter': {'instance': IsAtInter, 'arity': 1, 'method': 'IsAtInter(Entity)', 'function': 'logicity.utils.pred_converter.z3.IsAtInter'}, 'IsInInter': {'instance': IsInInter, 'arity': 1, 'method': 'IsInInter(Entity)', 'function': 'logicity.utils.pred_converter.z3.IsInInter'}, 'HigherPri': {'instance': HigherPri, 'arity': 2, 'method': 'HigherPri(Entity, Entity)', 'function': 'logicity.utils.pred_converter.z3.HigherPri'}, 'CollidingClose': {'instance': CollidingClose, 'arity': 2, 'method': 'CollidingClose(Entity, Entity)', 'function': 'logicity.utils.pred_converter.z3.CollidingClose'}, 'Stop': {'instance': Stop, 'arity': 1, 'method': 'Stop(Entity)', 'function': 'None'}, 'Fast': {'instance': Fast, 'arity': 1, 'method': 'Fast(Entity)', 'function': 'None'}, 'Normal': {'instance': Normal, 'arity': 1, 'method': 'Normal(Entity)', 'function': 'None'}, 'Slow': {'instance': Slow, 'arity': 1, 'method': 'Slow(Entity)', 'function': 'None'}}, the FOV entities {'Entity': 3}, The logic grounding shape is: 39
+2026-05-21 23:54:50 [INFO]: Local planner constructed!
+2026-05-21 23:54:50 [INFO]: Constructing 22 streets
+2026-05-21 23:54:50 [INFO]: Constructing 16 buildings
+2026-05-21 23:54:51 [INFO]: Adding 4 agents, they are constrained in 103 region
+2026-05-21 23:54:51 [INFO]: Car_1 initialization done!
+2026-05-21 23:54:51 [INFO]: Pedestrian_1 initialization done!
+2026-05-21 23:54:51 [INFO]: Car_2 initialization done!
+2026-05-21 23:54:52 [INFO]: Car_3 initialization done!
+2026-05-21 23:54:52 [INFO]: Done!
+2026-05-21 23:54:52 [INFO]: ***Init RL Agent in Env***
+2026-05-21 23:54:57 [INFO]: Reset agent by failing
+2026-05-21 23:54:57 [INFO]: ***Reset RL Agent in Env***
+2026-05-21 23:54:58 [INFO]: Car_1 initialization done!
+2026-05-21 23:54:58 [INFO]: Pedestrian_1 initialization done!
+2026-05-21 23:54:58 [INFO]: Car_2 initialization done!
+2026-05-21 23:54:58 [INFO]: Car_3 initialization done!
+2026-05-21 23:54:58 [INFO]: Agent reset priority to 3/4
+2026-05-21 23:54:58 [INFO]: Agent reset concepts to {'type': 'Car', 'priority': 3}
+2026-05-21 23:54:58 [INFO]: Episode 4 failed.
+2026-05-21 23:54:58 [INFO]: Episode 4 achieved a score of -7.449999999999999
+2026-05-21 23:54:58 [INFO]: Episode 4 Success: 0
+2026-05-21 23:54:58 [INFO]: Episode 4 Decision Step: {3: 1}
+2026-05-21 23:54:58 [INFO]: Episode 4 Success Decision: {3: 0}
+2026-05-21 23:54:58 [INFO]: Evaluating episode 5...
+2026-05-21 23:54:58 [INFO]: Episode label: {'oracle_step': 59, 'stop_count': 0, 'has_stop': False, 'ego_crosses': True, 'ego_eta': 50, 'ego_direction': 'up', 'other_crosses': 3, 'close_other_count': 0, 'pedestrian_close': None, 'conflicting_approach': False, 'total_crosses': 4}
+2026-05-21 23:54:58 [INFO]: Get map info from config/maps/square_2x2.yaml
+2026-05-21 23:54:58 [INFO]: Get agent info from config/agents/easy_lite/val.yaml
+2026-05-21 23:54:58 [INFO]: Get onology and rules info from config/rules/ontology_easy.yaml, config/rules/Nav/easy/expert.yaml
+2026-05-21 23:54:58 [INFO]: Number of Entity Types: 1
+Entity Types:
+- Entity
+2026-05-21 23:54:58 [INFO]: Number of Predicates: 13
+Predicates:
+- IsPedestrian: {'instance': "Function('IsPed', entity_sorts['Entity'], BoolSort())", 'arity': 1, 'method': 'IsPed(Entity)', 'function': 'logicity.utils.pred_converter.z3.IsPed'}
+- IsCar: {'instance': "Function('IsCar', entity_sorts['Entity'], BoolSort())", 'arity': 1, 'method': 'IsCar(Entity)', 'function': 'logicity.utils.pred_converter.z3.IsCar'}
+- IsAmbulance: {'instance': "Function('IsAmb', entity_sorts['Entity'], BoolSort())", 'arity': 1, 'method': 'IsAmb(Entity)', 'function': 'logicity.utils.pred_converter.z3.IsAmb'}
+- IsOld: {'instance': "Function('IsOld', entity_sorts['Entity'], BoolSort())", 'arity': 1, 'method': 'IsOld(Entity)', 'function': 'logicity.utils.pred_converter.z3.IsOld'}
+- IsTiro: {'instance': "Function('IsTiro', entity_sorts['Entity'], BoolSort())", 'arity': 1, 'method': 'IsTiro(Entity)', 'function': 'logicity.utils.pred_converter.z3.IsTiro'}
+- IsAtInter: {'instance': "Function('IsAtInter', entity_sorts['Entity'], BoolSort())", 'arity': 1, 'method': 'IsAtInter(Entity)', 'function': 'logicity.utils.pred_converter.z3.IsAtInter'}
+- IsInInter: {'instance': "Function('IsInInter', entity_sorts['Entity'], BoolSort())", 'arity': 1, 'method': 'IsInInter(Entity)', 'function': 'logicity.utils.pred_converter.z3.IsInInter'}
+- HigherPri: {'instance': "Function('HigherPri', entity_sorts['Entity'], entity_sorts['Entity'], BoolSort())", 'arity': 2, 'method': 'HigherPri(Entity, Entity)', 'function': 'logicity.utils.pred_converter.z3.HigherPri'}
+- CollidingClose: {'instance': "Function('CollidingClose', entity_sorts['Entity'], entity_sorts['Entity'], BoolSort())", 'arity': 2, 'method': 'CollidingClose(Entity, Entity)', 'function': 'logicity.utils.pred_converter.z3.CollidingClose'}
+- Stop: {'instance': "Function('Stop', entity_sorts['Entity'], BoolSort())", 'arity': 1, 'method': 'Stop(Entity)', 'function': 'None'}
+- Fast: {'instance': "Function('Fast', entity_sorts['Entity'], BoolSort())", 'arity': 1, 'method': 'Fast(Entity)', 'function': 'None'}
+- Normal: {'instance': "Function('Normal', entity_sorts['Entity'], BoolSort())", 'arity': 1, 'method': 'Normal(Entity)', 'function': 'None'}
+- Slow: {'instance': "Function('Slow', entity_sorts['Entity'], BoolSort())", 'arity': 1, 'method': 'Slow(Entity)', 'function': 'None'}
+2026-05-21 23:54:58 [INFO]: *** Sim Rule ***: Stop -> 
+ Stop(entity) == Exists(
+  [dummyEntity], 
+  Or(
+    And(
+      IsAtInter(entity), 
+      IsInInter(dummyEntity), 
+    ),
+    And(
+      IsAtInter(entity), 
+      IsAtInter(dummyEntity), 
+      HigherPri(dummyEntity, entity),
+    ),
+    CollidingClose(entity, dummyEntity)
+  )
+)
+
+2026-05-21 23:54:58 [INFO]: *** Task Rule ***: Collision and Intersection -> 
+ Implies(Exists(
+  [dummyEntity], 
+    Or(
+      And(
+        IsAtInter(entity), 
+        IsInInter(dummyEntity), 
+      ),
+      And(
+        IsAtInter(entity), 
+        IsAtInter(dummyEntity), 
+        HigherPri(dummyEntity, entity),
+      ),
+      CollidingClose(entity, dummyEntity)
+    )
+  ),
+  Stop(entity)
+)
+
+2026-05-21 23:54:58 [INFO]: *** Expert Rule ***: Stop -> 
+ Stop(entity) == Exists(
+[dummyEntity], 
+  Or(
+    And(
+      IsAtInter(entity), 
+      IsInInter(dummyEntity), 
+    ),
+    And(
+      IsAtInter(entity), 
+      IsAtInter(dummyEntity), 
+      HigherPri(dummyEntity, entity),
+    ),
+    CollidingClose(entity, dummyEntity)
+  )
+)
+
+2026-05-21 23:54:58 [INFO]: *** Expert Rule ***: Slow -> 
+ Not(Slow(entity))
+
+2026-05-21 23:54:58 [INFO]: *** Expert Rule ***: Fast -> 
+ Not(Fast(entity))
+
+2026-05-21 23:54:58 [INFO]: *** Expert Rule ***: Normal -> 
+ Normal(entity) == Not(Stop(entity))
+2026-05-21 23:54:58 [INFO]: Rules created successfully
+2026-05-21 23:54:58 [INFO]: Rules will be grounded later...
+2026-05-21 23:54:59 [INFO]: Given Predicates {'IsPedestrian': {'instance': IsPed, 'arity': 1, 'method': 'IsPed(Entity)', 'function': 'logicity.utils.pred_converter.z3.IsPed'}, 'IsCar': {'instance': IsCar, 'arity': 1, 'method': 'IsCar(Entity)', 'function': 'logicity.utils.pred_converter.z3.IsCar'}, 'IsAmbulance': {'instance': IsAmb, 'arity': 1, 'method': 'IsAmb(Entity)', 'function': 'logicity.utils.pred_converter.z3.IsAmb'}, 'IsOld': {'instance': IsOld, 'arity': 1, 'method': 'IsOld(Entity)', 'function': 'logicity.utils.pred_converter.z3.IsOld'}, 'IsTiro': {'instance': IsTiro, 'arity': 1, 'method': 'IsTiro(Entity)', 'function': 'logicity.utils.pred_converter.z3.IsTiro'}, 'IsAtInter': {'instance': IsAtInter, 'arity': 1, 'method': 'IsAtInter(Entity)', 'function': 'logicity.utils.pred_converter.z3.IsAtInter'}, 'IsInInter': {'instance': IsInInter, 'arity': 1, 'method': 'IsInInter(Entity)', 'function': 'logicity.utils.pred_converter.z3.IsInInter'}, 'HigherPri': {'instance': HigherPri, 'arity': 2, 'method': 'HigherPri(Entity, Entity)', 'function': 'logicity.utils.pred_converter.z3.HigherPri'}, 'CollidingClose': {'instance': CollidingClose, 'arity': 2, 'method': 'CollidingClose(Entity, Entity)', 'function': 'logicity.utils.pred_converter.z3.CollidingClose'}, 'Stop': {'instance': Stop, 'arity': 1, 'method': 'Stop(Entity)', 'function': 'None'}, 'Fast': {'instance': Fast, 'arity': 1, 'method': 'Fast(Entity)', 'function': 'None'}, 'Normal': {'instance': Normal, 'arity': 1, 'method': 'Normal(Entity)', 'function': 'None'}, 'Slow': {'instance': Slow, 'arity': 1, 'method': 'Slow(Entity)', 'function': 'None'}}, the FOV entities {'Entity': 3}, The logic grounding shape is: 39
+2026-05-21 23:54:59 [INFO]: Local planner constructed!
+2026-05-21 23:54:59 [INFO]: Constructing 22 streets
+2026-05-21 23:54:59 [INFO]: Constructing 16 buildings
+2026-05-21 23:54:59 [INFO]: Adding 4 agents, they are constrained in 103 region
+2026-05-21 23:55:00 [INFO]: Car_1 initialization done!
+2026-05-21 23:55:00 [INFO]: Pedestrian_1 initialization done!
+2026-05-21 23:55:00 [INFO]: Car_2 initialization done!
+2026-05-21 23:55:01 [INFO]: Car_3 initialization done!
+2026-05-21 23:55:01 [INFO]: Done!
+2026-05-21 23:55:01 [INFO]: ***Init RL Agent in Env***
+2026-05-21 23:55:11 [INFO]: will reset agent by success
+2026-05-21 23:55:11 [INFO]: ***Reset RL Agent in Env***
+2026-05-21 23:55:12 [INFO]: Car_1 initialization done!
+2026-05-21 23:55:12 [INFO]: Pedestrian_1 initialization done!
+2026-05-21 23:55:12 [INFO]: Car_2 initialization done!
+2026-05-21 23:55:12 [INFO]: Car_3 initialization done!
+2026-05-21 23:55:12 [INFO]: Agent reset priority to 3/4
+2026-05-21 23:55:12 [INFO]: Agent reset concepts to {'type': 'Car', 'priority': 3}
+2026-05-21 23:55:13 [INFO]: Episode 5 success.
+2026-05-21 23:55:13 [INFO]: Episode 5 achieved a score of 5.959999999999997
+2026-05-21 23:55:13 [INFO]: Episode 5 Success: 1
+2026-05-21 23:55:13 [INFO]: Episode 5 Decision Step: {3: 0}
+2026-05-21 23:55:13 [INFO]: Episode 5 Success Decision: {3: 0}
+2026-05-21 23:55:13 [INFO]: Evaluating episode 6...
+2026-05-21 23:55:13 [INFO]: Episode label: {'oracle_step': 41, 'stop_count': 0, 'has_stop': False, 'ego_crosses': True, 'ego_eta': 5, 'ego_direction': 'left', 'other_crosses': 3, 'close_other_count': 0, 'pedestrian_close': None, 'conflicting_approach': False, 'total_crosses': 4}
+2026-05-21 23:55:13 [INFO]: Get map info from config/maps/square_2x2.yaml
+2026-05-21 23:55:13 [INFO]: Get agent info from config/agents/easy_lite/val.yaml
+2026-05-21 23:55:13 [INFO]: Get onology and rules info from config/rules/ontology_easy.yaml, config/rules/Nav/easy/expert.yaml
+2026-05-21 23:55:13 [INFO]: Number of Entity Types: 1
+Entity Types:
+- Entity
+2026-05-21 23:55:13 [INFO]: Number of Predicates: 13
+Predicates:
+- IsPedestrian: {'instance': "Function('IsPed', entity_sorts['Entity'], BoolSort())", 'arity': 1, 'method': 'IsPed(Entity)', 'function': 'logicity.utils.pred_converter.z3.IsPed'}
+- IsCar: {'instance': "Function('IsCar', entity_sorts['Entity'], BoolSort())", 'arity': 1, 'method': 'IsCar(Entity)', 'function': 'logicity.utils.pred_converter.z3.IsCar'}
+- IsAmbulance: {'instance': "Function('IsAmb', entity_sorts['Entity'], BoolSort())", 'arity': 1, 'method': 'IsAmb(Entity)', 'function': 'logicity.utils.pred_converter.z3.IsAmb'}
+- IsOld: {'instance': "Function('IsOld', entity_sorts['Entity'], BoolSort())", 'arity': 1, 'method': 'IsOld(Entity)', 'function': 'logicity.utils.pred_converter.z3.IsOld'}
+- IsTiro: {'instance': "Function('IsTiro', entity_sorts['Entity'], BoolSort())", 'arity': 1, 'method': 'IsTiro(Entity)', 'function': 'logicity.utils.pred_converter.z3.IsTiro'}
+- IsAtInter: {'instance': "Function('IsAtInter', entity_sorts['Entity'], BoolSort())", 'arity': 1, 'method': 'IsAtInter(Entity)', 'function': 'logicity.utils.pred_converter.z3.IsAtInter'}
+- IsInInter: {'instance': "Function('IsInInter', entity_sorts['Entity'], BoolSort())", 'arity': 1, 'method': 'IsInInter(Entity)', 'function': 'logicity.utils.pred_converter.z3.IsInInter'}
+- HigherPri: {'instance': "Function('HigherPri', entity_sorts['Entity'], entity_sorts['Entity'], BoolSort())", 'arity': 2, 'method': 'HigherPri(Entity, Entity)', 'function': 'logicity.utils.pred_converter.z3.HigherPri'}
+- CollidingClose: {'instance': "Function('CollidingClose', entity_sorts['Entity'], entity_sorts['Entity'], BoolSort())", 'arity': 2, 'method': 'CollidingClose(Entity, Entity)', 'function': 'logicity.utils.pred_converter.z3.CollidingClose'}
+- Stop: {'instance': "Function('Stop', entity_sorts['Entity'], BoolSort())", 'arity': 1, 'method': 'Stop(Entity)', 'function': 'None'}
+- Fast: {'instance': "Function('Fast', entity_sorts['Entity'], BoolSort())", 'arity': 1, 'method': 'Fast(Entity)', 'function': 'None'}
+- Normal: {'instance': "Function('Normal', entity_sorts['Entity'], BoolSort())", 'arity': 1, 'method': 'Normal(Entity)', 'function': 'None'}
+- Slow: {'instance': "Function('Slow', entity_sorts['Entity'], BoolSort())", 'arity': 1, 'method': 'Slow(Entity)', 'function': 'None'}
+2026-05-21 23:55:13 [INFO]: *** Sim Rule ***: Stop -> 
+ Stop(entity) == Exists(
+  [dummyEntity], 
+  Or(
+    And(
+      IsAtInter(entity), 
+      IsInInter(dummyEntity), 
+    ),
+    And(
+      IsAtInter(entity), 
+      IsAtInter(dummyEntity), 
+      HigherPri(dummyEntity, entity),
+    ),
+    CollidingClose(entity, dummyEntity)
+  )
+)
+
+2026-05-21 23:55:13 [INFO]: *** Task Rule ***: Collision and Intersection -> 
+ Implies(Exists(
+  [dummyEntity], 
+    Or(
+      And(
+        IsAtInter(entity), 
+        IsInInter(dummyEntity), 
+      ),
+      And(
+        IsAtInter(entity), 
+        IsAtInter(dummyEntity), 
+        HigherPri(dummyEntity, entity),
+      ),
+      CollidingClose(entity, dummyEntity)
+    )
+  ),
+  Stop(entity)
+)
+
+2026-05-21 23:55:13 [INFO]: *** Expert Rule ***: Stop -> 
+ Stop(entity) == Exists(
+[dummyEntity], 
+  Or(
+    And(
+      IsAtInter(entity), 
+      IsInInter(dummyEntity), 
+    ),
+    And(
+      IsAtInter(entity), 
+      IsAtInter(dummyEntity), 
+      HigherPri(dummyEntity, entity),
+    ),
+    CollidingClose(entity, dummyEntity)
+  )
+)
+
+2026-05-21 23:55:13 [INFO]: *** Expert Rule ***: Slow -> 
+ Not(Slow(entity))
+
+2026-05-21 23:55:13 [INFO]: *** Expert Rule ***: Fast -> 
+ Not(Fast(entity))
+
+2026-05-21 23:55:13 [INFO]: *** Expert Rule ***: Normal -> 
+ Normal(entity) == Not(Stop(entity))
+2026-05-21 23:55:13 [INFO]: Rules created successfully
+2026-05-21 23:55:13 [INFO]: Rules will be grounded later...
+2026-05-21 23:55:13 [INFO]: Given Predicates {'IsPedestrian': {'instance': IsPed, 'arity': 1, 'method': 'IsPed(Entity)', 'function': 'logicity.utils.pred_converter.z3.IsPed'}, 'IsCar': {'instance': IsCar, 'arity': 1, 'method': 'IsCar(Entity)', 'function': 'logicity.utils.pred_converter.z3.IsCar'}, 'IsAmbulance': {'instance': IsAmb, 'arity': 1, 'method': 'IsAmb(Entity)', 'function': 'logicity.utils.pred_converter.z3.IsAmb'}, 'IsOld': {'instance': IsOld, 'arity': 1, 'method': 'IsOld(Entity)', 'function': 'logicity.utils.pred_converter.z3.IsOld'}, 'IsTiro': {'instance': IsTiro, 'arity': 1, 'method': 'IsTiro(Entity)', 'function': 'logicity.utils.pred_converter.z3.IsTiro'}, 'IsAtInter': {'instance': IsAtInter, 'arity': 1, 'method': 'IsAtInter(Entity)', 'function': 'logicity.utils.pred_converter.z3.IsAtInter'}, 'IsInInter': {'instance': IsInInter, 'arity': 1, 'method': 'IsInInter(Entity)', 'function': 'logicity.utils.pred_converter.z3.IsInInter'}, 'HigherPri': {'instance': HigherPri, 'arity': 2, 'method': 'HigherPri(Entity, Entity)', 'function': 'logicity.utils.pred_converter.z3.HigherPri'}, 'CollidingClose': {'instance': CollidingClose, 'arity': 2, 'method': 'CollidingClose(Entity, Entity)', 'function': 'logicity.utils.pred_converter.z3.CollidingClose'}, 'Stop': {'instance': Stop, 'arity': 1, 'method': 'Stop(Entity)', 'function': 'None'}, 'Fast': {'instance': Fast, 'arity': 1, 'method': 'Fast(Entity)', 'function': 'None'}, 'Normal': {'instance': Normal, 'arity': 1, 'method': 'Normal(Entity)', 'function': 'None'}, 'Slow': {'instance': Slow, 'arity': 1, 'method': 'Slow(Entity)', 'function': 'None'}}, the FOV entities {'Entity': 3}, The logic grounding shape is: 39
+2026-05-21 23:55:13 [INFO]: Local planner constructed!
+2026-05-21 23:55:13 [INFO]: Constructing 22 streets
+2026-05-21 23:55:13 [INFO]: Constructing 16 buildings
+2026-05-21 23:55:13 [INFO]: Adding 4 agents, they are constrained in 103 region
+2026-05-21 23:55:14 [INFO]: Car_1 initialization done!
+2026-05-21 23:55:14 [INFO]: Pedestrian_1 initialization done!
+2026-05-21 23:55:14 [INFO]: Car_2 initialization done!
+2026-05-21 23:55:15 [INFO]: Car_3 initialization done!
+2026-05-21 23:55:15 [INFO]: Done!
+2026-05-21 23:55:15 [INFO]: ***Init RL Agent in Env***
+2026-05-21 23:55:23 [INFO]: will reset agent by success
+2026-05-21 23:55:23 [INFO]: ***Reset RL Agent in Env***
+2026-05-21 23:55:24 [INFO]: Car_1 initialization done!
+2026-05-21 23:55:24 [INFO]: Pedestrian_1 initialization done!
+2026-05-21 23:55:24 [INFO]: Car_2 initialization done!
+2026-05-21 23:55:24 [INFO]: Car_3 initialization done!
+2026-05-21 23:55:24 [INFO]: Agent reset priority to 1/4
+2026-05-21 23:55:24 [INFO]: Agent reset concepts to {'type': 'Car', 'priority': 1}
+2026-05-21 23:55:25 [INFO]: Episode 6 success.
+2026-05-21 23:55:25 [INFO]: Episode 6 achieved a score of 4.33
+2026-05-21 23:55:25 [INFO]: Episode 6 Success: 1
+2026-05-21 23:55:25 [INFO]: Episode 6 Decision Step: {3: 0}
+2026-05-21 23:55:25 [INFO]: Episode 6 Success Decision: {3: 0}
+2026-05-21 23:55:25 [INFO]: Evaluating episode 7...
+2026-05-21 23:55:25 [INFO]: Episode label: {'oracle_step': 22, 'stop_count': 0, 'has_stop': False, 'ego_crosses': True, 'ego_eta': 5, 'ego_direction': 'right', 'other_crosses': 3, 'close_other_count': 0, 'pedestrian_close': None, 'conflicting_approach': False, 'total_crosses': 4}
+2026-05-21 23:55:25 [INFO]: Get map info from config/maps/square_2x2.yaml
+2026-05-21 23:55:25 [INFO]: Get agent info from config/agents/easy_lite/val.yaml
+2026-05-21 23:55:25 [INFO]: Get onology and rules info from config/rules/ontology_easy.yaml, config/rules/Nav/easy/expert.yaml
+2026-05-21 23:55:25 [INFO]: Number of Entity Types: 1
+Entity Types:
+- Entity
+2026-05-21 23:55:25 [INFO]: Number of Predicates: 13
+Predicates:
+- IsPedestrian: {'instance': "Function('IsPed', entity_sorts['Entity'], BoolSort())", 'arity': 1, 'method': 'IsPed(Entity)', 'function': 'logicity.utils.pred_converter.z3.IsPed'}
+- IsCar: {'instance': "Function('IsCar', entity_sorts['Entity'], BoolSort())", 'arity': 1, 'method': 'IsCar(Entity)', 'function': 'logicity.utils.pred_converter.z3.IsCar'}
+- IsAmbulance: {'instance': "Function('IsAmb', entity_sorts['Entity'], BoolSort())", 'arity': 1, 'method': 'IsAmb(Entity)', 'function': 'logicity.utils.pred_converter.z3.IsAmb'}
+- IsOld: {'instance': "Function('IsOld', entity_sorts['Entity'], BoolSort())", 'arity': 1, 'method': 'IsOld(Entity)', 'function': 'logicity.utils.pred_converter.z3.IsOld'}
+- IsTiro: {'instance': "Function('IsTiro', entity_sorts['Entity'], BoolSort())", 'arity': 1, 'method': 'IsTiro(Entity)', 'function': 'logicity.utils.pred_converter.z3.IsTiro'}
+- IsAtInter: {'instance': "Function('IsAtInter', entity_sorts['Entity'], BoolSort())", 'arity': 1, 'method': 'IsAtInter(Entity)', 'function': 'logicity.utils.pred_converter.z3.IsAtInter'}
+- IsInInter: {'instance': "Function('IsInInter', entity_sorts['Entity'], BoolSort())", 'arity': 1, 'method': 'IsInInter(Entity)', 'function': 'logicity.utils.pred_converter.z3.IsInInter'}
+- HigherPri: {'instance': "Function('HigherPri', entity_sorts['Entity'], entity_sorts['Entity'], BoolSort())", 'arity': 2, 'method': 'HigherPri(Entity, Entity)', 'function': 'logicity.utils.pred_converter.z3.HigherPri'}
+- CollidingClose: {'instance': "Function('CollidingClose', entity_sorts['Entity'], entity_sorts['Entity'], BoolSort())", 'arity': 2, 'method': 'CollidingClose(Entity, Entity)', 'function': 'logicity.utils.pred_converter.z3.CollidingClose'}
+- Stop: {'instance': "Function('Stop', entity_sorts['Entity'], BoolSort())", 'arity': 1, 'method': 'Stop(Entity)', 'function': 'None'}
+- Fast: {'instance': "Function('Fast', entity_sorts['Entity'], BoolSort())", 'arity': 1, 'method': 'Fast(Entity)', 'function': 'None'}
+- Normal: {'instance': "Function('Normal', entity_sorts['Entity'], BoolSort())", 'arity': 1, 'method': 'Normal(Entity)', 'function': 'None'}
+- Slow: {'instance': "Function('Slow', entity_sorts['Entity'], BoolSort())", 'arity': 1, 'method': 'Slow(Entity)', 'function': 'None'}
+2026-05-21 23:55:25 [INFO]: *** Sim Rule ***: Stop -> 
+ Stop(entity) == Exists(
+  [dummyEntity], 
+  Or(
+    And(
+      IsAtInter(entity), 
+      IsInInter(dummyEntity), 
+    ),
+    And(
+      IsAtInter(entity), 
+      IsAtInter(dummyEntity), 
+      HigherPri(dummyEntity, entity),
+    ),
+    CollidingClose(entity, dummyEntity)
+  )
+)
+
+2026-05-21 23:55:25 [INFO]: *** Task Rule ***: Collision and Intersection -> 
+ Implies(Exists(
+  [dummyEntity], 
+    Or(
+      And(
+        IsAtInter(entity), 
+        IsInInter(dummyEntity), 
+      ),
+      And(
+        IsAtInter(entity), 
+        IsAtInter(dummyEntity), 
+        HigherPri(dummyEntity, entity),
+      ),
+      CollidingClose(entity, dummyEntity)
+    )
+  ),
+  Stop(entity)
+)
+
+2026-05-21 23:55:25 [INFO]: *** Expert Rule ***: Stop -> 
+ Stop(entity) == Exists(
+[dummyEntity], 
+  Or(
+    And(
+      IsAtInter(entity), 
+      IsInInter(dummyEntity), 
+    ),
+    And(
+      IsAtInter(entity), 
+      IsAtInter(dummyEntity), 
+      HigherPri(dummyEntity, entity),
+    ),
+    CollidingClose(entity, dummyEntity)
+  )
+)
+
+2026-05-21 23:55:25 [INFO]: *** Expert Rule ***: Slow -> 
+ Not(Slow(entity))
+
+2026-05-21 23:55:25 [INFO]: *** Expert Rule ***: Fast -> 
+ Not(Fast(entity))
+
+2026-05-21 23:55:25 [INFO]: *** Expert Rule ***: Normal -> 
+ Normal(entity) == Not(Stop(entity))
+2026-05-21 23:55:25 [INFO]: Rules created successfully
+2026-05-21 23:55:25 [INFO]: Rules will be grounded later...
+2026-05-21 23:55:25 [INFO]: Given Predicates {'IsPedestrian': {'instance': IsPed, 'arity': 1, 'method': 'IsPed(Entity)', 'function': 'logicity.utils.pred_converter.z3.IsPed'}, 'IsCar': {'instance': IsCar, 'arity': 1, 'method': 'IsCar(Entity)', 'function': 'logicity.utils.pred_converter.z3.IsCar'}, 'IsAmbulance': {'instance': IsAmb, 'arity': 1, 'method': 'IsAmb(Entity)', 'function': 'logicity.utils.pred_converter.z3.IsAmb'}, 'IsOld': {'instance': IsOld, 'arity': 1, 'method': 'IsOld(Entity)', 'function': 'logicity.utils.pred_converter.z3.IsOld'}, 'IsTiro': {'instance': IsTiro, 'arity': 1, 'method': 'IsTiro(Entity)', 'function': 'logicity.utils.pred_converter.z3.IsTiro'}, 'IsAtInter': {'instance': IsAtInter, 'arity': 1, 'method': 'IsAtInter(Entity)', 'function': 'logicity.utils.pred_converter.z3.IsAtInter'}, 'IsInInter': {'instance': IsInInter, 'arity': 1, 'method': 'IsInInter(Entity)', 'function': 'logicity.utils.pred_converter.z3.IsInInter'}, 'HigherPri': {'instance': HigherPri, 'arity': 2, 'method': 'HigherPri(Entity, Entity)', 'function': 'logicity.utils.pred_converter.z3.HigherPri'}, 'CollidingClose': {'instance': CollidingClose, 'arity': 2, 'method': 'CollidingClose(Entity, Entity)', 'function': 'logicity.utils.pred_converter.z3.CollidingClose'}, 'Stop': {'instance': Stop, 'arity': 1, 'method': 'Stop(Entity)', 'function': 'None'}, 'Fast': {'instance': Fast, 'arity': 1, 'method': 'Fast(Entity)', 'function': 'None'}, 'Normal': {'instance': Normal, 'arity': 1, 'method': 'Normal(Entity)', 'function': 'None'}, 'Slow': {'instance': Slow, 'arity': 1, 'method': 'Slow(Entity)', 'function': 'None'}}, the FOV entities {'Entity': 3}, The logic grounding shape is: 39
+2026-05-21 23:55:25 [INFO]: Local planner constructed!
+2026-05-21 23:55:25 [INFO]: Constructing 22 streets
+2026-05-21 23:55:25 [INFO]: Constructing 16 buildings
+2026-05-21 23:55:26 [INFO]: Adding 4 agents, they are constrained in 103 region
+2026-05-21 23:55:26 [INFO]: Car_1 initialization done!
+2026-05-21 23:55:26 [INFO]: Pedestrian_1 initialization done!
+2026-05-21 23:55:26 [INFO]: Car_2 initialization done!
+2026-05-21 23:55:27 [INFO]: Car_3 initialization done!
+2026-05-21 23:55:27 [INFO]: Done!
+2026-05-21 23:55:27 [INFO]: ***Init RL Agent in Env***
+2026-05-21 23:55:31 [INFO]: will reset agent by success
+2026-05-21 23:55:31 [INFO]: ***Reset RL Agent in Env***
+2026-05-21 23:55:32 [INFO]: Car_1 initialization done!
+2026-05-21 23:55:32 [INFO]: Pedestrian_1 initialization done!
+2026-05-21 23:55:32 [INFO]: Car_2 initialization done!
+2026-05-21 23:55:32 [INFO]: Car_3 initialization done!
+2026-05-21 23:55:32 [INFO]: Agent reset priority to 3/4
+2026-05-21 23:55:32 [INFO]: Agent reset concepts to {'type': 'Car', 'priority': 3}
+2026-05-21 23:55:33 [INFO]: Episode 7 success.
+2026-05-21 23:55:33 [INFO]: Episode 7 achieved a score of 2.6200000000000006
+2026-05-21 23:55:33 [INFO]: Episode 7 Success: 1
+2026-05-21 23:55:33 [INFO]: Episode 7 Decision Step: {3: 0}
+2026-05-21 23:55:33 [INFO]: Episode 7 Success Decision: {3: 0}
+2026-05-21 23:55:33 [INFO]: Evaluating episode 8...
+2026-05-21 23:55:33 [INFO]: Episode label: {'oracle_step': 86, 'stop_count': 19, 'has_stop': True, 'ego_crosses': True, 'ego_eta': 56, 'ego_direction': 'down', 'other_crosses': 3, 'close_other_count': 0, 'pedestrian_close': None, 'conflicting_approach': False, 'total_crosses': 4}
+2026-05-21 23:55:33 [INFO]: Get map info from config/maps/square_2x2.yaml
+2026-05-21 23:55:33 [INFO]: Get agent info from config/agents/easy_lite/val.yaml
+2026-05-21 23:55:33 [INFO]: Get onology and rules info from config/rules/ontology_easy.yaml, config/rules/Nav/easy/expert.yaml
+2026-05-21 23:55:33 [INFO]: Number of Entity Types: 1
+Entity Types:
+- Entity
+2026-05-21 23:55:33 [INFO]: Number of Predicates: 13
+Predicates:
+- IsPedestrian: {'instance': "Function('IsPed', entity_sorts['Entity'], BoolSort())", 'arity': 1, 'method': 'IsPed(Entity)', 'function': 'logicity.utils.pred_converter.z3.IsPed'}
+- IsCar: {'instance': "Function('IsCar', entity_sorts['Entity'], BoolSort())", 'arity': 1, 'method': 'IsCar(Entity)', 'function': 'logicity.utils.pred_converter.z3.IsCar'}
+- IsAmbulance: {'instance': "Function('IsAmb', entity_sorts['Entity'], BoolSort())", 'arity': 1, 'method': 'IsAmb(Entity)', 'function': 'logicity.utils.pred_converter.z3.IsAmb'}
+- IsOld: {'instance': "Function('IsOld', entity_sorts['Entity'], BoolSort())", 'arity': 1, 'method': 'IsOld(Entity)', 'function': 'logicity.utils.pred_converter.z3.IsOld'}
+- IsTiro: {'instance': "Function('IsTiro', entity_sorts['Entity'], BoolSort())", 'arity': 1, 'method': 'IsTiro(Entity)', 'function': 'logicity.utils.pred_converter.z3.IsTiro'}
+- IsAtInter: {'instance': "Function('IsAtInter', entity_sorts['Entity'], BoolSort())", 'arity': 1, 'method': 'IsAtInter(Entity)', 'function': 'logicity.utils.pred_converter.z3.IsAtInter'}
+- IsInInter: {'instance': "Function('IsInInter', entity_sorts['Entity'], BoolSort())", 'arity': 1, 'method': 'IsInInter(Entity)', 'function': 'logicity.utils.pred_converter.z3.IsInInter'}
+- HigherPri: {'instance': "Function('HigherPri', entity_sorts['Entity'], entity_sorts['Entity'], BoolSort())", 'arity': 2, 'method': 'HigherPri(Entity, Entity)', 'function': 'logicity.utils.pred_converter.z3.HigherPri'}
+- CollidingClose: {'instance': "Function('CollidingClose', entity_sorts['Entity'], entity_sorts['Entity'], BoolSort())", 'arity': 2, 'method': 'CollidingClose(Entity, Entity)', 'function': 'logicity.utils.pred_converter.z3.CollidingClose'}
+- Stop: {'instance': "Function('Stop', entity_sorts['Entity'], BoolSort())", 'arity': 1, 'method': 'Stop(Entity)', 'function': 'None'}
+- Fast: {'instance': "Function('Fast', entity_sorts['Entity'], BoolSort())", 'arity': 1, 'method': 'Fast(Entity)', 'function': 'None'}
+- Normal: {'instance': "Function('Normal', entity_sorts['Entity'], BoolSort())", 'arity': 1, 'method': 'Normal(Entity)', 'function': 'None'}
+- Slow: {'instance': "Function('Slow', entity_sorts['Entity'], BoolSort())", 'arity': 1, 'method': 'Slow(Entity)', 'function': 'None'}
+2026-05-21 23:55:33 [INFO]: *** Sim Rule ***: Stop -> 
+ Stop(entity) == Exists(
+  [dummyEntity], 
+  Or(
+    And(
+      IsAtInter(entity), 
+      IsInInter(dummyEntity), 
+    ),
+    And(
+      IsAtInter(entity), 
+      IsAtInter(dummyEntity), 
+      HigherPri(dummyEntity, entity),
+    ),
+    CollidingClose(entity, dummyEntity)
+  )
+)
+
+2026-05-21 23:55:33 [INFO]: *** Task Rule ***: Collision and Intersection -> 
+ Implies(Exists(
+  [dummyEntity], 
+    Or(
+      And(
+        IsAtInter(entity), 
+        IsInInter(dummyEntity), 
+      ),
+      And(
+        IsAtInter(entity), 
+        IsAtInter(dummyEntity), 
+        HigherPri(dummyEntity, entity),
+      ),
+      CollidingClose(entity, dummyEntity)
+    )
+  ),
+  Stop(entity)
+)
+
+2026-05-21 23:55:33 [INFO]: *** Expert Rule ***: Stop -> 
+ Stop(entity) == Exists(
+[dummyEntity], 
+  Or(
+    And(
+      IsAtInter(entity), 
+      IsInInter(dummyEntity), 
+    ),
+    And(
+      IsAtInter(entity), 
+      IsAtInter(dummyEntity), 
+      HigherPri(dummyEntity, entity),
+    ),
+    CollidingClose(entity, dummyEntity)
+  )
+)
+
+2026-05-21 23:55:33 [INFO]: *** Expert Rule ***: Slow -> 
+ Not(Slow(entity))
+
+2026-05-21 23:55:33 [INFO]: *** Expert Rule ***: Fast -> 
+ Not(Fast(entity))
+
+2026-05-21 23:55:33 [INFO]: *** Expert Rule ***: Normal -> 
+ Normal(entity) == Not(Stop(entity))
+2026-05-21 23:55:33 [INFO]: Rules created successfully
+2026-05-21 23:55:33 [INFO]: Rules will be grounded later...
+2026-05-21 23:55:33 [INFO]: Given Predicates {'IsPedestrian': {'instance': IsPed, 'arity': 1, 'method': 'IsPed(Entity)', 'function': 'logicity.utils.pred_converter.z3.IsPed'}, 'IsCar': {'instance': IsCar, 'arity': 1, 'method': 'IsCar(Entity)', 'function': 'logicity.utils.pred_converter.z3.IsCar'}, 'IsAmbulance': {'instance': IsAmb, 'arity': 1, 'method': 'IsAmb(Entity)', 'function': 'logicity.utils.pred_converter.z3.IsAmb'}, 'IsOld': {'instance': IsOld, 'arity': 1, 'method': 'IsOld(Entity)', 'function': 'logicity.utils.pred_converter.z3.IsOld'}, 'IsTiro': {'instance': IsTiro, 'arity': 1, 'method': 'IsTiro(Entity)', 'function': 'logicity.utils.pred_converter.z3.IsTiro'}, 'IsAtInter': {'instance': IsAtInter, 'arity': 1, 'method': 'IsAtInter(Entity)', 'function': 'logicity.utils.pred_converter.z3.IsAtInter'}, 'IsInInter': {'instance': IsInInter, 'arity': 1, 'method': 'IsInInter(Entity)', 'function': 'logicity.utils.pred_converter.z3.IsInInter'}, 'HigherPri': {'instance': HigherPri, 'arity': 2, 'method': 'HigherPri(Entity, Entity)', 'function': 'logicity.utils.pred_converter.z3.HigherPri'}, 'CollidingClose': {'instance': CollidingClose, 'arity': 2, 'method': 'CollidingClose(Entity, Entity)', 'function': 'logicity.utils.pred_converter.z3.CollidingClose'}, 'Stop': {'instance': Stop, 'arity': 1, 'method': 'Stop(Entity)', 'function': 'None'}, 'Fast': {'instance': Fast, 'arity': 1, 'method': 'Fast(Entity)', 'function': 'None'}, 'Normal': {'instance': Normal, 'arity': 1, 'method': 'Normal(Entity)', 'function': 'None'}, 'Slow': {'instance': Slow, 'arity': 1, 'method': 'Slow(Entity)', 'function': 'None'}}, the FOV entities {'Entity': 3}, The logic grounding shape is: 39
+2026-05-21 23:55:33 [INFO]: Local planner constructed!
+2026-05-21 23:55:33 [INFO]: Constructing 22 streets
+2026-05-21 23:55:33 [INFO]: Constructing 16 buildings
+2026-05-21 23:55:33 [INFO]: Adding 4 agents, they are constrained in 103 region
+2026-05-21 23:55:34 [INFO]: Car_1 initialization done!
+2026-05-21 23:55:34 [INFO]: Pedestrian_1 initialization done!
+2026-05-21 23:55:34 [INFO]: Car_2 initialization done!
+2026-05-21 23:55:35 [INFO]: Car_3 initialization done!
+2026-05-21 23:55:35 [INFO]: Done!
+2026-05-21 23:55:35 [INFO]: ***Init RL Agent in Env***
+2026-05-21 23:55:39 [INFO]: Reset agent by failing
+2026-05-21 23:55:39 [INFO]: ***Reset RL Agent in Env***
+2026-05-21 23:55:40 [INFO]: Car_1 initialization done!
+2026-05-21 23:55:40 [INFO]: Pedestrian_1 initialization done!
+2026-05-21 23:55:40 [INFO]: Car_2 initialization done!
+2026-05-21 23:55:41 [INFO]: Car_3 initialization done!
+2026-05-21 23:55:41 [INFO]: Agent reset priority to 2/4
+2026-05-21 23:55:41 [INFO]: Agent reset concepts to {'type': 'Car', 'priority': 2}
+2026-05-21 23:55:41 [INFO]: Episode 8 failed.
+2026-05-21 23:55:41 [INFO]: Episode 8 achieved a score of -7.539999999999999
+2026-05-21 23:55:41 [INFO]: Episode 8 Success: 0
+2026-05-21 23:55:41 [INFO]: Episode 8 Decision Step: {3: 1}
+2026-05-21 23:55:41 [INFO]: Episode 8 Success Decision: {3: 0}
+2026-05-21 23:55:41 [INFO]: Evaluating episode 9...
+2026-05-21 23:55:41 [INFO]: Episode label: {'oracle_step': 69, 'stop_count': 25, 'has_stop': True, 'ego_crosses': True, 'ego_eta': 56, 'ego_direction': 'right', 'other_crosses': 3, 'close_other_count': 0, 'pedestrian_close': None, 'conflicting_approach': False, 'total_crosses': 4}
+2026-05-21 23:55:41 [INFO]: Get map info from config/maps/square_2x2.yaml
+2026-05-21 23:55:41 [INFO]: Get agent info from config/agents/easy_lite/val.yaml
+2026-05-21 23:55:41 [INFO]: Get onology and rules info from config/rules/ontology_easy.yaml, config/rules/Nav/easy/expert.yaml
+2026-05-21 23:55:41 [INFO]: Number of Entity Types: 1
+Entity Types:
+- Entity
+2026-05-21 23:55:41 [INFO]: Number of Predicates: 13
+Predicates:
+- IsPedestrian: {'instance': "Function('IsPed', entity_sorts['Entity'], BoolSort())", 'arity': 1, 'method': 'IsPed(Entity)', 'function': 'logicity.utils.pred_converter.z3.IsPed'}
+- IsCar: {'instance': "Function('IsCar', entity_sorts['Entity'], BoolSort())", 'arity': 1, 'method': 'IsCar(Entity)', 'function': 'logicity.utils.pred_converter.z3.IsCar'}
+- IsAmbulance: {'instance': "Function('IsAmb', entity_sorts['Entity'], BoolSort())", 'arity': 1, 'method': 'IsAmb(Entity)', 'function': 'logicity.utils.pred_converter.z3.IsAmb'}
+- IsOld: {'instance': "Function('IsOld', entity_sorts['Entity'], BoolSort())", 'arity': 1, 'method': 'IsOld(Entity)', 'function': 'logicity.utils.pred_converter.z3.IsOld'}
+- IsTiro: {'instance': "Function('IsTiro', entity_sorts['Entity'], BoolSort())", 'arity': 1, 'method': 'IsTiro(Entity)', 'function': 'logicity.utils.pred_converter.z3.IsTiro'}
+- IsAtInter: {'instance': "Function('IsAtInter', entity_sorts['Entity'], BoolSort())", 'arity': 1, 'method': 'IsAtInter(Entity)', 'function': 'logicity.utils.pred_converter.z3.IsAtInter'}
+- IsInInter: {'instance': "Function('IsInInter', entity_sorts['Entity'], BoolSort())", 'arity': 1, 'method': 'IsInInter(Entity)', 'function': 'logicity.utils.pred_converter.z3.IsInInter'}
+- HigherPri: {'instance': "Function('HigherPri', entity_sorts['Entity'], entity_sorts['Entity'], BoolSort())", 'arity': 2, 'method': 'HigherPri(Entity, Entity)', 'function': 'logicity.utils.pred_converter.z3.HigherPri'}
+- CollidingClose: {'instance': "Function('CollidingClose', entity_sorts['Entity'], entity_sorts['Entity'], BoolSort())", 'arity': 2, 'method': 'CollidingClose(Entity, Entity)', 'function': 'logicity.utils.pred_converter.z3.CollidingClose'}
+- Stop: {'instance': "Function('Stop', entity_sorts['Entity'], BoolSort())", 'arity': 1, 'method': 'Stop(Entity)', 'function': 'None'}
+- Fast: {'instance': "Function('Fast', entity_sorts['Entity'], BoolSort())", 'arity': 1, 'method': 'Fast(Entity)', 'function': 'None'}
+- Normal: {'instance': "Function('Normal', entity_sorts['Entity'], BoolSort())", 'arity': 1, 'method': 'Normal(Entity)', 'function': 'None'}
+- Slow: {'instance': "Function('Slow', entity_sorts['Entity'], BoolSort())", 'arity': 1, 'method': 'Slow(Entity)', 'function': 'None'}
+2026-05-21 23:55:41 [INFO]: *** Sim Rule ***: Stop -> 
+ Stop(entity) == Exists(
+  [dummyEntity], 
+  Or(
+    And(
+      IsAtInter(entity), 
+      IsInInter(dummyEntity), 
+    ),
+    And(
+      IsAtInter(entity), 
+      IsAtInter(dummyEntity), 
+      HigherPri(dummyEntity, entity),
+    ),
+    CollidingClose(entity, dummyEntity)
+  )
+)
+
+2026-05-21 23:55:41 [INFO]: *** Task Rule ***: Collision and Intersection -> 
+ Implies(Exists(
+  [dummyEntity], 
+    Or(
+      And(
+        IsAtInter(entity), 
+        IsInInter(dummyEntity), 
+      ),
+      And(
+        IsAtInter(entity), 
+        IsAtInter(dummyEntity), 
+        HigherPri(dummyEntity, entity),
+      ),
+      CollidingClose(entity, dummyEntity)
+    )
+  ),
+  Stop(entity)
+)
+
+2026-05-21 23:55:41 [INFO]: *** Expert Rule ***: Stop -> 
+ Stop(entity) == Exists(
+[dummyEntity], 
+  Or(
+    And(
+      IsAtInter(entity), 
+      IsInInter(dummyEntity), 
+    ),
+    And(
+      IsAtInter(entity), 
+      IsAtInter(dummyEntity), 
+      HigherPri(dummyEntity, entity),
+    ),
+    CollidingClose(entity, dummyEntity)
+  )
+)
+
+2026-05-21 23:55:41 [INFO]: *** Expert Rule ***: Slow -> 
+ Not(Slow(entity))
+
+2026-05-21 23:55:41 [INFO]: *** Expert Rule ***: Fast -> 
+ Not(Fast(entity))
+
+2026-05-21 23:55:41 [INFO]: *** Expert Rule ***: Normal -> 
+ Normal(entity) == Not(Stop(entity))
+2026-05-21 23:55:41 [INFO]: Rules created successfully
+2026-05-21 23:55:41 [INFO]: Rules will be grounded later...
+2026-05-21 23:55:41 [INFO]: Given Predicates {'IsPedestrian': {'instance': IsPed, 'arity': 1, 'method': 'IsPed(Entity)', 'function': 'logicity.utils.pred_converter.z3.IsPed'}, 'IsCar': {'instance': IsCar, 'arity': 1, 'method': 'IsCar(Entity)', 'function': 'logicity.utils.pred_converter.z3.IsCar'}, 'IsAmbulance': {'instance': IsAmb, 'arity': 1, 'method': 'IsAmb(Entity)', 'function': 'logicity.utils.pred_converter.z3.IsAmb'}, 'IsOld': {'instance': IsOld, 'arity': 1, 'method': 'IsOld(Entity)', 'function': 'logicity.utils.pred_converter.z3.IsOld'}, 'IsTiro': {'instance': IsTiro, 'arity': 1, 'method': 'IsTiro(Entity)', 'function': 'logicity.utils.pred_converter.z3.IsTiro'}, 'IsAtInter': {'instance': IsAtInter, 'arity': 1, 'method': 'IsAtInter(Entity)', 'function': 'logicity.utils.pred_converter.z3.IsAtInter'}, 'IsInInter': {'instance': IsInInter, 'arity': 1, 'method': 'IsInInter(Entity)', 'function': 'logicity.utils.pred_converter.z3.IsInInter'}, 'HigherPri': {'instance': HigherPri, 'arity': 2, 'method': 'HigherPri(Entity, Entity)', 'function': 'logicity.utils.pred_converter.z3.HigherPri'}, 'CollidingClose': {'instance': CollidingClose, 'arity': 2, 'method': 'CollidingClose(Entity, Entity)', 'function': 'logicity.utils.pred_converter.z3.CollidingClose'}, 'Stop': {'instance': Stop, 'arity': 1, 'method': 'Stop(Entity)', 'function': 'None'}, 'Fast': {'instance': Fast, 'arity': 1, 'method': 'Fast(Entity)', 'function': 'None'}, 'Normal': {'instance': Normal, 'arity': 1, 'method': 'Normal(Entity)', 'function': 'None'}, 'Slow': {'instance': Slow, 'arity': 1, 'method': 'Slow(Entity)', 'function': 'None'}}, the FOV entities {'Entity': 3}, The logic grounding shape is: 39
+2026-05-21 23:55:41 [INFO]: Local planner constructed!
+2026-05-21 23:55:41 [INFO]: Constructing 22 streets
+2026-05-21 23:55:41 [INFO]: Constructing 16 buildings
+2026-05-21 23:55:42 [INFO]: Adding 4 agents, they are constrained in 103 region
+2026-05-21 23:55:42 [INFO]: Car_1 initialization done!
+2026-05-21 23:55:42 [INFO]: Pedestrian_1 initialization done!
+2026-05-21 23:55:42 [INFO]: Car_2 initialization done!
+2026-05-21 23:55:43 [INFO]: Car_3 initialization done!
+2026-05-21 23:55:43 [INFO]: Done!
+2026-05-21 23:55:43 [INFO]: ***Init RL Agent in Env***
+2026-05-21 23:55:48 [INFO]: Reset agent by failing
+2026-05-21 23:55:48 [INFO]: ***Reset RL Agent in Env***
+2026-05-21 23:55:49 [INFO]: Car_1 initialization done!
+2026-05-21 23:55:49 [INFO]: Pedestrian_1 initialization done!
+2026-05-21 23:55:49 [INFO]: Car_2 initialization done!
+2026-05-21 23:55:50 [INFO]: Car_3 initialization done!
+2026-05-21 23:55:50 [INFO]: Agent reset priority to 3/4
+2026-05-21 23:55:50 [INFO]: Agent reset concepts to {'type': 'Car', 'priority': 3}
+2026-05-21 23:55:50 [INFO]: Episode 9 failed.
+2026-05-21 23:55:50 [INFO]: Episode 9 achieved a score of -7.57
+2026-05-21 23:55:50 [INFO]: Episode 9 Success: 0
+2026-05-21 23:55:50 [INFO]: Episode 9 Decision Step: {3: 1}
+2026-05-21 23:55:50 [INFO]: Episode 9 Success Decision: {3: 0}
+2026-05-21 23:55:50 [INFO]: Timestep: 200 - Success Rate: 0.6 - Mean Reward: -0.19500000000000045 
+
+2026-05-21 23:55:50 [INFO]: Failure Rate: 0.4 - Timeout Rate: 0.0 - Mean Episode Length: 44.0
+2026-05-21 23:55:50 [INFO]: Mean Decision Succ: 0.0
+2026-05-21 23:55:50 [INFO]: Average Decision Succ: 0.0
+2026-05-21 23:55:50 [INFO]: Decision Succ for each action: {3: 0.0}
+2026-05-21 23:55:50 [INFO]: Action Histogram: {0: 102, 1: 323, 2: 10, 3: 9}
+2026-05-21 23:56:26 [INFO]: Evaluating episode 0...
+2026-05-21 23:56:26 [INFO]: Episode label: {'oracle_step': 40, 'stop_count': 0, 'has_stop': False, 'ego_crosses': True, 'ego_eta': 12, 'ego_direction': 'up', 'other_crosses': 3, 'close_other_count': 0, 'pedestrian_close': None, 'conflicting_approach': False, 'total_crosses': 4}
+2026-05-21 23:56:27 [INFO]: Get map info from config/maps/square_2x2.yaml
+2026-05-21 23:56:27 [INFO]: Get agent info from config/agents/easy_lite/val.yaml
+2026-05-21 23:56:27 [INFO]: Get onology and rules info from config/rules/ontology_easy.yaml, config/rules/Nav/easy/expert.yaml
+2026-05-21 23:56:27 [INFO]: Number of Entity Types: 1
+Entity Types:
+- Entity
+2026-05-21 23:56:27 [INFO]: Number of Predicates: 13
+Predicates:
+- IsPedestrian: {'instance': "Function('IsPed', entity_sorts['Entity'], BoolSort())", 'arity': 1, 'method': 'IsPed(Entity)', 'function': 'logicity.utils.pred_converter.z3.IsPed'}
+- IsCar: {'instance': "Function('IsCar', entity_sorts['Entity'], BoolSort())", 'arity': 1, 'method': 'IsCar(Entity)', 'function': 'logicity.utils.pred_converter.z3.IsCar'}
+- IsAmbulance: {'instance': "Function('IsAmb', entity_sorts['Entity'], BoolSort())", 'arity': 1, 'method': 'IsAmb(Entity)', 'function': 'logicity.utils.pred_converter.z3.IsAmb'}
+- IsOld: {'instance': "Function('IsOld', entity_sorts['Entity'], BoolSort())", 'arity': 1, 'method': 'IsOld(Entity)', 'function': 'logicity.utils.pred_converter.z3.IsOld'}
+- IsTiro: {'instance': "Function('IsTiro', entity_sorts['Entity'], BoolSort())", 'arity': 1, 'method': 'IsTiro(Entity)', 'function': 'logicity.utils.pred_converter.z3.IsTiro'}
+- IsAtInter: {'instance': "Function('IsAtInter', entity_sorts['Entity'], BoolSort())", 'arity': 1, 'method': 'IsAtInter(Entity)', 'function': 'logicity.utils.pred_converter.z3.IsAtInter'}
+- IsInInter: {'instance': "Function('IsInInter', entity_sorts['Entity'], BoolSort())", 'arity': 1, 'method': 'IsInInter(Entity)', 'function': 'logicity.utils.pred_converter.z3.IsInInter'}
+- HigherPri: {'instance': "Function('HigherPri', entity_sorts['Entity'], entity_sorts['Entity'], BoolSort())", 'arity': 2, 'method': 'HigherPri(Entity, Entity)', 'function': 'logicity.utils.pred_converter.z3.HigherPri'}
+- CollidingClose: {'instance': "Function('CollidingClose', entity_sorts['Entity'], entity_sorts['Entity'], BoolSort())", 'arity': 2, 'method': 'CollidingClose(Entity, Entity)', 'function': 'logicity.utils.pred_converter.z3.CollidingClose'}
+- Stop: {'instance': "Function('Stop', entity_sorts['Entity'], BoolSort())", 'arity': 1, 'method': 'Stop(Entity)', 'function': 'None'}
+- Fast: {'instance': "Function('Fast', entity_sorts['Entity'], BoolSort())", 'arity': 1, 'method': 'Fast(Entity)', 'function': 'None'}
+- Normal: {'instance': "Function('Normal', entity_sorts['Entity'], BoolSort())", 'arity': 1, 'method': 'Normal(Entity)', 'function': 'None'}
+- Slow: {'instance': "Function('Slow', entity_sorts['Entity'], BoolSort())", 'arity': 1, 'method': 'Slow(Entity)', 'function': 'None'}
+2026-05-21 23:56:27 [INFO]: *** Sim Rule ***: Stop -> 
+ Stop(entity) == Exists(
+  [dummyEntity], 
+  Or(
+    And(
+      IsAtInter(entity), 
+      IsInInter(dummyEntity), 
+    ),
+    And(
+      IsAtInter(entity), 
+      IsAtInter(dummyEntity), 
+      HigherPri(dummyEntity, entity),
+    ),
+    CollidingClose(entity, dummyEntity)
+  )
+)
+
+2026-05-21 23:56:27 [INFO]: *** Task Rule ***: Collision and Intersection -> 
+ Implies(Exists(
+  [dummyEntity], 
+    Or(
+      And(
+        IsAtInter(entity), 
+        IsInInter(dummyEntity), 
+      ),
+      And(
+        IsAtInter(entity), 
+        IsAtInter(dummyEntity), 
+        HigherPri(dummyEntity, entity),
+      ),
+      CollidingClose(entity, dummyEntity)
+    )
+  ),
+  Stop(entity)
+)
+
+2026-05-21 23:56:27 [INFO]: *** Expert Rule ***: Stop -> 
+ Stop(entity) == Exists(
+[dummyEntity], 
+  Or(
+    And(
+      IsAtInter(entity), 
+      IsInInter(dummyEntity), 
+    ),
+    And(
+      IsAtInter(entity), 
+      IsAtInter(dummyEntity), 
+      HigherPri(dummyEntity, entity),
+    ),
+    CollidingClose(entity, dummyEntity)
+  )
+)
+
+2026-05-21 23:56:27 [INFO]: *** Expert Rule ***: Slow -> 
+ Not(Slow(entity))
+
+2026-05-21 23:56:27 [INFO]: *** Expert Rule ***: Fast -> 
+ Not(Fast(entity))
+
+2026-05-21 23:56:27 [INFO]: *** Expert Rule ***: Normal -> 
+ Normal(entity) == Not(Stop(entity))
+2026-05-21 23:56:27 [INFO]: Rules created successfully
+2026-05-21 23:56:27 [INFO]: Rules will be grounded later...
+2026-05-21 23:56:27 [INFO]: Given Predicates {'IsPedestrian': {'instance': IsPed, 'arity': 1, 'method': 'IsPed(Entity)', 'function': 'logicity.utils.pred_converter.z3.IsPed'}, 'IsCar': {'instance': IsCar, 'arity': 1, 'method': 'IsCar(Entity)', 'function': 'logicity.utils.pred_converter.z3.IsCar'}, 'IsAmbulance': {'instance': IsAmb, 'arity': 1, 'method': 'IsAmb(Entity)', 'function': 'logicity.utils.pred_converter.z3.IsAmb'}, 'IsOld': {'instance': IsOld, 'arity': 1, 'method': 'IsOld(Entity)', 'function': 'logicity.utils.pred_converter.z3.IsOld'}, 'IsTiro': {'instance': IsTiro, 'arity': 1, 'method': 'IsTiro(Entity)', 'function': 'logicity.utils.pred_converter.z3.IsTiro'}, 'IsAtInter': {'instance': IsAtInter, 'arity': 1, 'method': 'IsAtInter(Entity)', 'function': 'logicity.utils.pred_converter.z3.IsAtInter'}, 'IsInInter': {'instance': IsInInter, 'arity': 1, 'method': 'IsInInter(Entity)', 'function': 'logicity.utils.pred_converter.z3.IsInInter'}, 'HigherPri': {'instance': HigherPri, 'arity': 2, 'method': 'HigherPri(Entity, Entity)', 'function': 'logicity.utils.pred_converter.z3.HigherPri'}, 'CollidingClose': {'instance': CollidingClose, 'arity': 2, 'method': 'CollidingClose(Entity, Entity)', 'function': 'logicity.utils.pred_converter.z3.CollidingClose'}, 'Stop': {'instance': Stop, 'arity': 1, 'method': 'Stop(Entity)', 'function': 'None'}, 'Fast': {'instance': Fast, 'arity': 1, 'method': 'Fast(Entity)', 'function': 'None'}, 'Normal': {'instance': Normal, 'arity': 1, 'method': 'Normal(Entity)', 'function': 'None'}, 'Slow': {'instance': Slow, 'arity': 1, 'method': 'Slow(Entity)', 'function': 'None'}}, the FOV entities {'Entity': 3}, The logic grounding shape is: 39
+2026-05-21 23:56:27 [INFO]: Local planner constructed!
+2026-05-21 23:56:27 [INFO]: Constructing 22 streets
+2026-05-21 23:56:27 [INFO]: Constructing 16 buildings
+2026-05-21 23:56:27 [INFO]: Adding 4 agents, they are constrained in 103 region
+2026-05-21 23:56:28 [INFO]: Car_1 initialization done!
+2026-05-21 23:56:28 [INFO]: Pedestrian_1 initialization done!
+2026-05-21 23:56:28 [INFO]: Car_2 initialization done!
+2026-05-21 23:56:29 [INFO]: Car_3 initialization done!
+2026-05-21 23:56:29 [INFO]: Done!
+2026-05-21 23:56:29 [INFO]: ***Init RL Agent in Env***
+2026-05-21 23:56:34 [INFO]: will reset agent by success
+2026-05-21 23:56:34 [INFO]: ***Reset RL Agent in Env***
+2026-05-21 23:56:34 [INFO]: Car_1 initialization done!
+2026-05-21 23:56:34 [INFO]: Pedestrian_1 initialization done!
+2026-05-21 23:56:35 [INFO]: Car_2 initialization done!
+2026-05-21 23:56:35 [INFO]: Car_3 initialization done!
+2026-05-21 23:56:35 [INFO]: Agent reset priority to 2/4
+2026-05-21 23:56:35 [INFO]: Agent reset concepts to {'type': 'Car', 'priority': 2}
+2026-05-21 23:56:35 [INFO]: Episode 0 success.
+2026-05-21 23:56:35 [INFO]: Episode 0 achieved a score of 4.480000000000001
+2026-05-21 23:56:35 [INFO]: Episode 0 Success: 1
+2026-05-21 23:56:35 [INFO]: Episode 0 Decision Step: {3: 0}
+2026-05-21 23:56:35 [INFO]: Episode 0 Success Decision: {3: 0}
+2026-05-21 23:56:35 [INFO]: Evaluating episode 1...
+2026-05-21 23:56:35 [INFO]: Episode label: {'oracle_step': 28, 'stop_count': 0, 'has_stop': False, 'ego_crosses': True, 'ego_eta': 24, 'ego_direction': 'right', 'other_crosses': 3, 'close_other_count': 0, 'pedestrian_close': None, 'conflicting_approach': False, 'total_crosses': 4}
+2026-05-21 23:56:35 [INFO]: Get map info from config/maps/square_2x2.yaml
+2026-05-21 23:56:35 [INFO]: Get agent info from config/agents/easy_lite/val.yaml
+2026-05-21 23:56:35 [INFO]: Get onology and rules info from config/rules/ontology_easy.yaml, config/rules/Nav/easy/expert.yaml
+2026-05-21 23:56:35 [INFO]: Number of Entity Types: 1
+Entity Types:
+- Entity
+2026-05-21 23:56:35 [INFO]: Number of Predicates: 13
+Predicates:
+- IsPedestrian: {'instance': "Function('IsPed', entity_sorts['Entity'], BoolSort())", 'arity': 1, 'method': 'IsPed(Entity)', 'function': 'logicity.utils.pred_converter.z3.IsPed'}
+- IsCar: {'instance': "Function('IsCar', entity_sorts['Entity'], BoolSort())", 'arity': 1, 'method': 'IsCar(Entity)', 'function': 'logicity.utils.pred_converter.z3.IsCar'}
+- IsAmbulance: {'instance': "Function('IsAmb', entity_sorts['Entity'], BoolSort())", 'arity': 1, 'method': 'IsAmb(Entity)', 'function': 'logicity.utils.pred_converter.z3.IsAmb'}
+- IsOld: {'instance': "Function('IsOld', entity_sorts['Entity'], BoolSort())", 'arity': 1, 'method': 'IsOld(Entity)', 'function': 'logicity.utils.pred_converter.z3.IsOld'}
+- IsTiro: {'instance': "Function('IsTiro', entity_sorts['Entity'], BoolSort())", 'arity': 1, 'method': 'IsTiro(Entity)', 'function': 'logicity.utils.pred_converter.z3.IsTiro'}
+- IsAtInter: {'instance': "Function('IsAtInter', entity_sorts['Entity'], BoolSort())", 'arity': 1, 'method': 'IsAtInter(Entity)', 'function': 'logicity.utils.pred_converter.z3.IsAtInter'}
+- IsInInter: {'instance': "Function('IsInInter', entity_sorts['Entity'], BoolSort())", 'arity': 1, 'method': 'IsInInter(Entity)', 'function': 'logicity.utils.pred_converter.z3.IsInInter'}
+- HigherPri: {'instance': "Function('HigherPri', entity_sorts['Entity'], entity_sorts['Entity'], BoolSort())", 'arity': 2, 'method': 'HigherPri(Entity, Entity)', 'function': 'logicity.utils.pred_converter.z3.HigherPri'}
+- CollidingClose: {'instance': "Function('CollidingClose', entity_sorts['Entity'], entity_sorts['Entity'], BoolSort())", 'arity': 2, 'method': 'CollidingClose(Entity, Entity)', 'function': 'logicity.utils.pred_converter.z3.CollidingClose'}
+- Stop: {'instance': "Function('Stop', entity_sorts['Entity'], BoolSort())", 'arity': 1, 'method': 'Stop(Entity)', 'function': 'None'}
+- Fast: {'instance': "Function('Fast', entity_sorts['Entity'], BoolSort())", 'arity': 1, 'method': 'Fast(Entity)', 'function': 'None'}
+- Normal: {'instance': "Function('Normal', entity_sorts['Entity'], BoolSort())", 'arity': 1, 'method': 'Normal(Entity)', 'function': 'None'}
+- Slow: {'instance': "Function('Slow', entity_sorts['Entity'], BoolSort())", 'arity': 1, 'method': 'Slow(Entity)', 'function': 'None'}
+2026-05-21 23:56:35 [INFO]: *** Sim Rule ***: Stop -> 
+ Stop(entity) == Exists(
+  [dummyEntity], 
+  Or(
+    And(
+      IsAtInter(entity), 
+      IsInInter(dummyEntity), 
+    ),
+    And(
+      IsAtInter(entity), 
+      IsAtInter(dummyEntity), 
+      HigherPri(dummyEntity, entity),
+    ),
+    CollidingClose(entity, dummyEntity)
+  )
+)
+
+2026-05-21 23:56:35 [INFO]: *** Task Rule ***: Collision and Intersection -> 
+ Implies(Exists(
+  [dummyEntity], 
+    Or(
+      And(
+        IsAtInter(entity), 
+        IsInInter(dummyEntity), 
+      ),
+      And(
+        IsAtInter(entity), 
+        IsAtInter(dummyEntity), 
+        HigherPri(dummyEntity, entity),
+      ),
+      CollidingClose(entity, dummyEntity)
+    )
+  ),
+  Stop(entity)
+)
+
+2026-05-21 23:56:35 [INFO]: *** Expert Rule ***: Stop -> 
+ Stop(entity) == Exists(
+[dummyEntity], 
+  Or(
+    And(
+      IsAtInter(entity), 
+      IsInInter(dummyEntity), 
+    ),
+    And(
+      IsAtInter(entity), 
+      IsAtInter(dummyEntity), 
+      HigherPri(dummyEntity, entity),
+    ),
+    CollidingClose(entity, dummyEntity)
+  )
+)
+
+2026-05-21 23:56:35 [INFO]: *** Expert Rule ***: Slow -> 
+ Not(Slow(entity))
+
+2026-05-21 23:56:35 [INFO]: *** Expert Rule ***: Fast -> 
+ Not(Fast(entity))
+
+2026-05-21 23:56:35 [INFO]: *** Expert Rule ***: Normal -> 
+ Normal(entity) == Not(Stop(entity))
+2026-05-21 23:56:35 [INFO]: Rules created successfully
+2026-05-21 23:56:35 [INFO]: Rules will be grounded later...
+2026-05-21 23:56:35 [INFO]: Given Predicates {'IsPedestrian': {'instance': IsPed, 'arity': 1, 'method': 'IsPed(Entity)', 'function': 'logicity.utils.pred_converter.z3.IsPed'}, 'IsCar': {'instance': IsCar, 'arity': 1, 'method': 'IsCar(Entity)', 'function': 'logicity.utils.pred_converter.z3.IsCar'}, 'IsAmbulance': {'instance': IsAmb, 'arity': 1, 'method': 'IsAmb(Entity)', 'function': 'logicity.utils.pred_converter.z3.IsAmb'}, 'IsOld': {'instance': IsOld, 'arity': 1, 'method': 'IsOld(Entity)', 'function': 'logicity.utils.pred_converter.z3.IsOld'}, 'IsTiro': {'instance': IsTiro, 'arity': 1, 'method': 'IsTiro(Entity)', 'function': 'logicity.utils.pred_converter.z3.IsTiro'}, 'IsAtInter': {'instance': IsAtInter, 'arity': 1, 'method': 'IsAtInter(Entity)', 'function': 'logicity.utils.pred_converter.z3.IsAtInter'}, 'IsInInter': {'instance': IsInInter, 'arity': 1, 'method': 'IsInInter(Entity)', 'function': 'logicity.utils.pred_converter.z3.IsInInter'}, 'HigherPri': {'instance': HigherPri, 'arity': 2, 'method': 'HigherPri(Entity, Entity)', 'function': 'logicity.utils.pred_converter.z3.HigherPri'}, 'CollidingClose': {'instance': CollidingClose, 'arity': 2, 'method': 'CollidingClose(Entity, Entity)', 'function': 'logicity.utils.pred_converter.z3.CollidingClose'}, 'Stop': {'instance': Stop, 'arity': 1, 'method': 'Stop(Entity)', 'function': 'None'}, 'Fast': {'instance': Fast, 'arity': 1, 'method': 'Fast(Entity)', 'function': 'None'}, 'Normal': {'instance': Normal, 'arity': 1, 'method': 'Normal(Entity)', 'function': 'None'}, 'Slow': {'instance': Slow, 'arity': 1, 'method': 'Slow(Entity)', 'function': 'None'}}, the FOV entities {'Entity': 3}, The logic grounding shape is: 39
+2026-05-21 23:56:35 [INFO]: Local planner constructed!
+2026-05-21 23:56:35 [INFO]: Constructing 22 streets
+2026-05-21 23:56:36 [INFO]: Constructing 16 buildings
+2026-05-21 23:56:36 [INFO]: Adding 4 agents, they are constrained in 103 region
+2026-05-21 23:56:36 [INFO]: Car_1 initialization done!
+2026-05-21 23:56:36 [INFO]: Pedestrian_1 initialization done!
+2026-05-21 23:56:37 [INFO]: Car_2 initialization done!
+2026-05-21 23:56:37 [INFO]: Car_3 initialization done!
+2026-05-21 23:56:37 [INFO]: Done!
+2026-05-21 23:56:37 [INFO]: ***Init RL Agent in Env***
+2026-05-21 23:56:41 [INFO]: will reset agent by success
+2026-05-21 23:56:41 [INFO]: ***Reset RL Agent in Env***
+2026-05-21 23:56:41 [INFO]: Car_1 initialization done!
+2026-05-21 23:56:41 [INFO]: Pedestrian_1 initialization done!
+2026-05-21 23:56:42 [INFO]: Car_2 initialization done!
+2026-05-21 23:56:42 [INFO]: Car_3 initialization done!
+2026-05-21 23:56:42 [INFO]: Agent reset priority to 2/4
+2026-05-21 23:56:42 [INFO]: Agent reset concepts to {'type': 'Car', 'priority': 2}
+2026-05-21 23:56:42 [INFO]: Episode 1 success.
+2026-05-21 23:56:42 [INFO]: Episode 1 achieved a score of 3.3100000000000005
+2026-05-21 23:56:42 [INFO]: Episode 1 Success: 1
+2026-05-21 23:56:42 [INFO]: Episode 1 Decision Step: {3: 0}
+2026-05-21 23:56:42 [INFO]: Episode 1 Success Decision: {3: 0}
+2026-05-21 23:56:42 [INFO]: Evaluating episode 2...
+2026-05-21 23:56:42 [INFO]: Episode label: {'oracle_step': 56, 'stop_count': 0, 'has_stop': False, 'ego_crosses': True, 'ego_eta': 55, 'ego_direction': 'up', 'other_crosses': 3, 'close_other_count': 0, 'pedestrian_close': None, 'conflicting_approach': False, 'total_crosses': 4}
+2026-05-21 23:56:42 [INFO]: Get map info from config/maps/square_2x2.yaml
+2026-05-21 23:56:42 [INFO]: Get agent info from config/agents/easy_lite/val.yaml
+2026-05-21 23:56:42 [INFO]: Get onology and rules info from config/rules/ontology_easy.yaml, config/rules/Nav/easy/expert.yaml
+2026-05-21 23:56:42 [INFO]: Number of Entity Types: 1
+Entity Types:
+- Entity
+2026-05-21 23:56:42 [INFO]: Number of Predicates: 13
+Predicates:
+- IsPedestrian: {'instance': "Function('IsPed', entity_sorts['Entity'], BoolSort())", 'arity': 1, 'method': 'IsPed(Entity)', 'function': 'logicity.utils.pred_converter.z3.IsPed'}
+- IsCar: {'instance': "Function('IsCar', entity_sorts['Entity'], BoolSort())", 'arity': 1, 'method': 'IsCar(Entity)', 'function': 'logicity.utils.pred_converter.z3.IsCar'}
+- IsAmbulance: {'instance': "Function('IsAmb', entity_sorts['Entity'], BoolSort())", 'arity': 1, 'method': 'IsAmb(Entity)', 'function': 'logicity.utils.pred_converter.z3.IsAmb'}
+- IsOld: {'instance': "Function('IsOld', entity_sorts['Entity'], BoolSort())", 'arity': 1, 'method': 'IsOld(Entity)', 'function': 'logicity.utils.pred_converter.z3.IsOld'}
+- IsTiro: {'instance': "Function('IsTiro', entity_sorts['Entity'], BoolSort())", 'arity': 1, 'method': 'IsTiro(Entity)', 'function': 'logicity.utils.pred_converter.z3.IsTiro'}
+- IsAtInter: {'instance': "Function('IsAtInter', entity_sorts['Entity'], BoolSort())", 'arity': 1, 'method': 'IsAtInter(Entity)', 'function': 'logicity.utils.pred_converter.z3.IsAtInter'}
+- IsInInter: {'instance': "Function('IsInInter', entity_sorts['Entity'], BoolSort())", 'arity': 1, 'method': 'IsInInter(Entity)', 'function': 'logicity.utils.pred_converter.z3.IsInInter'}
+- HigherPri: {'instance': "Function('HigherPri', entity_sorts['Entity'], entity_sorts['Entity'], BoolSort())", 'arity': 2, 'method': 'HigherPri(Entity, Entity)', 'function': 'logicity.utils.pred_converter.z3.HigherPri'}
+- CollidingClose: {'instance': "Function('CollidingClose', entity_sorts['Entity'], entity_sorts['Entity'], BoolSort())", 'arity': 2, 'method': 'CollidingClose(Entity, Entity)', 'function': 'logicity.utils.pred_converter.z3.CollidingClose'}
+- Stop: {'instance': "Function('Stop', entity_sorts['Entity'], BoolSort())", 'arity': 1, 'method': 'Stop(Entity)', 'function': 'None'}
+- Fast: {'instance': "Function('Fast', entity_sorts['Entity'], BoolSort())", 'arity': 1, 'method': 'Fast(Entity)', 'function': 'None'}
+- Normal: {'instance': "Function('Normal', entity_sorts['Entity'], BoolSort())", 'arity': 1, 'method': 'Normal(Entity)', 'function': 'None'}
+- Slow: {'instance': "Function('Slow', entity_sorts['Entity'], BoolSort())", 'arity': 1, 'method': 'Slow(Entity)', 'function': 'None'}
+2026-05-21 23:56:42 [INFO]: *** Sim Rule ***: Stop -> 
+ Stop(entity) == Exists(
+  [dummyEntity], 
+  Or(
+    And(
+      IsAtInter(entity), 
+      IsInInter(dummyEntity), 
+    ),
+    And(
+      IsAtInter(entity), 
+      IsAtInter(dummyEntity), 
+      HigherPri(dummyEntity, entity),
+    ),
+    CollidingClose(entity, dummyEntity)
+  )
+)
+
+2026-05-21 23:56:42 [INFO]: *** Task Rule ***: Collision and Intersection -> 
+ Implies(Exists(
+  [dummyEntity], 
+    Or(
+      And(
+        IsAtInter(entity), 
+        IsInInter(dummyEntity), 
+      ),
+      And(
+        IsAtInter(entity), 
+        IsAtInter(dummyEntity), 
+        HigherPri(dummyEntity, entity),
+      ),
+      CollidingClose(entity, dummyEntity)
+    )
+  ),
+  Stop(entity)
+)
+
+2026-05-21 23:56:42 [INFO]: *** Expert Rule ***: Stop -> 
+ Stop(entity) == Exists(
+[dummyEntity], 
+  Or(
+    And(
+      IsAtInter(entity), 
+      IsInInter(dummyEntity), 
+    ),
+    And(
+      IsAtInter(entity), 
+      IsAtInter(dummyEntity), 
+      HigherPri(dummyEntity, entity),
+    ),
+    CollidingClose(entity, dummyEntity)
+  )
+)
+
+2026-05-21 23:56:42 [INFO]: *** Expert Rule ***: Slow -> 
+ Not(Slow(entity))
+
+2026-05-21 23:56:42 [INFO]: *** Expert Rule ***: Fast -> 
+ Not(Fast(entity))
+
+2026-05-21 23:56:42 [INFO]: *** Expert Rule ***: Normal -> 
+ Normal(entity) == Not(Stop(entity))
+2026-05-21 23:56:42 [INFO]: Rules created successfully
+2026-05-21 23:56:42 [INFO]: Rules will be grounded later...
+2026-05-21 23:56:42 [INFO]: Given Predicates {'IsPedestrian': {'instance': IsPed, 'arity': 1, 'method': 'IsPed(Entity)', 'function': 'logicity.utils.pred_converter.z3.IsPed'}, 'IsCar': {'instance': IsCar, 'arity': 1, 'method': 'IsCar(Entity)', 'function': 'logicity.utils.pred_converter.z3.IsCar'}, 'IsAmbulance': {'instance': IsAmb, 'arity': 1, 'method': 'IsAmb(Entity)', 'function': 'logicity.utils.pred_converter.z3.IsAmb'}, 'IsOld': {'instance': IsOld, 'arity': 1, 'method': 'IsOld(Entity)', 'function': 'logicity.utils.pred_converter.z3.IsOld'}, 'IsTiro': {'instance': IsTiro, 'arity': 1, 'method': 'IsTiro(Entity)', 'function': 'logicity.utils.pred_converter.z3.IsTiro'}, 'IsAtInter': {'instance': IsAtInter, 'arity': 1, 'method': 'IsAtInter(Entity)', 'function': 'logicity.utils.pred_converter.z3.IsAtInter'}, 'IsInInter': {'instance': IsInInter, 'arity': 1, 'method': 'IsInInter(Entity)', 'function': 'logicity.utils.pred_converter.z3.IsInInter'}, 'HigherPri': {'instance': HigherPri, 'arity': 2, 'method': 'HigherPri(Entity, Entity)', 'function': 'logicity.utils.pred_converter.z3.HigherPri'}, 'CollidingClose': {'instance': CollidingClose, 'arity': 2, 'method': 'CollidingClose(Entity, Entity)', 'function': 'logicity.utils.pred_converter.z3.CollidingClose'}, 'Stop': {'instance': Stop, 'arity': 1, 'method': 'Stop(Entity)', 'function': 'None'}, 'Fast': {'instance': Fast, 'arity': 1, 'method': 'Fast(Entity)', 'function': 'None'}, 'Normal': {'instance': Normal, 'arity': 1, 'method': 'Normal(Entity)', 'function': 'None'}, 'Slow': {'instance': Slow, 'arity': 1, 'method': 'Slow(Entity)', 'function': 'None'}}, the FOV entities {'Entity': 3}, The logic grounding shape is: 39
+2026-05-21 23:56:42 [INFO]: Local planner constructed!
+2026-05-21 23:56:42 [INFO]: Constructing 22 streets
+2026-05-21 23:56:42 [INFO]: Constructing 16 buildings
+2026-05-21 23:56:43 [INFO]: Adding 4 agents, they are constrained in 103 region
+2026-05-21 23:56:43 [INFO]: Car_1 initialization done!
+2026-05-21 23:56:43 [INFO]: Pedestrian_1 initialization done!
+2026-05-21 23:56:44 [INFO]: Car_2 initialization done!
+2026-05-21 23:56:44 [INFO]: Car_3 initialization done!
+2026-05-21 23:56:44 [INFO]: Done!
+2026-05-21 23:56:44 [INFO]: ***Init RL Agent in Env***
+2026-05-21 23:56:51 [INFO]: will reset agent by success
+2026-05-21 23:56:51 [INFO]: ***Reset RL Agent in Env***
+2026-05-21 23:56:52 [INFO]: Car_1 initialization done!
+2026-05-21 23:56:52 [INFO]: Pedestrian_1 initialization done!
+2026-05-21 23:56:52 [INFO]: Car_2 initialization done!
+2026-05-21 23:56:52 [INFO]: Car_3 initialization done!
+2026-05-21 23:56:52 [INFO]: Agent reset priority to 2/4
+2026-05-21 23:56:52 [INFO]: Agent reset concepts to {'type': 'Car', 'priority': 2}
+2026-05-21 23:56:53 [INFO]: Episode 2 success.
+2026-05-21 23:56:53 [INFO]: Episode 2 achieved a score of 5.839999999999999
+2026-05-21 23:56:53 [INFO]: Episode 2 Success: 1
+2026-05-21 23:56:53 [INFO]: Episode 2 Decision Step: {3: 0}
+2026-05-21 23:56:53 [INFO]: Episode 2 Success Decision: {3: 0}
+2026-05-21 23:56:53 [INFO]: Evaluating episode 3...
+2026-05-21 23:56:53 [INFO]: Episode label: {'oracle_step': 54, 'stop_count': 0, 'has_stop': False, 'ego_crosses': True, 'ego_eta': 12, 'ego_direction': 'down', 'other_crosses': 3, 'close_other_count': 0, 'pedestrian_close': None, 'conflicting_approach': False, 'total_crosses': 4}
+2026-05-21 23:56:53 [INFO]: Get map info from config/maps/square_2x2.yaml
+2026-05-21 23:56:53 [INFO]: Get agent info from config/agents/easy_lite/val.yaml
+2026-05-21 23:56:53 [INFO]: Get onology and rules info from config/rules/ontology_easy.yaml, config/rules/Nav/easy/expert.yaml
+2026-05-21 23:56:53 [INFO]: Number of Entity Types: 1
+Entity Types:
+- Entity
+2026-05-21 23:56:53 [INFO]: Number of Predicates: 13
+Predicates:
+- IsPedestrian: {'instance': "Function('IsPed', entity_sorts['Entity'], BoolSort())", 'arity': 1, 'method': 'IsPed(Entity)', 'function': 'logicity.utils.pred_converter.z3.IsPed'}
+- IsCar: {'instance': "Function('IsCar', entity_sorts['Entity'], BoolSort())", 'arity': 1, 'method': 'IsCar(Entity)', 'function': 'logicity.utils.pred_converter.z3.IsCar'}
+- IsAmbulance: {'instance': "Function('IsAmb', entity_sorts['Entity'], BoolSort())", 'arity': 1, 'method': 'IsAmb(Entity)', 'function': 'logicity.utils.pred_converter.z3.IsAmb'}
+- IsOld: {'instance': "Function('IsOld', entity_sorts['Entity'], BoolSort())", 'arity': 1, 'method': 'IsOld(Entity)', 'function': 'logicity.utils.pred_converter.z3.IsOld'}
+- IsTiro: {'instance': "Function('IsTiro', entity_sorts['Entity'], BoolSort())", 'arity': 1, 'method': 'IsTiro(Entity)', 'function': 'logicity.utils.pred_converter.z3.IsTiro'}
+- IsAtInter: {'instance': "Function('IsAtInter', entity_sorts['Entity'], BoolSort())", 'arity': 1, 'method': 'IsAtInter(Entity)', 'function': 'logicity.utils.pred_converter.z3.IsAtInter'}
+- IsInInter: {'instance': "Function('IsInInter', entity_sorts['Entity'], BoolSort())", 'arity': 1, 'method': 'IsInInter(Entity)', 'function': 'logicity.utils.pred_converter.z3.IsInInter'}
+- HigherPri: {'instance': "Function('HigherPri', entity_sorts['Entity'], entity_sorts['Entity'], BoolSort())", 'arity': 2, 'method': 'HigherPri(Entity, Entity)', 'function': 'logicity.utils.pred_converter.z3.HigherPri'}
+- CollidingClose: {'instance': "Function('CollidingClose', entity_sorts['Entity'], entity_sorts['Entity'], BoolSort())", 'arity': 2, 'method': 'CollidingClose(Entity, Entity)', 'function': 'logicity.utils.pred_converter.z3.CollidingClose'}
+- Stop: {'instance': "Function('Stop', entity_sorts['Entity'], BoolSort())", 'arity': 1, 'method': 'Stop(Entity)', 'function': 'None'}
+- Fast: {'instance': "Function('Fast', entity_sorts['Entity'], BoolSort())", 'arity': 1, 'method': 'Fast(Entity)', 'function': 'None'}
+- Normal: {'instance': "Function('Normal', entity_sorts['Entity'], BoolSort())", 'arity': 1, 'method': 'Normal(Entity)', 'function': 'None'}
+- Slow: {'instance': "Function('Slow', entity_sorts['Entity'], BoolSort())", 'arity': 1, 'method': 'Slow(Entity)', 'function': 'None'}
+2026-05-21 23:56:53 [INFO]: *** Sim Rule ***: Stop -> 
+ Stop(entity) == Exists(
+  [dummyEntity], 
+  Or(
+    And(
+      IsAtInter(entity), 
+      IsInInter(dummyEntity), 
+    ),
+    And(
+      IsAtInter(entity), 
+      IsAtInter(dummyEntity), 
+      HigherPri(dummyEntity, entity),
+    ),
+    CollidingClose(entity, dummyEntity)
+  )
+)
+
+2026-05-21 23:56:53 [INFO]: *** Task Rule ***: Collision and Intersection -> 
+ Implies(Exists(
+  [dummyEntity], 
+    Or(
+      And(
+        IsAtInter(entity), 
+        IsInInter(dummyEntity), 
+      ),
+      And(
+        IsAtInter(entity), 
+        IsAtInter(dummyEntity), 
+        HigherPri(dummyEntity, entity),
+      ),
+      CollidingClose(entity, dummyEntity)
+    )
+  ),
+  Stop(entity)
+)
+
+2026-05-21 23:56:53 [INFO]: *** Expert Rule ***: Stop -> 
+ Stop(entity) == Exists(
+[dummyEntity], 
+  Or(
+    And(
+      IsAtInter(entity), 
+      IsInInter(dummyEntity), 
+    ),
+    And(
+      IsAtInter(entity), 
+      IsAtInter(dummyEntity), 
+      HigherPri(dummyEntity, entity),
+    ),
+    CollidingClose(entity, dummyEntity)
+  )
+)
+
+2026-05-21 23:56:53 [INFO]: *** Expert Rule ***: Slow -> 
+ Not(Slow(entity))
+
+2026-05-21 23:56:53 [INFO]: *** Expert Rule ***: Fast -> 
+ Not(Fast(entity))
+
+2026-05-21 23:56:53 [INFO]: *** Expert Rule ***: Normal -> 
+ Normal(entity) == Not(Stop(entity))
+2026-05-21 23:56:53 [INFO]: Rules created successfully
+2026-05-21 23:56:53 [INFO]: Rules will be grounded later...
+2026-05-21 23:56:53 [INFO]: Given Predicates {'IsPedestrian': {'instance': IsPed, 'arity': 1, 'method': 'IsPed(Entity)', 'function': 'logicity.utils.pred_converter.z3.IsPed'}, 'IsCar': {'instance': IsCar, 'arity': 1, 'method': 'IsCar(Entity)', 'function': 'logicity.utils.pred_converter.z3.IsCar'}, 'IsAmbulance': {'instance': IsAmb, 'arity': 1, 'method': 'IsAmb(Entity)', 'function': 'logicity.utils.pred_converter.z3.IsAmb'}, 'IsOld': {'instance': IsOld, 'arity': 1, 'method': 'IsOld(Entity)', 'function': 'logicity.utils.pred_converter.z3.IsOld'}, 'IsTiro': {'instance': IsTiro, 'arity': 1, 'method': 'IsTiro(Entity)', 'function': 'logicity.utils.pred_converter.z3.IsTiro'}, 'IsAtInter': {'instance': IsAtInter, 'arity': 1, 'method': 'IsAtInter(Entity)', 'function': 'logicity.utils.pred_converter.z3.IsAtInter'}, 'IsInInter': {'instance': IsInInter, 'arity': 1, 'method': 'IsInInter(Entity)', 'function': 'logicity.utils.pred_converter.z3.IsInInter'}, 'HigherPri': {'instance': HigherPri, 'arity': 2, 'method': 'HigherPri(Entity, Entity)', 'function': 'logicity.utils.pred_converter.z3.HigherPri'}, 'CollidingClose': {'instance': CollidingClose, 'arity': 2, 'method': 'CollidingClose(Entity, Entity)', 'function': 'logicity.utils.pred_converter.z3.CollidingClose'}, 'Stop': {'instance': Stop, 'arity': 1, 'method': 'Stop(Entity)', 'function': 'None'}, 'Fast': {'instance': Fast, 'arity': 1, 'method': 'Fast(Entity)', 'function': 'None'}, 'Normal': {'instance': Normal, 'arity': 1, 'method': 'Normal(Entity)', 'function': 'None'}, 'Slow': {'instance': Slow, 'arity': 1, 'method': 'Slow(Entity)', 'function': 'None'}}, the FOV entities {'Entity': 3}, The logic grounding shape is: 39
+2026-05-21 23:56:53 [INFO]: Local planner constructed!
+2026-05-21 23:56:53 [INFO]: Constructing 22 streets
+2026-05-21 23:56:53 [INFO]: Constructing 16 buildings
+2026-05-21 23:56:53 [INFO]: Adding 4 agents, they are constrained in 103 region
+2026-05-21 23:56:54 [INFO]: Car_1 initialization done!
+2026-05-21 23:56:54 [INFO]: Pedestrian_1 initialization done!
+2026-05-21 23:56:54 [INFO]: Car_2 initialization done!
+2026-05-21 23:56:55 [INFO]: Car_3 initialization done!
+2026-05-21 23:56:55 [INFO]: Done!
+2026-05-21 23:56:55 [INFO]: ***Init RL Agent in Env***
+2026-05-21 23:57:02 [INFO]: will reset agent by success
+2026-05-21 23:57:02 [INFO]: ***Reset RL Agent in Env***
+2026-05-21 23:57:02 [INFO]: Car_1 initialization done!
+2026-05-21 23:57:02 [INFO]: Pedestrian_1 initialization done!
+2026-05-21 23:57:03 [INFO]: Car_2 initialization done!
+2026-05-21 23:57:03 [INFO]: Car_3 initialization done!
+2026-05-21 23:57:03 [INFO]: Agent reset priority to 3/4
+2026-05-21 23:57:03 [INFO]: Agent reset concepts to {'type': 'Car', 'priority': 3}
+2026-05-21 23:57:03 [INFO]: Episode 3 success.
+2026-05-21 23:57:03 [INFO]: Episode 3 achieved a score of 5.720000000000001
+2026-05-21 23:57:03 [INFO]: Episode 3 Success: 1
+2026-05-21 23:57:03 [INFO]: Episode 3 Decision Step: {3: 0}
+2026-05-21 23:57:03 [INFO]: Episode 3 Success Decision: {3: 0}
+2026-05-21 23:57:03 [INFO]: Evaluating episode 4...
+2026-05-21 23:57:03 [INFO]: Episode label: {'oracle_step': 72, 'stop_count': 29, 'has_stop': True, 'ego_crosses': True, 'ego_eta': 59, 'ego_direction': 'left', 'other_crosses': 3, 'close_other_count': 0, 'pedestrian_close': None, 'conflicting_approach': False, 'total_crosses': 4}
+2026-05-21 23:57:03 [INFO]: Get map info from config/maps/square_2x2.yaml
+2026-05-21 23:57:03 [INFO]: Get agent info from config/agents/easy_lite/val.yaml
+2026-05-21 23:57:03 [INFO]: Get onology and rules info from config/rules/ontology_easy.yaml, config/rules/Nav/easy/expert.yaml
+2026-05-21 23:57:03 [INFO]: Number of Entity Types: 1
+Entity Types:
+- Entity
+2026-05-21 23:57:03 [INFO]: Number of Predicates: 13
+Predicates:
+- IsPedestrian: {'instance': "Function('IsPed', entity_sorts['Entity'], BoolSort())", 'arity': 1, 'method': 'IsPed(Entity)', 'function': 'logicity.utils.pred_converter.z3.IsPed'}
+- IsCar: {'instance': "Function('IsCar', entity_sorts['Entity'], BoolSort())", 'arity': 1, 'method': 'IsCar(Entity)', 'function': 'logicity.utils.pred_converter.z3.IsCar'}
+- IsAmbulance: {'instance': "Function('IsAmb', entity_sorts['Entity'], BoolSort())", 'arity': 1, 'method': 'IsAmb(Entity)', 'function': 'logicity.utils.pred_converter.z3.IsAmb'}
+- IsOld: {'instance': "Function('IsOld', entity_sorts['Entity'], BoolSort())", 'arity': 1, 'method': 'IsOld(Entity)', 'function': 'logicity.utils.pred_converter.z3.IsOld'}
+- IsTiro: {'instance': "Function('IsTiro', entity_sorts['Entity'], BoolSort())", 'arity': 1, 'method': 'IsTiro(Entity)', 'function': 'logicity.utils.pred_converter.z3.IsTiro'}
+- IsAtInter: {'instance': "Function('IsAtInter', entity_sorts['Entity'], BoolSort())", 'arity': 1, 'method': 'IsAtInter(Entity)', 'function': 'logicity.utils.pred_converter.z3.IsAtInter'}
+- IsInInter: {'instance': "Function('IsInInter', entity_sorts['Entity'], BoolSort())", 'arity': 1, 'method': 'IsInInter(Entity)', 'function': 'logicity.utils.pred_converter.z3.IsInInter'}
+- HigherPri: {'instance': "Function('HigherPri', entity_sorts['Entity'], entity_sorts['Entity'], BoolSort())", 'arity': 2, 'method': 'HigherPri(Entity, Entity)', 'function': 'logicity.utils.pred_converter.z3.HigherPri'}
+- CollidingClose: {'instance': "Function('CollidingClose', entity_sorts['Entity'], entity_sorts['Entity'], BoolSort())", 'arity': 2, 'method': 'CollidingClose(Entity, Entity)', 'function': 'logicity.utils.pred_converter.z3.CollidingClose'}
+- Stop: {'instance': "Function('Stop', entity_sorts['Entity'], BoolSort())", 'arity': 1, 'method': 'Stop(Entity)', 'function': 'None'}
+- Fast: {'instance': "Function('Fast', entity_sorts['Entity'], BoolSort())", 'arity': 1, 'method': 'Fast(Entity)', 'function': 'None'}
+- Normal: {'instance': "Function('Normal', entity_sorts['Entity'], BoolSort())", 'arity': 1, 'method': 'Normal(Entity)', 'function': 'None'}
+- Slow: {'instance': "Function('Slow', entity_sorts['Entity'], BoolSort())", 'arity': 1, 'method': 'Slow(Entity)', 'function': 'None'}
+2026-05-21 23:57:03 [INFO]: *** Sim Rule ***: Stop -> 
+ Stop(entity) == Exists(
+  [dummyEntity], 
+  Or(
+    And(
+      IsAtInter(entity), 
+      IsInInter(dummyEntity), 
+    ),
+    And(
+      IsAtInter(entity), 
+      IsAtInter(dummyEntity), 
+      HigherPri(dummyEntity, entity),
+    ),
+    CollidingClose(entity, dummyEntity)
+  )
+)
+
+2026-05-21 23:57:03 [INFO]: *** Task Rule ***: Collision and Intersection -> 
+ Implies(Exists(
+  [dummyEntity], 
+    Or(
+      And(
+        IsAtInter(entity), 
+        IsInInter(dummyEntity), 
+      ),
+      And(
+        IsAtInter(entity), 
+        IsAtInter(dummyEntity), 
+        HigherPri(dummyEntity, entity),
+      ),
+      CollidingClose(entity, dummyEntity)
+    )
+  ),
+  Stop(entity)
+)
+
+2026-05-21 23:57:03 [INFO]: *** Expert Rule ***: Stop -> 
+ Stop(entity) == Exists(
+[dummyEntity], 
+  Or(
+    And(
+      IsAtInter(entity), 
+      IsInInter(dummyEntity), 
+    ),
+    And(
+      IsAtInter(entity), 
+      IsAtInter(dummyEntity), 
+      HigherPri(dummyEntity, entity),
+    ),
+    CollidingClose(entity, dummyEntity)
+  )
+)
+
+2026-05-21 23:57:03 [INFO]: *** Expert Rule ***: Slow -> 
+ Not(Slow(entity))
+
+2026-05-21 23:57:03 [INFO]: *** Expert Rule ***: Fast -> 
+ Not(Fast(entity))
+
+2026-05-21 23:57:03 [INFO]: *** Expert Rule ***: Normal -> 
+ Normal(entity) == Not(Stop(entity))
+2026-05-21 23:57:03 [INFO]: Rules created successfully
+2026-05-21 23:57:03 [INFO]: Rules will be grounded later...
+2026-05-21 23:57:03 [INFO]: Given Predicates {'IsPedestrian': {'instance': IsPed, 'arity': 1, 'method': 'IsPed(Entity)', 'function': 'logicity.utils.pred_converter.z3.IsPed'}, 'IsCar': {'instance': IsCar, 'arity': 1, 'method': 'IsCar(Entity)', 'function': 'logicity.utils.pred_converter.z3.IsCar'}, 'IsAmbulance': {'instance': IsAmb, 'arity': 1, 'method': 'IsAmb(Entity)', 'function': 'logicity.utils.pred_converter.z3.IsAmb'}, 'IsOld': {'instance': IsOld, 'arity': 1, 'method': 'IsOld(Entity)', 'function': 'logicity.utils.pred_converter.z3.IsOld'}, 'IsTiro': {'instance': IsTiro, 'arity': 1, 'method': 'IsTiro(Entity)', 'function': 'logicity.utils.pred_converter.z3.IsTiro'}, 'IsAtInter': {'instance': IsAtInter, 'arity': 1, 'method': 'IsAtInter(Entity)', 'function': 'logicity.utils.pred_converter.z3.IsAtInter'}, 'IsInInter': {'instance': IsInInter, 'arity': 1, 'method': 'IsInInter(Entity)', 'function': 'logicity.utils.pred_converter.z3.IsInInter'}, 'HigherPri': {'instance': HigherPri, 'arity': 2, 'method': 'HigherPri(Entity, Entity)', 'function': 'logicity.utils.pred_converter.z3.HigherPri'}, 'CollidingClose': {'instance': CollidingClose, 'arity': 2, 'method': 'CollidingClose(Entity, Entity)', 'function': 'logicity.utils.pred_converter.z3.CollidingClose'}, 'Stop': {'instance': Stop, 'arity': 1, 'method': 'Stop(Entity)', 'function': 'None'}, 'Fast': {'instance': Fast, 'arity': 1, 'method': 'Fast(Entity)', 'function': 'None'}, 'Normal': {'instance': Normal, 'arity': 1, 'method': 'Normal(Entity)', 'function': 'None'}, 'Slow': {'instance': Slow, 'arity': 1, 'method': 'Slow(Entity)', 'function': 'None'}}, the FOV entities {'Entity': 3}, The logic grounding shape is: 39
+2026-05-21 23:57:03 [INFO]: Local planner constructed!
+2026-05-21 23:57:03 [INFO]: Constructing 22 streets
+2026-05-21 23:57:04 [INFO]: Constructing 16 buildings
+2026-05-21 23:57:04 [INFO]: Adding 4 agents, they are constrained in 103 region
+2026-05-21 23:57:05 [INFO]: Car_1 initialization done!
+2026-05-21 23:57:05 [INFO]: Pedestrian_1 initialization done!
+2026-05-21 23:57:05 [INFO]: Car_2 initialization done!
+2026-05-21 23:57:06 [INFO]: Car_3 initialization done!
+2026-05-21 23:57:06 [INFO]: Done!
+2026-05-21 23:57:06 [INFO]: ***Init RL Agent in Env***
+2026-05-21 23:57:10 [INFO]: Reset agent by failing
+2026-05-21 23:57:10 [INFO]: ***Reset RL Agent in Env***
+2026-05-21 23:57:10 [INFO]: Car_1 initialization done!
+2026-05-21 23:57:10 [INFO]: Pedestrian_1 initialization done!
+2026-05-21 23:57:11 [INFO]: Car_2 initialization done!
+2026-05-21 23:57:11 [INFO]: Car_3 initialization done!
+2026-05-21 23:57:11 [INFO]: Agent reset priority to 2/4
+2026-05-21 23:57:11 [INFO]: Agent reset concepts to {'type': 'Car', 'priority': 2}
+2026-05-21 23:57:11 [INFO]: Episode 4 failed.
+2026-05-21 23:57:11 [INFO]: Episode 4 achieved a score of -7.360000000000001
+2026-05-21 23:57:11 [INFO]: Episode 4 Success: 0
+2026-05-21 23:57:11 [INFO]: Episode 4 Decision Step: {3: 1}
+2026-05-21 23:57:11 [INFO]: Episode 4 Success Decision: {3: 0}
+2026-05-21 23:57:11 [INFO]: Evaluating episode 5...
+2026-05-21 23:57:11 [INFO]: Episode label: {'oracle_step': 59, 'stop_count': 0, 'has_stop': False, 'ego_crosses': True, 'ego_eta': 50, 'ego_direction': 'up', 'other_crosses': 3, 'close_other_count': 0, 'pedestrian_close': None, 'conflicting_approach': False, 'total_crosses': 4}
+2026-05-21 23:57:11 [INFO]: Get map info from config/maps/square_2x2.yaml
+2026-05-21 23:57:11 [INFO]: Get agent info from config/agents/easy_lite/val.yaml
+2026-05-21 23:57:11 [INFO]: Get onology and rules info from config/rules/ontology_easy.yaml, config/rules/Nav/easy/expert.yaml
+2026-05-21 23:57:11 [INFO]: Number of Entity Types: 1
+Entity Types:
+- Entity
+2026-05-21 23:57:11 [INFO]: Number of Predicates: 13
+Predicates:
+- IsPedestrian: {'instance': "Function('IsPed', entity_sorts['Entity'], BoolSort())", 'arity': 1, 'method': 'IsPed(Entity)', 'function': 'logicity.utils.pred_converter.z3.IsPed'}
+- IsCar: {'instance': "Function('IsCar', entity_sorts['Entity'], BoolSort())", 'arity': 1, 'method': 'IsCar(Entity)', 'function': 'logicity.utils.pred_converter.z3.IsCar'}
+- IsAmbulance: {'instance': "Function('IsAmb', entity_sorts['Entity'], BoolSort())", 'arity': 1, 'method': 'IsAmb(Entity)', 'function': 'logicity.utils.pred_converter.z3.IsAmb'}
+- IsOld: {'instance': "Function('IsOld', entity_sorts['Entity'], BoolSort())", 'arity': 1, 'method': 'IsOld(Entity)', 'function': 'logicity.utils.pred_converter.z3.IsOld'}
+- IsTiro: {'instance': "Function('IsTiro', entity_sorts['Entity'], BoolSort())", 'arity': 1, 'method': 'IsTiro(Entity)', 'function': 'logicity.utils.pred_converter.z3.IsTiro'}
+- IsAtInter: {'instance': "Function('IsAtInter', entity_sorts['Entity'], BoolSort())", 'arity': 1, 'method': 'IsAtInter(Entity)', 'function': 'logicity.utils.pred_converter.z3.IsAtInter'}
+- IsInInter: {'instance': "Function('IsInInter', entity_sorts['Entity'], BoolSort())", 'arity': 1, 'method': 'IsInInter(Entity)', 'function': 'logicity.utils.pred_converter.z3.IsInInter'}
+- HigherPri: {'instance': "Function('HigherPri', entity_sorts['Entity'], entity_sorts['Entity'], BoolSort())", 'arity': 2, 'method': 'HigherPri(Entity, Entity)', 'function': 'logicity.utils.pred_converter.z3.HigherPri'}
+- CollidingClose: {'instance': "Function('CollidingClose', entity_sorts['Entity'], entity_sorts['Entity'], BoolSort())", 'arity': 2, 'method': 'CollidingClose(Entity, Entity)', 'function': 'logicity.utils.pred_converter.z3.CollidingClose'}
+- Stop: {'instance': "Function('Stop', entity_sorts['Entity'], BoolSort())", 'arity': 1, 'method': 'Stop(Entity)', 'function': 'None'}
+- Fast: {'instance': "Function('Fast', entity_sorts['Entity'], BoolSort())", 'arity': 1, 'method': 'Fast(Entity)', 'function': 'None'}
+- Normal: {'instance': "Function('Normal', entity_sorts['Entity'], BoolSort())", 'arity': 1, 'method': 'Normal(Entity)', 'function': 'None'}
+- Slow: {'instance': "Function('Slow', entity_sorts['Entity'], BoolSort())", 'arity': 1, 'method': 'Slow(Entity)', 'function': 'None'}
+2026-05-21 23:57:11 [INFO]: *** Sim Rule ***: Stop -> 
+ Stop(entity) == Exists(
+  [dummyEntity], 
+  Or(
+    And(
+      IsAtInter(entity), 
+      IsInInter(dummyEntity), 
+    ),
+    And(
+      IsAtInter(entity), 
+      IsAtInter(dummyEntity), 
+      HigherPri(dummyEntity, entity),
+    ),
+    CollidingClose(entity, dummyEntity)
+  )
+)
+
+2026-05-21 23:57:11 [INFO]: *** Task Rule ***: Collision and Intersection -> 
+ Implies(Exists(
+  [dummyEntity], 
+    Or(
+      And(
+        IsAtInter(entity), 
+        IsInInter(dummyEntity), 
+      ),
+      And(
+        IsAtInter(entity), 
+        IsAtInter(dummyEntity), 
+        HigherPri(dummyEntity, entity),
+      ),
+      CollidingClose(entity, dummyEntity)
+    )
+  ),
+  Stop(entity)
+)
+
+2026-05-21 23:57:11 [INFO]: *** Expert Rule ***: Stop -> 
+ Stop(entity) == Exists(
+[dummyEntity], 
+  Or(
+    And(
+      IsAtInter(entity), 
+      IsInInter(dummyEntity), 
+    ),
+    And(
+      IsAtInter(entity), 
+      IsAtInter(dummyEntity), 
+      HigherPri(dummyEntity, entity),
+    ),
+    CollidingClose(entity, dummyEntity)
+  )
+)
+
+2026-05-21 23:57:11 [INFO]: *** Expert Rule ***: Slow -> 
+ Not(Slow(entity))
+
+2026-05-21 23:57:11 [INFO]: *** Expert Rule ***: Fast -> 
+ Not(Fast(entity))
+
+2026-05-21 23:57:11 [INFO]: *** Expert Rule ***: Normal -> 
+ Normal(entity) == Not(Stop(entity))
+2026-05-21 23:57:11 [INFO]: Rules created successfully
+2026-05-21 23:57:11 [INFO]: Rules will be grounded later...
+2026-05-21 23:57:11 [INFO]: Given Predicates {'IsPedestrian': {'instance': IsPed, 'arity': 1, 'method': 'IsPed(Entity)', 'function': 'logicity.utils.pred_converter.z3.IsPed'}, 'IsCar': {'instance': IsCar, 'arity': 1, 'method': 'IsCar(Entity)', 'function': 'logicity.utils.pred_converter.z3.IsCar'}, 'IsAmbulance': {'instance': IsAmb, 'arity': 1, 'method': 'IsAmb(Entity)', 'function': 'logicity.utils.pred_converter.z3.IsAmb'}, 'IsOld': {'instance': IsOld, 'arity': 1, 'method': 'IsOld(Entity)', 'function': 'logicity.utils.pred_converter.z3.IsOld'}, 'IsTiro': {'instance': IsTiro, 'arity': 1, 'method': 'IsTiro(Entity)', 'function': 'logicity.utils.pred_converter.z3.IsTiro'}, 'IsAtInter': {'instance': IsAtInter, 'arity': 1, 'method': 'IsAtInter(Entity)', 'function': 'logicity.utils.pred_converter.z3.IsAtInter'}, 'IsInInter': {'instance': IsInInter, 'arity': 1, 'method': 'IsInInter(Entity)', 'function': 'logicity.utils.pred_converter.z3.IsInInter'}, 'HigherPri': {'instance': HigherPri, 'arity': 2, 'method': 'HigherPri(Entity, Entity)', 'function': 'logicity.utils.pred_converter.z3.HigherPri'}, 'CollidingClose': {'instance': CollidingClose, 'arity': 2, 'method': 'CollidingClose(Entity, Entity)', 'function': 'logicity.utils.pred_converter.z3.CollidingClose'}, 'Stop': {'instance': Stop, 'arity': 1, 'method': 'Stop(Entity)', 'function': 'None'}, 'Fast': {'instance': Fast, 'arity': 1, 'method': 'Fast(Entity)', 'function': 'None'}, 'Normal': {'instance': Normal, 'arity': 1, 'method': 'Normal(Entity)', 'function': 'None'}, 'Slow': {'instance': Slow, 'arity': 1, 'method': 'Slow(Entity)', 'function': 'None'}}, the FOV entities {'Entity': 3}, The logic grounding shape is: 39
+2026-05-21 23:57:11 [INFO]: Local planner constructed!
+2026-05-21 23:57:11 [INFO]: Constructing 22 streets
+2026-05-21 23:57:12 [INFO]: Constructing 16 buildings
+2026-05-21 23:57:12 [INFO]: Adding 4 agents, they are constrained in 103 region
+2026-05-21 23:57:12 [INFO]: Car_1 initialization done!
+2026-05-21 23:57:12 [INFO]: Pedestrian_1 initialization done!
+2026-05-21 23:57:13 [INFO]: Car_2 initialization done!
+2026-05-21 23:57:13 [INFO]: Car_3 initialization done!
+2026-05-21 23:57:13 [INFO]: Done!
+2026-05-21 23:57:13 [INFO]: ***Init RL Agent in Env***
+2026-05-21 23:57:21 [INFO]: will reset agent by success
+2026-05-21 23:57:21 [INFO]: ***Reset RL Agent in Env***
+2026-05-21 23:57:22 [INFO]: Car_1 initialization done!
+2026-05-21 23:57:22 [INFO]: Pedestrian_1 initialization done!
+2026-05-21 23:57:22 [INFO]: Car_2 initialization done!
+2026-05-21 23:57:22 [INFO]: Car_3 initialization done!
+2026-05-21 23:57:22 [INFO]: Agent reset priority to 1/4
+2026-05-21 23:57:22 [INFO]: Agent reset concepts to {'type': 'Car', 'priority': 1}
+2026-05-21 23:57:23 [INFO]: Episode 5 success.
+2026-05-21 23:57:23 [INFO]: Episode 5 achieved a score of 6.139999999999999
+2026-05-21 23:57:23 [INFO]: Episode 5 Success: 1
+2026-05-21 23:57:23 [INFO]: Episode 5 Decision Step: {3: 0}
+2026-05-21 23:57:23 [INFO]: Episode 5 Success Decision: {3: 0}
+2026-05-21 23:57:23 [INFO]: Evaluating episode 6...
+2026-05-21 23:57:23 [INFO]: Episode label: {'oracle_step': 41, 'stop_count': 0, 'has_stop': False, 'ego_crosses': True, 'ego_eta': 5, 'ego_direction': 'left', 'other_crosses': 3, 'close_other_count': 0, 'pedestrian_close': None, 'conflicting_approach': False, 'total_crosses': 4}
+2026-05-21 23:57:23 [INFO]: Get map info from config/maps/square_2x2.yaml
+2026-05-21 23:57:23 [INFO]: Get agent info from config/agents/easy_lite/val.yaml
+2026-05-21 23:57:23 [INFO]: Get onology and rules info from config/rules/ontology_easy.yaml, config/rules/Nav/easy/expert.yaml
+2026-05-21 23:57:23 [INFO]: Number of Entity Types: 1
+Entity Types:
+- Entity
+2026-05-21 23:57:23 [INFO]: Number of Predicates: 13
+Predicates:
+- IsPedestrian: {'instance': "Function('IsPed', entity_sorts['Entity'], BoolSort())", 'arity': 1, 'method': 'IsPed(Entity)', 'function': 'logicity.utils.pred_converter.z3.IsPed'}
+- IsCar: {'instance': "Function('IsCar', entity_sorts['Entity'], BoolSort())", 'arity': 1, 'method': 'IsCar(Entity)', 'function': 'logicity.utils.pred_converter.z3.IsCar'}
+- IsAmbulance: {'instance': "Function('IsAmb', entity_sorts['Entity'], BoolSort())", 'arity': 1, 'method': 'IsAmb(Entity)', 'function': 'logicity.utils.pred_converter.z3.IsAmb'}
+- IsOld: {'instance': "Function('IsOld', entity_sorts['Entity'], BoolSort())", 'arity': 1, 'method': 'IsOld(Entity)', 'function': 'logicity.utils.pred_converter.z3.IsOld'}
+- IsTiro: {'instance': "Function('IsTiro', entity_sorts['Entity'], BoolSort())", 'arity': 1, 'method': 'IsTiro(Entity)', 'function': 'logicity.utils.pred_converter.z3.IsTiro'}
+- IsAtInter: {'instance': "Function('IsAtInter', entity_sorts['Entity'], BoolSort())", 'arity': 1, 'method': 'IsAtInter(Entity)', 'function': 'logicity.utils.pred_converter.z3.IsAtInter'}
+- IsInInter: {'instance': "Function('IsInInter', entity_sorts['Entity'], BoolSort())", 'arity': 1, 'method': 'IsInInter(Entity)', 'function': 'logicity.utils.pred_converter.z3.IsInInter'}
+- HigherPri: {'instance': "Function('HigherPri', entity_sorts['Entity'], entity_sorts['Entity'], BoolSort())", 'arity': 2, 'method': 'HigherPri(Entity, Entity)', 'function': 'logicity.utils.pred_converter.z3.HigherPri'}
+- CollidingClose: {'instance': "Function('CollidingClose', entity_sorts['Entity'], entity_sorts['Entity'], BoolSort())", 'arity': 2, 'method': 'CollidingClose(Entity, Entity)', 'function': 'logicity.utils.pred_converter.z3.CollidingClose'}
+- Stop: {'instance': "Function('Stop', entity_sorts['Entity'], BoolSort())", 'arity': 1, 'method': 'Stop(Entity)', 'function': 'None'}
+- Fast: {'instance': "Function('Fast', entity_sorts['Entity'], BoolSort())", 'arity': 1, 'method': 'Fast(Entity)', 'function': 'None'}
+- Normal: {'instance': "Function('Normal', entity_sorts['Entity'], BoolSort())", 'arity': 1, 'method': 'Normal(Entity)', 'function': 'None'}
+- Slow: {'instance': "Function('Slow', entity_sorts['Entity'], BoolSort())", 'arity': 1, 'method': 'Slow(Entity)', 'function': 'None'}
+2026-05-21 23:57:23 [INFO]: *** Sim Rule ***: Stop -> 
+ Stop(entity) == Exists(
+  [dummyEntity], 
+  Or(
+    And(
+      IsAtInter(entity), 
+      IsInInter(dummyEntity), 
+    ),
+    And(
+      IsAtInter(entity), 
+      IsAtInter(dummyEntity), 
+      HigherPri(dummyEntity, entity),
+    ),
+    CollidingClose(entity, dummyEntity)
+  )
+)
+
+2026-05-21 23:57:23 [INFO]: *** Task Rule ***: Collision and Intersection -> 
+ Implies(Exists(
+  [dummyEntity], 
+    Or(
+      And(
+        IsAtInter(entity), 
+        IsInInter(dummyEntity), 
+      ),
+      And(
+        IsAtInter(entity), 
+        IsAtInter(dummyEntity), 
+        HigherPri(dummyEntity, entity),
+      ),
+      CollidingClose(entity, dummyEntity)
+    )
+  ),
+  Stop(entity)
+)
+
+2026-05-21 23:57:23 [INFO]: *** Expert Rule ***: Stop -> 
+ Stop(entity) == Exists(
+[dummyEntity], 
+  Or(
+    And(
+      IsAtInter(entity), 
+      IsInInter(dummyEntity), 
+    ),
+    And(
+      IsAtInter(entity), 
+      IsAtInter(dummyEntity), 
+      HigherPri(dummyEntity, entity),
+    ),
+    CollidingClose(entity, dummyEntity)
+  )
+)
+
+2026-05-21 23:57:23 [INFO]: *** Expert Rule ***: Slow -> 
+ Not(Slow(entity))
+
+2026-05-21 23:57:23 [INFO]: *** Expert Rule ***: Fast -> 
+ Not(Fast(entity))
+
+2026-05-21 23:57:23 [INFO]: *** Expert Rule ***: Normal -> 
+ Normal(entity) == Not(Stop(entity))
+2026-05-21 23:57:23 [INFO]: Rules created successfully
+2026-05-21 23:57:23 [INFO]: Rules will be grounded later...
+2026-05-21 23:57:23 [INFO]: Given Predicates {'IsPedestrian': {'instance': IsPed, 'arity': 1, 'method': 'IsPed(Entity)', 'function': 'logicity.utils.pred_converter.z3.IsPed'}, 'IsCar': {'instance': IsCar, 'arity': 1, 'method': 'IsCar(Entity)', 'function': 'logicity.utils.pred_converter.z3.IsCar'}, 'IsAmbulance': {'instance': IsAmb, 'arity': 1, 'method': 'IsAmb(Entity)', 'function': 'logicity.utils.pred_converter.z3.IsAmb'}, 'IsOld': {'instance': IsOld, 'arity': 1, 'method': 'IsOld(Entity)', 'function': 'logicity.utils.pred_converter.z3.IsOld'}, 'IsTiro': {'instance': IsTiro, 'arity': 1, 'method': 'IsTiro(Entity)', 'function': 'logicity.utils.pred_converter.z3.IsTiro'}, 'IsAtInter': {'instance': IsAtInter, 'arity': 1, 'method': 'IsAtInter(Entity)', 'function': 'logicity.utils.pred_converter.z3.IsAtInter'}, 'IsInInter': {'instance': IsInInter, 'arity': 1, 'method': 'IsInInter(Entity)', 'function': 'logicity.utils.pred_converter.z3.IsInInter'}, 'HigherPri': {'instance': HigherPri, 'arity': 2, 'method': 'HigherPri(Entity, Entity)', 'function': 'logicity.utils.pred_converter.z3.HigherPri'}, 'CollidingClose': {'instance': CollidingClose, 'arity': 2, 'method': 'CollidingClose(Entity, Entity)', 'function': 'logicity.utils.pred_converter.z3.CollidingClose'}, 'Stop': {'instance': Stop, 'arity': 1, 'method': 'Stop(Entity)', 'function': 'None'}, 'Fast': {'instance': Fast, 'arity': 1, 'method': 'Fast(Entity)', 'function': 'None'}, 'Normal': {'instance': Normal, 'arity': 1, 'method': 'Normal(Entity)', 'function': 'None'}, 'Slow': {'instance': Slow, 'arity': 1, 'method': 'Slow(Entity)', 'function': 'None'}}, the FOV entities {'Entity': 3}, The logic grounding shape is: 39
+2026-05-21 23:57:23 [INFO]: Local planner constructed!
+2026-05-21 23:57:23 [INFO]: Constructing 22 streets
+2026-05-21 23:57:23 [INFO]: Constructing 16 buildings
+2026-05-21 23:57:23 [INFO]: Adding 4 agents, they are constrained in 103 region
+2026-05-21 23:57:24 [INFO]: Car_1 initialization done!
+2026-05-21 23:57:24 [INFO]: Pedestrian_1 initialization done!
+2026-05-21 23:57:24 [INFO]: Car_2 initialization done!
+2026-05-21 23:57:25 [INFO]: Car_3 initialization done!
+2026-05-21 23:57:25 [INFO]: Done!
+2026-05-21 23:57:25 [INFO]: ***Init RL Agent in Env***
+2026-05-21 23:57:30 [INFO]: will reset agent by success
+2026-05-21 23:57:30 [INFO]: ***Reset RL Agent in Env***
+2026-05-21 23:57:30 [INFO]: Car_1 initialization done!
+2026-05-21 23:57:30 [INFO]: Pedestrian_1 initialization done!
+2026-05-21 23:57:31 [INFO]: Car_2 initialization done!
+2026-05-21 23:57:31 [INFO]: Car_3 initialization done!
+2026-05-21 23:57:31 [INFO]: Agent reset priority to 1/4
+2026-05-21 23:57:31 [INFO]: Agent reset concepts to {'type': 'Car', 'priority': 1}
+2026-05-21 23:57:31 [INFO]: Episode 6 success.
+2026-05-21 23:57:31 [INFO]: Episode 6 achieved a score of 4.460000000000001
+2026-05-21 23:57:31 [INFO]: Episode 6 Success: 1
+2026-05-21 23:57:31 [INFO]: Episode 6 Decision Step: {3: 0}
+2026-05-21 23:57:31 [INFO]: Episode 6 Success Decision: {3: 0}
+2026-05-21 23:57:31 [INFO]: Evaluating episode 7...
+2026-05-21 23:57:31 [INFO]: Episode label: {'oracle_step': 22, 'stop_count': 0, 'has_stop': False, 'ego_crosses': True, 'ego_eta': 5, 'ego_direction': 'right', 'other_crosses': 3, 'close_other_count': 0, 'pedestrian_close': None, 'conflicting_approach': False, 'total_crosses': 4}
+2026-05-21 23:57:31 [INFO]: Get map info from config/maps/square_2x2.yaml
+2026-05-21 23:57:31 [INFO]: Get agent info from config/agents/easy_lite/val.yaml
+2026-05-21 23:57:31 [INFO]: Get onology and rules info from config/rules/ontology_easy.yaml, config/rules/Nav/easy/expert.yaml
+2026-05-21 23:57:31 [INFO]: Number of Entity Types: 1
+Entity Types:
+- Entity
+2026-05-21 23:57:31 [INFO]: Number of Predicates: 13
+Predicates:
+- IsPedestrian: {'instance': "Function('IsPed', entity_sorts['Entity'], BoolSort())", 'arity': 1, 'method': 'IsPed(Entity)', 'function': 'logicity.utils.pred_converter.z3.IsPed'}
+- IsCar: {'instance': "Function('IsCar', entity_sorts['Entity'], BoolSort())", 'arity': 1, 'method': 'IsCar(Entity)', 'function': 'logicity.utils.pred_converter.z3.IsCar'}
+- IsAmbulance: {'instance': "Function('IsAmb', entity_sorts['Entity'], BoolSort())", 'arity': 1, 'method': 'IsAmb(Entity)', 'function': 'logicity.utils.pred_converter.z3.IsAmb'}
+- IsOld: {'instance': "Function('IsOld', entity_sorts['Entity'], BoolSort())", 'arity': 1, 'method': 'IsOld(Entity)', 'function': 'logicity.utils.pred_converter.z3.IsOld'}
+- IsTiro: {'instance': "Function('IsTiro', entity_sorts['Entity'], BoolSort())", 'arity': 1, 'method': 'IsTiro(Entity)', 'function': 'logicity.utils.pred_converter.z3.IsTiro'}
+- IsAtInter: {'instance': "Function('IsAtInter', entity_sorts['Entity'], BoolSort())", 'arity': 1, 'method': 'IsAtInter(Entity)', 'function': 'logicity.utils.pred_converter.z3.IsAtInter'}
+- IsInInter: {'instance': "Function('IsInInter', entity_sorts['Entity'], BoolSort())", 'arity': 1, 'method': 'IsInInter(Entity)', 'function': 'logicity.utils.pred_converter.z3.IsInInter'}
+- HigherPri: {'instance': "Function('HigherPri', entity_sorts['Entity'], entity_sorts['Entity'], BoolSort())", 'arity': 2, 'method': 'HigherPri(Entity, Entity)', 'function': 'logicity.utils.pred_converter.z3.HigherPri'}
+- CollidingClose: {'instance': "Function('CollidingClose', entity_sorts['Entity'], entity_sorts['Entity'], BoolSort())", 'arity': 2, 'method': 'CollidingClose(Entity, Entity)', 'function': 'logicity.utils.pred_converter.z3.CollidingClose'}
+- Stop: {'instance': "Function('Stop', entity_sorts['Entity'], BoolSort())", 'arity': 1, 'method': 'Stop(Entity)', 'function': 'None'}
+- Fast: {'instance': "Function('Fast', entity_sorts['Entity'], BoolSort())", 'arity': 1, 'method': 'Fast(Entity)', 'function': 'None'}
+- Normal: {'instance': "Function('Normal', entity_sorts['Entity'], BoolSort())", 'arity': 1, 'method': 'Normal(Entity)', 'function': 'None'}
+- Slow: {'instance': "Function('Slow', entity_sorts['Entity'], BoolSort())", 'arity': 1, 'method': 'Slow(Entity)', 'function': 'None'}
+2026-05-21 23:57:31 [INFO]: *** Sim Rule ***: Stop -> 
+ Stop(entity) == Exists(
+  [dummyEntity], 
+  Or(
+    And(
+      IsAtInter(entity), 
+      IsInInter(dummyEntity), 
+    ),
+    And(
+      IsAtInter(entity), 
+      IsAtInter(dummyEntity), 
+      HigherPri(dummyEntity, entity),
+    ),
+    CollidingClose(entity, dummyEntity)
+  )
+)
+
+2026-05-21 23:57:31 [INFO]: *** Task Rule ***: Collision and Intersection -> 
+ Implies(Exists(
+  [dummyEntity], 
+    Or(
+      And(
+        IsAtInter(entity), 
+        IsInInter(dummyEntity), 
+      ),
+      And(
+        IsAtInter(entity), 
+        IsAtInter(dummyEntity), 
+        HigherPri(dummyEntity, entity),
+      ),
+      CollidingClose(entity, dummyEntity)
+    )
+  ),
+  Stop(entity)
+)
+
+2026-05-21 23:57:31 [INFO]: *** Expert Rule ***: Stop -> 
+ Stop(entity) == Exists(
+[dummyEntity], 
+  Or(
+    And(
+      IsAtInter(entity), 
+      IsInInter(dummyEntity), 
+    ),
+    And(
+      IsAtInter(entity), 
+      IsAtInter(dummyEntity), 
+      HigherPri(dummyEntity, entity),
+    ),
+    CollidingClose(entity, dummyEntity)
+  )
+)
+
+2026-05-21 23:57:31 [INFO]: *** Expert Rule ***: Slow -> 
+ Not(Slow(entity))
+
+2026-05-21 23:57:31 [INFO]: *** Expert Rule ***: Fast -> 
+ Not(Fast(entity))
+
+2026-05-21 23:57:31 [INFO]: *** Expert Rule ***: Normal -> 
+ Normal(entity) == Not(Stop(entity))
+2026-05-21 23:57:31 [INFO]: Rules created successfully
+2026-05-21 23:57:31 [INFO]: Rules will be grounded later...
+2026-05-21 23:57:31 [INFO]: Given Predicates {'IsPedestrian': {'instance': IsPed, 'arity': 1, 'method': 'IsPed(Entity)', 'function': 'logicity.utils.pred_converter.z3.IsPed'}, 'IsCar': {'instance': IsCar, 'arity': 1, 'method': 'IsCar(Entity)', 'function': 'logicity.utils.pred_converter.z3.IsCar'}, 'IsAmbulance': {'instance': IsAmb, 'arity': 1, 'method': 'IsAmb(Entity)', 'function': 'logicity.utils.pred_converter.z3.IsAmb'}, 'IsOld': {'instance': IsOld, 'arity': 1, 'method': 'IsOld(Entity)', 'function': 'logicity.utils.pred_converter.z3.IsOld'}, 'IsTiro': {'instance': IsTiro, 'arity': 1, 'method': 'IsTiro(Entity)', 'function': 'logicity.utils.pred_converter.z3.IsTiro'}, 'IsAtInter': {'instance': IsAtInter, 'arity': 1, 'method': 'IsAtInter(Entity)', 'function': 'logicity.utils.pred_converter.z3.IsAtInter'}, 'IsInInter': {'instance': IsInInter, 'arity': 1, 'method': 'IsInInter(Entity)', 'function': 'logicity.utils.pred_converter.z3.IsInInter'}, 'HigherPri': {'instance': HigherPri, 'arity': 2, 'method': 'HigherPri(Entity, Entity)', 'function': 'logicity.utils.pred_converter.z3.HigherPri'}, 'CollidingClose': {'instance': CollidingClose, 'arity': 2, 'method': 'CollidingClose(Entity, Entity)', 'function': 'logicity.utils.pred_converter.z3.CollidingClose'}, 'Stop': {'instance': Stop, 'arity': 1, 'method': 'Stop(Entity)', 'function': 'None'}, 'Fast': {'instance': Fast, 'arity': 1, 'method': 'Fast(Entity)', 'function': 'None'}, 'Normal': {'instance': Normal, 'arity': 1, 'method': 'Normal(Entity)', 'function': 'None'}, 'Slow': {'instance': Slow, 'arity': 1, 'method': 'Slow(Entity)', 'function': 'None'}}, the FOV entities {'Entity': 3}, The logic grounding shape is: 39
+2026-05-21 23:57:31 [INFO]: Local planner constructed!
+2026-05-21 23:57:31 [INFO]: Constructing 22 streets
+2026-05-21 23:57:32 [INFO]: Constructing 16 buildings
+2026-05-21 23:57:32 [INFO]: Adding 4 agents, they are constrained in 103 region
+2026-05-21 23:57:32 [INFO]: Car_1 initialization done!
+2026-05-21 23:57:32 [INFO]: Pedestrian_1 initialization done!
+2026-05-21 23:57:33 [INFO]: Car_2 initialization done!
+2026-05-21 23:57:33 [INFO]: Car_3 initialization done!
+2026-05-21 23:57:33 [INFO]: Done!
+2026-05-21 23:57:33 [INFO]: ***Init RL Agent in Env***
+2026-05-21 23:57:35 [INFO]: will reset agent by success
+2026-05-21 23:57:35 [INFO]: ***Reset RL Agent in Env***
+2026-05-21 23:57:36 [INFO]: Car_1 initialization done!
+2026-05-21 23:57:36 [INFO]: Pedestrian_1 initialization done!
+2026-05-21 23:57:36 [INFO]: Car_2 initialization done!
+2026-05-21 23:57:36 [INFO]: Car_3 initialization done!
+2026-05-21 23:57:36 [INFO]: Agent reset priority to 3/4
+2026-05-21 23:57:36 [INFO]: Agent reset concepts to {'type': 'Car', 'priority': 3}
+2026-05-21 23:57:36 [INFO]: Episode 7 success.
+2026-05-21 23:57:36 [INFO]: Episode 7 achieved a score of 2.750000000000001
+2026-05-21 23:57:36 [INFO]: Episode 7 Success: 1
+2026-05-21 23:57:36 [INFO]: Episode 7 Decision Step: {3: 0}
+2026-05-21 23:57:36 [INFO]: Episode 7 Success Decision: {3: 0}
+2026-05-21 23:57:36 [INFO]: Evaluating episode 8...
+2026-05-21 23:57:36 [INFO]: Episode label: {'oracle_step': 86, 'stop_count': 19, 'has_stop': True, 'ego_crosses': True, 'ego_eta': 56, 'ego_direction': 'down', 'other_crosses': 3, 'close_other_count': 0, 'pedestrian_close': None, 'conflicting_approach': False, 'total_crosses': 4}
+2026-05-21 23:57:36 [INFO]: Get map info from config/maps/square_2x2.yaml
+2026-05-21 23:57:36 [INFO]: Get agent info from config/agents/easy_lite/val.yaml
+2026-05-21 23:57:36 [INFO]: Get onology and rules info from config/rules/ontology_easy.yaml, config/rules/Nav/easy/expert.yaml
+2026-05-21 23:57:37 [INFO]: Number of Entity Types: 1
+Entity Types:
+- Entity
+2026-05-21 23:57:37 [INFO]: Number of Predicates: 13
+Predicates:
+- IsPedestrian: {'instance': "Function('IsPed', entity_sorts['Entity'], BoolSort())", 'arity': 1, 'method': 'IsPed(Entity)', 'function': 'logicity.utils.pred_converter.z3.IsPed'}
+- IsCar: {'instance': "Function('IsCar', entity_sorts['Entity'], BoolSort())", 'arity': 1, 'method': 'IsCar(Entity)', 'function': 'logicity.utils.pred_converter.z3.IsCar'}
+- IsAmbulance: {'instance': "Function('IsAmb', entity_sorts['Entity'], BoolSort())", 'arity': 1, 'method': 'IsAmb(Entity)', 'function': 'logicity.utils.pred_converter.z3.IsAmb'}
+- IsOld: {'instance': "Function('IsOld', entity_sorts['Entity'], BoolSort())", 'arity': 1, 'method': 'IsOld(Entity)', 'function': 'logicity.utils.pred_converter.z3.IsOld'}
+- IsTiro: {'instance': "Function('IsTiro', entity_sorts['Entity'], BoolSort())", 'arity': 1, 'method': 'IsTiro(Entity)', 'function': 'logicity.utils.pred_converter.z3.IsTiro'}
+- IsAtInter: {'instance': "Function('IsAtInter', entity_sorts['Entity'], BoolSort())", 'arity': 1, 'method': 'IsAtInter(Entity)', 'function': 'logicity.utils.pred_converter.z3.IsAtInter'}
+- IsInInter: {'instance': "Function('IsInInter', entity_sorts['Entity'], BoolSort())", 'arity': 1, 'method': 'IsInInter(Entity)', 'function': 'logicity.utils.pred_converter.z3.IsInInter'}
+- HigherPri: {'instance': "Function('HigherPri', entity_sorts['Entity'], entity_sorts['Entity'], BoolSort())", 'arity': 2, 'method': 'HigherPri(Entity, Entity)', 'function': 'logicity.utils.pred_converter.z3.HigherPri'}
+- CollidingClose: {'instance': "Function('CollidingClose', entity_sorts['Entity'], entity_sorts['Entity'], BoolSort())", 'arity': 2, 'method': 'CollidingClose(Entity, Entity)', 'function': 'logicity.utils.pred_converter.z3.CollidingClose'}
+- Stop: {'instance': "Function('Stop', entity_sorts['Entity'], BoolSort())", 'arity': 1, 'method': 'Stop(Entity)', 'function': 'None'}
+- Fast: {'instance': "Function('Fast', entity_sorts['Entity'], BoolSort())", 'arity': 1, 'method': 'Fast(Entity)', 'function': 'None'}
+- Normal: {'instance': "Function('Normal', entity_sorts['Entity'], BoolSort())", 'arity': 1, 'method': 'Normal(Entity)', 'function': 'None'}
+- Slow: {'instance': "Function('Slow', entity_sorts['Entity'], BoolSort())", 'arity': 1, 'method': 'Slow(Entity)', 'function': 'None'}
+2026-05-21 23:57:37 [INFO]: *** Sim Rule ***: Stop -> 
+ Stop(entity) == Exists(
+  [dummyEntity], 
+  Or(
+    And(
+      IsAtInter(entity), 
+      IsInInter(dummyEntity), 
+    ),
+    And(
+      IsAtInter(entity), 
+      IsAtInter(dummyEntity), 
+      HigherPri(dummyEntity, entity),
+    ),
+    CollidingClose(entity, dummyEntity)
+  )
+)
+
+2026-05-21 23:57:37 [INFO]: *** Task Rule ***: Collision and Intersection -> 
+ Implies(Exists(
+  [dummyEntity], 
+    Or(
+      And(
+        IsAtInter(entity), 
+        IsInInter(dummyEntity), 
+      ),
+      And(
+        IsAtInter(entity), 
+        IsAtInter(dummyEntity), 
+        HigherPri(dummyEntity, entity),
+      ),
+      CollidingClose(entity, dummyEntity)
+    )
+  ),
+  Stop(entity)
+)
+
+2026-05-21 23:57:37 [INFO]: *** Expert Rule ***: Stop -> 
+ Stop(entity) == Exists(
+[dummyEntity], 
+  Or(
+    And(
+      IsAtInter(entity), 
+      IsInInter(dummyEntity), 
+    ),
+    And(
+      IsAtInter(entity), 
+      IsAtInter(dummyEntity), 
+      HigherPri(dummyEntity, entity),
+    ),
+    CollidingClose(entity, dummyEntity)
+  )
+)
+
+2026-05-21 23:57:37 [INFO]: *** Expert Rule ***: Slow -> 
+ Not(Slow(entity))
+
+2026-05-21 23:57:37 [INFO]: *** Expert Rule ***: Fast -> 
+ Not(Fast(entity))
+
+2026-05-21 23:57:37 [INFO]: *** Expert Rule ***: Normal -> 
+ Normal(entity) == Not(Stop(entity))
+2026-05-21 23:57:37 [INFO]: Rules created successfully
+2026-05-21 23:57:37 [INFO]: Rules will be grounded later...
+2026-05-21 23:57:37 [INFO]: Given Predicates {'IsPedestrian': {'instance': IsPed, 'arity': 1, 'method': 'IsPed(Entity)', 'function': 'logicity.utils.pred_converter.z3.IsPed'}, 'IsCar': {'instance': IsCar, 'arity': 1, 'method': 'IsCar(Entity)', 'function': 'logicity.utils.pred_converter.z3.IsCar'}, 'IsAmbulance': {'instance': IsAmb, 'arity': 1, 'method': 'IsAmb(Entity)', 'function': 'logicity.utils.pred_converter.z3.IsAmb'}, 'IsOld': {'instance': IsOld, 'arity': 1, 'method': 'IsOld(Entity)', 'function': 'logicity.utils.pred_converter.z3.IsOld'}, 'IsTiro': {'instance': IsTiro, 'arity': 1, 'method': 'IsTiro(Entity)', 'function': 'logicity.utils.pred_converter.z3.IsTiro'}, 'IsAtInter': {'instance': IsAtInter, 'arity': 1, 'method': 'IsAtInter(Entity)', 'function': 'logicity.utils.pred_converter.z3.IsAtInter'}, 'IsInInter': {'instance': IsInInter, 'arity': 1, 'method': 'IsInInter(Entity)', 'function': 'logicity.utils.pred_converter.z3.IsInInter'}, 'HigherPri': {'instance': HigherPri, 'arity': 2, 'method': 'HigherPri(Entity, Entity)', 'function': 'logicity.utils.pred_converter.z3.HigherPri'}, 'CollidingClose': {'instance': CollidingClose, 'arity': 2, 'method': 'CollidingClose(Entity, Entity)', 'function': 'logicity.utils.pred_converter.z3.CollidingClose'}, 'Stop': {'instance': Stop, 'arity': 1, 'method': 'Stop(Entity)', 'function': 'None'}, 'Fast': {'instance': Fast, 'arity': 1, 'method': 'Fast(Entity)', 'function': 'None'}, 'Normal': {'instance': Normal, 'arity': 1, 'method': 'Normal(Entity)', 'function': 'None'}, 'Slow': {'instance': Slow, 'arity': 1, 'method': 'Slow(Entity)', 'function': 'None'}}, the FOV entities {'Entity': 3}, The logic grounding shape is: 39
+2026-05-21 23:57:37 [INFO]: Local planner constructed!
+2026-05-21 23:57:37 [INFO]: Constructing 22 streets
+2026-05-21 23:57:37 [INFO]: Constructing 16 buildings
+2026-05-21 23:57:37 [INFO]: Adding 4 agents, they are constrained in 103 region
+2026-05-21 23:57:38 [INFO]: Car_1 initialization done!
+2026-05-21 23:57:38 [INFO]: Pedestrian_1 initialization done!
+2026-05-21 23:57:38 [INFO]: Car_2 initialization done!
+2026-05-21 23:57:39 [INFO]: Car_3 initialization done!
+2026-05-21 23:57:39 [INFO]: Done!
+2026-05-21 23:57:39 [INFO]: ***Init RL Agent in Env***
+2026-05-21 23:57:48 [INFO]: will reset agent by success
+2026-05-21 23:57:48 [INFO]: ***Reset RL Agent in Env***
+2026-05-21 23:57:48 [INFO]: Car_1 initialization done!
+2026-05-21 23:57:48 [INFO]: Pedestrian_1 initialization done!
+2026-05-21 23:57:49 [INFO]: Car_2 initialization done!
+2026-05-21 23:57:49 [INFO]: Car_3 initialization done!
+2026-05-21 23:57:49 [INFO]: Agent reset priority to 3/4
+2026-05-21 23:57:49 [INFO]: Agent reset concepts to {'type': 'Car', 'priority': 3}
+2026-05-21 23:57:49 [INFO]: Episode 8 success.
+2026-05-21 23:57:49 [INFO]: Episode 8 achieved a score of 6.909999999999998
+2026-05-21 23:57:49 [INFO]: Episode 8 Success: 1
+2026-05-21 23:57:49 [INFO]: Episode 8 Decision Step: {3: 0}
+2026-05-21 23:57:49 [INFO]: Episode 8 Success Decision: {3: 0}
+2026-05-21 23:57:49 [INFO]: Evaluating episode 9...
+2026-05-21 23:57:49 [INFO]: Episode label: {'oracle_step': 69, 'stop_count': 25, 'has_stop': True, 'ego_crosses': True, 'ego_eta': 56, 'ego_direction': 'right', 'other_crosses': 3, 'close_other_count': 0, 'pedestrian_close': None, 'conflicting_approach': False, 'total_crosses': 4}
+2026-05-21 23:57:49 [INFO]: Get map info from config/maps/square_2x2.yaml
+2026-05-21 23:57:49 [INFO]: Get agent info from config/agents/easy_lite/val.yaml
+2026-05-21 23:57:49 [INFO]: Get onology and rules info from config/rules/ontology_easy.yaml, config/rules/Nav/easy/expert.yaml
+2026-05-21 23:57:49 [INFO]: Number of Entity Types: 1
+Entity Types:
+- Entity
+2026-05-21 23:57:49 [INFO]: Number of Predicates: 13
+Predicates:
+- IsPedestrian: {'instance': "Function('IsPed', entity_sorts['Entity'], BoolSort())", 'arity': 1, 'method': 'IsPed(Entity)', 'function': 'logicity.utils.pred_converter.z3.IsPed'}
+- IsCar: {'instance': "Function('IsCar', entity_sorts['Entity'], BoolSort())", 'arity': 1, 'method': 'IsCar(Entity)', 'function': 'logicity.utils.pred_converter.z3.IsCar'}
+- IsAmbulance: {'instance': "Function('IsAmb', entity_sorts['Entity'], BoolSort())", 'arity': 1, 'method': 'IsAmb(Entity)', 'function': 'logicity.utils.pred_converter.z3.IsAmb'}
+- IsOld: {'instance': "Function('IsOld', entity_sorts['Entity'], BoolSort())", 'arity': 1, 'method': 'IsOld(Entity)', 'function': 'logicity.utils.pred_converter.z3.IsOld'}
+- IsTiro: {'instance': "Function('IsTiro', entity_sorts['Entity'], BoolSort())", 'arity': 1, 'method': 'IsTiro(Entity)', 'function': 'logicity.utils.pred_converter.z3.IsTiro'}
+- IsAtInter: {'instance': "Function('IsAtInter', entity_sorts['Entity'], BoolSort())", 'arity': 1, 'method': 'IsAtInter(Entity)', 'function': 'logicity.utils.pred_converter.z3.IsAtInter'}
+- IsInInter: {'instance': "Function('IsInInter', entity_sorts['Entity'], BoolSort())", 'arity': 1, 'method': 'IsInInter(Entity)', 'function': 'logicity.utils.pred_converter.z3.IsInInter'}
+- HigherPri: {'instance': "Function('HigherPri', entity_sorts['Entity'], entity_sorts['Entity'], BoolSort())", 'arity': 2, 'method': 'HigherPri(Entity, Entity)', 'function': 'logicity.utils.pred_converter.z3.HigherPri'}
+- CollidingClose: {'instance': "Function('CollidingClose', entity_sorts['Entity'], entity_sorts['Entity'], BoolSort())", 'arity': 2, 'method': 'CollidingClose(Entity, Entity)', 'function': 'logicity.utils.pred_converter.z3.CollidingClose'}
+- Stop: {'instance': "Function('Stop', entity_sorts['Entity'], BoolSort())", 'arity': 1, 'method': 'Stop(Entity)', 'function': 'None'}
+- Fast: {'instance': "Function('Fast', entity_sorts['Entity'], BoolSort())", 'arity': 1, 'method': 'Fast(Entity)', 'function': 'None'}
+- Normal: {'instance': "Function('Normal', entity_sorts['Entity'], BoolSort())", 'arity': 1, 'method': 'Normal(Entity)', 'function': 'None'}
+- Slow: {'instance': "Function('Slow', entity_sorts['Entity'], BoolSort())", 'arity': 1, 'method': 'Slow(Entity)', 'function': 'None'}
+2026-05-21 23:57:49 [INFO]: *** Sim Rule ***: Stop -> 
+ Stop(entity) == Exists(
+  [dummyEntity], 
+  Or(
+    And(
+      IsAtInter(entity), 
+      IsInInter(dummyEntity), 
+    ),
+    And(
+      IsAtInter(entity), 
+      IsAtInter(dummyEntity), 
+      HigherPri(dummyEntity, entity),
+    ),
+    CollidingClose(entity, dummyEntity)
+  )
+)
+
+2026-05-21 23:57:49 [INFO]: *** Task Rule ***: Collision and Intersection -> 
+ Implies(Exists(
+  [dummyEntity], 
+    Or(
+      And(
+        IsAtInter(entity), 
+        IsInInter(dummyEntity), 
+      ),
+      And(
+        IsAtInter(entity), 
+        IsAtInter(dummyEntity), 
+        HigherPri(dummyEntity, entity),
+      ),
+      CollidingClose(entity, dummyEntity)
+    )
+  ),
+  Stop(entity)
+)
+
+2026-05-21 23:57:49 [INFO]: *** Expert Rule ***: Stop -> 
+ Stop(entity) == Exists(
+[dummyEntity], 
+  Or(
+    And(
+      IsAtInter(entity), 
+      IsInInter(dummyEntity), 
+    ),
+    And(
+      IsAtInter(entity), 
+      IsAtInter(dummyEntity), 
+      HigherPri(dummyEntity, entity),
+    ),
+    CollidingClose(entity, dummyEntity)
+  )
+)
+
+2026-05-21 23:57:49 [INFO]: *** Expert Rule ***: Slow -> 
+ Not(Slow(entity))
+
+2026-05-21 23:57:49 [INFO]: *** Expert Rule ***: Fast -> 
+ Not(Fast(entity))
+
+2026-05-21 23:57:49 [INFO]: *** Expert Rule ***: Normal -> 
+ Normal(entity) == Not(Stop(entity))
+2026-05-21 23:57:49 [INFO]: Rules created successfully
+2026-05-21 23:57:49 [INFO]: Rules will be grounded later...
+2026-05-21 23:57:49 [INFO]: Given Predicates {'IsPedestrian': {'instance': IsPed, 'arity': 1, 'method': 'IsPed(Entity)', 'function': 'logicity.utils.pred_converter.z3.IsPed'}, 'IsCar': {'instance': IsCar, 'arity': 1, 'method': 'IsCar(Entity)', 'function': 'logicity.utils.pred_converter.z3.IsCar'}, 'IsAmbulance': {'instance': IsAmb, 'arity': 1, 'method': 'IsAmb(Entity)', 'function': 'logicity.utils.pred_converter.z3.IsAmb'}, 'IsOld': {'instance': IsOld, 'arity': 1, 'method': 'IsOld(Entity)', 'function': 'logicity.utils.pred_converter.z3.IsOld'}, 'IsTiro': {'instance': IsTiro, 'arity': 1, 'method': 'IsTiro(Entity)', 'function': 'logicity.utils.pred_converter.z3.IsTiro'}, 'IsAtInter': {'instance': IsAtInter, 'arity': 1, 'method': 'IsAtInter(Entity)', 'function': 'logicity.utils.pred_converter.z3.IsAtInter'}, 'IsInInter': {'instance': IsInInter, 'arity': 1, 'method': 'IsInInter(Entity)', 'function': 'logicity.utils.pred_converter.z3.IsInInter'}, 'HigherPri': {'instance': HigherPri, 'arity': 2, 'method': 'HigherPri(Entity, Entity)', 'function': 'logicity.utils.pred_converter.z3.HigherPri'}, 'CollidingClose': {'instance': CollidingClose, 'arity': 2, 'method': 'CollidingClose(Entity, Entity)', 'function': 'logicity.utils.pred_converter.z3.CollidingClose'}, 'Stop': {'instance': Stop, 'arity': 1, 'method': 'Stop(Entity)', 'function': 'None'}, 'Fast': {'instance': Fast, 'arity': 1, 'method': 'Fast(Entity)', 'function': 'None'}, 'Normal': {'instance': Normal, 'arity': 1, 'method': 'Normal(Entity)', 'function': 'None'}, 'Slow': {'instance': Slow, 'arity': 1, 'method': 'Slow(Entity)', 'function': 'None'}}, the FOV entities {'Entity': 3}, The logic grounding shape is: 39
+2026-05-21 23:57:49 [INFO]: Local planner constructed!
+2026-05-21 23:57:49 [INFO]: Constructing 22 streets
+2026-05-21 23:57:50 [INFO]: Constructing 16 buildings
+2026-05-21 23:57:50 [INFO]: Adding 4 agents, they are constrained in 103 region
+2026-05-21 23:57:50 [INFO]: Car_1 initialization done!
+2026-05-21 23:57:50 [INFO]: Pedestrian_1 initialization done!
+2026-05-21 23:57:51 [INFO]: Car_2 initialization done!
+2026-05-21 23:57:51 [INFO]: Car_3 initialization done!
+2026-05-21 23:57:51 [INFO]: Done!
+2026-05-21 23:57:51 [INFO]: ***Init RL Agent in Env***
+2026-05-21 23:57:55 [INFO]: Reset agent by failing
+2026-05-21 23:57:55 [INFO]: ***Reset RL Agent in Env***
+2026-05-21 23:57:56 [INFO]: Car_1 initialization done!
+2026-05-21 23:57:56 [INFO]: Pedestrian_1 initialization done!
+2026-05-21 23:57:56 [INFO]: Car_2 initialization done!
+2026-05-21 23:57:56 [INFO]: Car_3 initialization done!
+2026-05-21 23:57:56 [INFO]: Agent reset priority to 2/4
+2026-05-21 23:57:56 [INFO]: Agent reset concepts to {'type': 'Car', 'priority': 2}
+2026-05-21 23:57:57 [INFO]: Episode 9 failed.
+2026-05-21 23:57:57 [INFO]: Episode 9 achieved a score of -7.5
+2026-05-21 23:57:57 [INFO]: Episode 9 Success: 0
+2026-05-21 23:57:57 [INFO]: Episode 9 Decision Step: {3: 1}
+2026-05-21 23:57:57 [INFO]: Episode 9 Success Decision: {3: 0}
+2026-05-21 23:57:57 [INFO]: Timestep: 400 - Success Rate: 0.8 - Mean Reward: 2.475 
+
+2026-05-21 23:57:57 [INFO]: Failure Rate: 0.2 - Timeout Rate: 0.0 - Mean Episode Length: 35.0
+2026-05-21 23:57:57 [INFO]: Mean Decision Succ: 0.0
+2026-05-21 23:57:57 [INFO]: Average Decision Succ: 0.0
+2026-05-21 23:57:57 [INFO]: Decision Succ for each action: {3: 0.0}
+2026-05-21 23:57:57 [INFO]: Action Histogram: {0: 6, 1: 109, 2: 237, 3: 0}

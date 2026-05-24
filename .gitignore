@@ -18,4 +18,6 @@ checkpoints/
 profile*.txt
 src
 *.zip
+!log_rl/
+!log_rl/**
 
