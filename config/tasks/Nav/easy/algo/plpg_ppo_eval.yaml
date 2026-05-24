@@ -1,4 +1,4 @@
-# Lite PPO config with fixed full validation evaluation.
+# PLPG-PPO full eval config for easy-lite SPF.
 simulation:
   map_yaml_file: "config/maps/square_2x2.yaml"
   agent_yaml_file: "config/agents/easy_lite/train.yaml"
@@ -42,8 +42,14 @@ simulation:
     overtime_cost: -0.5
 
 eval_checkpoint:
-  eval_freq: 75000
-  save_freq: 75000
+  eval_freq: 5000
+  save_freq: 5000
+  adaptive_eval_schedule:
+    target_tsr: 1.0
+    consecutive_target_evals: 2
+    early_eval_freq: 1000
+    post_target_eval_offsets: [2000, 5000, 10000]
+    late_eval_freq: 20000
   simulation_config:
     map_yaml_file: "config/maps/square_2x2.yaml"
     agent_yaml_file: "config/agents/easy_lite/val.yaml"
@@ -81,12 +87,12 @@ eval_checkpoint:
         prob: [1.0]
       overtime_cost: -0.5
   save_path: './checkpoints/'
-  name_prefix: 'easy_lite_ppo'
+  name_prefix: 'easy_lite_plpg_ppo'
   episode_data: "log_rl/easy_lite_val_episodes.pkl"
   eval_actions: {"Stop": 3}
 
 stable_baselines:
-  algorithm: "PPO"
+  algorithm: "PLPGPPO"
   policy_network: "MlpPolicy"
   policy_kwargs:
     features_extractor_module: "logicity.rl_agent.policy.neural"
@@ -103,7 +109,12 @@ stable_baselines:
     ent_coef: 0.01
     verbose: 1
     tensorboard_log: "./tb_logs"
+    plpg_kwargs:
+      template: "easy"
+      alpha: 0.1
+      rule_yaml_file: "config/rules/Nav/easy/expert.yaml"
+      safety_loss_source: "shielded"
   train: true
   checkpoint_path: ""
   num_envs: 2
-  total_timesteps: 375000
+  total_timesteps: 500000

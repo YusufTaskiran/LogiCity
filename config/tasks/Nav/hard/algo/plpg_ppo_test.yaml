@@ -35,21 +35,30 @@ simulation:
       prob: [1.0]
     overtime_cost: -0.75
 
-episode_generation:
-  mode: "success_only"
-
 stable_baselines:
-  algorithm: "ExpertCollector"
+  algorithm: "PLPGPPO"
+  policy_network: "MlpPolicy"
   policy_kwargs:
-    num_episodes: -1
-    return_full_world: false
     features_extractor_module: "logicity.rl_agent.policy.neural"
     features_extractor_class: "MLPFeatureExtractor"
     features_extractor_kwargs:
-      features_dim: 64
+      features_dim: 128
   hyperparameters:
-    None
+    learning_rate: 0.00003
+    clip_range: 0.2
+    vf_coef: 0.5
+    batch_size: 512
+    n_steps: 256
+    n_epochs: 4
+    ent_coef: 0.01
+    verbose: 1
+    tensorboard_log: "./tb_logs"
+    plpg_kwargs:
+      template: "hard"
+      alpha: 0.1
+      rule_yaml_file: "config/rules/Nav/hard/expert.yaml"
+      safety_loss_source: "shielded"
   train: false
   checkpoint_path: ""
-  num_envs: 1
-  total_timesteps: 1000000
+  episode_data: "log_rl/hard_lite_test_episodes.pkl"
+  eval_actions: {"Stop": 3}

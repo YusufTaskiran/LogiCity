@@ -40,4 +40,13 @@ agents:
   gplanner: A*vg
   concepts:
     type: Car
+    priority: 3
+    bus: 1.0
+
+- class: Private_car
+  id: 5
+  size: 1
+  gplanner: A*vg
+  concepts:
+    type: Car
     priority: 4

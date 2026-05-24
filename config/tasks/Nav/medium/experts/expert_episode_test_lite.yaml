@@ -1,5 +1,5 @@
 simulation:
-  map_yaml_file: "config/maps/square_5x5.yaml"
+  map_yaml_file: "config/maps/square_2x2.yaml"
   agent_yaml_file: "config/agents/medium_lite/test.yaml"
   ontology_yaml_file: "config/rules/ontology_medium.yaml"
   rule_type: "Z3_Expert"
@@ -7,12 +7,12 @@ simulation:
   rl: true
   debug: false
   use_multi: false
-  agent_region: 70
+  agent_region: 103
   rl_agent:
     max_priority: 5
     use_expert: true
     agent_name: "Car_1"
-    max_horizon: 400
+    max_horizon: 320
     reward_scheme: "safe_path_following"
     goal_reward: 1.0
     progress_reward_scale: 0.05
@@ -33,7 +33,7 @@ simulation:
     reset_dist:
       concepts: ['normal']
       prob: [1.0]
-    overtime_cost: -0.75
+    overtime_cost: -0.6
 
 episode_generation:
   mode: "success_only"

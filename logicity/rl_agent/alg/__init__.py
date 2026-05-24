@@ -5,6 +5,7 @@ from stable_baselines3 import A2C
 from stable_baselines3 import TD3
 from stable_baselines3 import DDPG
 from .random import Random
+from .plpg_ppo import PLPGPPO
 # NS RL
 # from .nudge import NUDGE
 # from .nsrl import NSRL

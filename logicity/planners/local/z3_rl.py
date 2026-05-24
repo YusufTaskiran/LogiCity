@@ -21,9 +21,11 @@ class Z3PlannerRL(Z3Planner):
         super().__init__(yaml_path)
         self.rl_input_shape = None
         self.last_rl_obs = None
+        self.last_rl_obs_map = {}
 
     def reset(self):
         self.last_rl_obs = None
+        self.last_rl_obs_map = {}
 
     def _create_rules(self):
         assert "Task" in self.data["Rules"].keys(), "Make sure the task rule is defined"
@@ -121,10 +123,12 @@ class Z3PlannerRL(Z3Planner):
                                             self.rules['Task'], self.entity_types, self.predicates, self.z3_vars,
                                             partial_agents[ego_name], partial_world[ego_name], partial_intersections[ego_name], 
                                             self.fov_entities, True, rl_input_shape=self.rl_input_shape)
-                    self.last_rl_obs = {
+                    obs_cache = {
                         "last_obs_dict": copy.deepcopy(result["{}_grounding_dic".format(ego_name)]),
                         "last_obs": result["{}_grounding".format(ego_name)].copy()
                     }
+                    self.last_rl_obs = obs_cache
+                    self.last_rl_obs_map[ego_agent[ego_name].layer_id] = obs_cache
                 else:
                     result = solve_sub_problem(ego_name, ego_agent[ego_name].action_mapping, ego_agent[ego_name].action_dist,
                                             self.rules['Sim'], self.entity_types, self.predicates, self.z3_vars,
@@ -136,15 +140,28 @@ class Z3PlannerRL(Z3Planner):
         # logger.info("Solve sub-problem time: {}".format(e2-e))
         return combined_results
     
-    def eval(self, rl_action):
-        if self.last_rl_obs is None:
+    def eval(self, rl_action, rl_agent=None):
+        if rl_agent is not None:
+            last_rl_obs = self.last_rl_obs_map.get(rl_agent)
+        else:
+            last_rl_obs = self.last_rl_obs
+        if last_rl_obs is None:
             return 0
         fail, reward, violated_rules = eval_action(rl_action, self.rules['Task'], self.entity_types, self.predicates, self.z3_vars, self.fov_entities,
-                             self.last_rl_obs["last_obs_dict"], self.last_rl_obs["last_obs"])
-        self.last_rl_obs = None
+                             last_rl_obs["last_obs_dict"], last_rl_obs["last_obs"])
+        if rl_agent is not None:
+            self.last_rl_obs_map.pop(rl_agent, None)
+        else:
+            self.last_rl_obs = None
         return fail, reward, violated_rules
 
     def break_world_matrix(self, world_matrix, agents, intersect_matrix, layerid2listid, rl_agent):
+        if rl_agent is None:
+            rl_agent_ids = set()
+        elif isinstance(rl_agent, (list, tuple, set)):
+            rl_agent_ids = set(int(x) for x in rl_agent)
+        else:
+            rl_agent_ids = {int(rl_agent)}
         ego_agent = {}
         partial_agents = {}
         partial_world = {}
@@ -153,7 +170,7 @@ class Z3PlannerRL(Z3Planner):
         for agent in agents:
             ego_name = "{}_{}".format(agent.type, agent.layer_id)
             ego_agent[ego_name] = agent
-            rl_flag[ego_name] = (agent.layer_id==rl_agent)
+            rl_flag[ego_name] = agent.layer_id in rl_agent_ids
             ego_layer = world_matrix[agent.layer_id]
             assert len((ego_layer == TYPE_MAP[agent.type]).nonzero()) == 1, ValueError("Ego agent {}_{} should be unique in the world matrix, now it is {}".format(agent.type, agent.layer_id, (ego_layer == TYPE_MAP[agent.type]).nonzero()))
             ego_position = (ego_layer == TYPE_MAP[agent.type]).nonzero()[0]
