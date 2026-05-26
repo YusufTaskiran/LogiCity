@@ -5,6 +5,7 @@ import yaml
 import torch
 import argparse
 import importlib
+import inspect
 import numpy as np
 import pickle as pkl
 from tqdm import trange
@@ -195,7 +196,8 @@ def main_gym(args, logger):
         else:
             train_env = make_env(simulation_config)
         train_env.reset()
-        if os.path.isfile(rl_config["checkpoint_path"]):
+        resuming_from_checkpoint = os.path.isfile(rl_config["checkpoint_path"])
+        if resuming_from_checkpoint:
             logger.info("Resume training")
             logger.info("Loading the model from checkpoint: {}".format(rl_config["checkpoint_path"]))
             policy_kwargs_use = copy.deepcopy(policy_kwargs)
@@ -222,7 +224,14 @@ def main_gym(args, logger):
             else:
                 eval_checkpoint_callback = EvalCheckpointCallback(exp_name=args.exp, **eval_checkpoint_config)
         # Train the model
-        model.learn(total_timesteps=total_timesteps, callback=eval_checkpoint_callback, tb_log_name=args.exp)
+        learn_kwargs = {
+            "total_timesteps": total_timesteps,
+            "callback": eval_checkpoint_callback,
+            "tb_log_name": args.exp,
+        }
+        if "reset_num_timesteps" in inspect.signature(model.learn).parameters:
+            learn_kwargs["reset_num_timesteps"] = not resuming_from_checkpoint
+        model.learn(**learn_kwargs)
         # Save the model
         save_name = args.exp if not eval_checkpoint_config else eval_checkpoint_config.get("name_prefix", args.exp)
         model.save(save_name)

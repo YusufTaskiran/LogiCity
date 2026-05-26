@@ -407,7 +407,7 @@ def gridmap2img_agents(gridmap, gridmap_, icon_dict, static_map, ego_id, last_ic
     else:
         return current_map, icon_dict_local
 
-def main(pkl_path, ego_id, output_folder, scale_factor=1, crop_size=None):
+def main(pkl_path, ego_id, output_folder, scale_factor=1, crop_size=None, show_step_label=True, only_step=None):
     icon_dict = {}
     os.path.exists(output_folder) or os.makedirs(output_folder)
     for key in PATH_DICT.keys():
@@ -433,29 +433,21 @@ def main(pkl_path, ego_id, output_folder, scale_factor=1, crop_size=None):
     # static_map_img.save("{}/static_layout.png".format(output_folder))
     last_icons = None
     for key in trange(time_steps[0], time_steps[-2]):
+        if only_step is not None and key != only_step:
+            continue
         grid = obs[key]["World"].numpy()
         grid_ = obs[key+1]["World"].numpy()
         img, last_icons = gridmap2img_agents(grid, grid_, icon_dict, static_map, ego_id, last_icons, agents)
-        # Define the text to be added
-        text = "#{}".format(key)
-
-        # Specify the position for the text (x, y coordinates)
-        position = (10, 10)  # 10 pixels from the left and 30 from the top
-
-        # Create an ImageDraw object
-        draw = ImageDraw.Draw(img)
-
-        # Define font type and size (you might need to provide the path to a .ttf font file)
-        try:
-            font = ImageFont.truetype("arial.ttf", size=100)  # Example font, adjust the path and size as needed
-        except IOError:
-            font = ImageFont.load_default()
-
-        # Define text color
-        color = (255, 255, 255)  # White color
-
-        # Add text to image
-        draw.text(position, text, fill=color, font=font)
+        if show_step_label:
+            text = "#{}".format(key)
+            position = (10, 10)
+            draw = ImageDraw.Draw(img)
+            try:
+                font = ImageFont.truetype("arial.ttf", size=100)
+            except IOError:
+                font = ImageFont.load_default()
+            color = (255, 255, 255)
+            draw.text(position, text, fill=color, font=font)
 
         if crop_size is not None:
             img = img.crop((0, 0, min(crop_size, img.width), min(crop_size, img.height)))
@@ -480,8 +472,18 @@ if __name__ == "__main__":
     parser.add_argument("--output_folder", default="vis", help="Output folder.")
     parser.add_argument("--scale_factor", type=float, default=1.0, help="Upscale rendered frames by this factor.")
     parser.add_argument("--crop_size", type=int, default=None, help="Optional top-left square crop size. Defaults to full frame.")
+    parser.add_argument("--hide_step_label", action="store_true", help="Render frames without the step-number text overlay.")
+    parser.add_argument("--only_step", type=int, default=None, help="If set, render only this timestep frame.")
     
     args = parser.parse_args()
 
     # Call the function with provided arguments
-    main(args.pkl, args.ego_id, args.output_folder, scale_factor=args.scale_factor, crop_size=args.crop_size)
+    main(
+        args.pkl,
+        args.ego_id,
+        args.output_folder,
+        scale_factor=args.scale_factor,
+        crop_size=args.crop_size,
+        show_step_label=not args.hide_step_label,
+        only_step=args.only_step,
+    )

@@ -22,6 +22,8 @@ class AdaptiveEvalSchedule:
         self.target_tsr = float(config.get("target_tsr", 1.0))
         self.consecutive_target_evals = int(config.get("consecutive_target_evals", 2))
         self.early_eval_freq = int(config.get("early_eval_freq", default_eval_freq))
+        max_early_timestep = config.get("max_early_timestep", None)
+        self.max_early_timestep = int(max_early_timestep) if max_early_timestep is not None else None
         self.post_target_eval_offsets = [
             int(offset) for offset in config.get("post_target_eval_offsets", [])
         ]
@@ -29,6 +31,7 @@ class AdaptiveEvalSchedule:
         self._target_streak = 0
         self._transition_timestep = None
         self._post_target_eval_index = 0
+        self._transition_reason = None
 
     def should_eval(self, current_timestep, last_eval_timestep):
         if not self.enabled:
@@ -50,6 +53,12 @@ class AdaptiveEvalSchedule:
         if self._target_streak >= self.consecutive_target_evals:
             self._transition_timestep = current_timestep
             self._post_target_eval_index = 0
+            self._transition_reason = "target_tsr"
+            return
+        if self.max_early_timestep is not None and current_timestep >= self.max_early_timestep:
+            self._transition_timestep = current_timestep
+            self._post_target_eval_index = 0
+            self._transition_reason = "max_early_timestep"
 
     def on_eval_triggered(self):
         if not self.enabled or self._transition_timestep is None:
@@ -143,6 +152,47 @@ def append_eval_csv_row(csv_path, row_dict, failure_rule_names):
             writer.writeheader()
         writer.writerow(row_dict)
 
+
+def _load_existing_eval_state(csv_path):
+    if not os.path.isfile(csv_path):
+        return {
+            "eval_index": 0,
+            "last_timestep": 0,
+            "best_tsr_so_far": 0.0,
+            "best_mean_reward": -np.inf,
+            "last_wall_clock_time_sec": 0.0,
+        }
+    try:
+        with open(csv_path, "r", newline="") as csvfile:
+            rows = list(csv.DictReader(csvfile))
+        if not rows:
+            return {
+                "eval_index": 0,
+                "last_timestep": 0,
+                "best_tsr_so_far": 0.0,
+                "best_mean_reward": -np.inf,
+                "last_wall_clock_time_sec": 0.0,
+            }
+        last_row = rows[-1]
+        best_tsr = max(float(row.get("best_tsr_so_far", 0.0) or 0.0) for row in rows)
+        best_mean_reward = max(float(row.get("mean_reward", -np.inf) or -np.inf) for row in rows)
+        return {
+            "eval_index": int(last_row.get("eval_index", 0) or 0),
+            "last_timestep": int(float(last_row.get("timestep", 0) or 0)),
+            "best_tsr_so_far": best_tsr,
+            "best_mean_reward": best_mean_reward,
+            "last_wall_clock_time_sec": float(last_row.get("wall_clock_time_sec", 0.0) or 0.0),
+        }
+    except Exception:
+        logger.exception("Failed to load existing eval state from %s", csv_path)
+        return {
+            "eval_index": 0,
+            "last_timestep": 0,
+            "best_tsr_so_far": 0.0,
+            "best_mean_reward": -np.inf,
+            "last_wall_clock_time_sec": 0.0,
+        }
+
 def make_env(simulation_config, episode_cache=None, return_cache=False): 
     # Unpack arguments from simulation_config and pass them to CityLoader
     city, cached_observation = CityLoader.from_yaml(**simulation_config, episode_cache=episode_cache)
@@ -164,21 +214,22 @@ class EvalCheckpointCallback(CheckpointCallback):
         self.difficulty = difficulty
         self.seed = seed
         self.split = split
-        self.best_mean_reward = -np.inf
-        self.best_tsr_so_far = 0.0
         self.simulation_config = simulation_config
         with open(episode_data, "rb") as f:
             self.episode_data = pkl.load(f)
         self.eval_actions = eval_actions
         self.eval_csv_path = os.path.join(self.save_path, "{}_eval_metrics.csv".format(self.exp_name))
-        self._last_eval_timestep = 0
-        self._last_save_timestep = 0
         self.failure_rule_names = _load_task_rule_names(self.simulation_config["rule_yaml_file"])
         self._rollout_failures_since_last_eval = 0
         self._rollout_timeouts_since_last_eval = 0
         self._rollout_successes_since_last_eval = 0
-        self._eval_index = 0
-        self._start_time = time.time()
+        existing_state = _load_existing_eval_state(self.eval_csv_path)
+        self.best_mean_reward = existing_state["best_mean_reward"]
+        self.best_tsr_so_far = existing_state["best_tsr_so_far"]
+        self._last_eval_timestep = existing_state["last_timestep"]
+        self._last_save_timestep = existing_state["last_timestep"]
+        self._eval_index = existing_state["eval_index"]
+        self._start_time = time.time() - existing_state["last_wall_clock_time_sec"]
         self._adaptive_eval_schedule = AdaptiveEvalSchedule(adaptive_eval_schedule, self.eval_freq)
 
     def _append_eval_csv_row(self, row_dict):
@@ -498,21 +549,22 @@ class DreamerEvalCheckpointCallback(CheckpointCallback):
         self.difficulty = difficulty
         self.seed = seed
         self.split = split
-        self.best_mean_reward = -np.inf
-        self.best_tsr_so_far = 0.0
         self.simulation_config = simulation_config
         with open(episode_data, "rb") as f:
             self.episode_data = pkl.load(f)
         self.eval_actions = eval_actions
         self.eval_csv_path = os.path.join(self.save_path, "{}_eval_metrics.csv".format(self.exp_name))
-        self._last_eval_timestep = 0
-        self._last_save_timestep = 0
         self.failure_rule_names = _load_task_rule_names(self.simulation_config["rule_yaml_file"])
         self._rollout_failures_since_last_eval = 0
         self._rollout_timeouts_since_last_eval = 0
         self._rollout_successes_since_last_eval = 0
-        self._eval_index = 0
-        self._start_time = time.time()
+        existing_state = _load_existing_eval_state(self.eval_csv_path)
+        self.best_mean_reward = existing_state["best_mean_reward"]
+        self.best_tsr_so_far = existing_state["best_tsr_so_far"]
+        self._last_eval_timestep = existing_state["last_timestep"]
+        self._last_save_timestep = existing_state["last_timestep"]
+        self._eval_index = existing_state["eval_index"]
+        self._start_time = time.time() - existing_state["last_wall_clock_time_sec"]
         self._adaptive_eval_schedule = AdaptiveEvalSchedule(adaptive_eval_schedule, self.eval_freq)
 
     def _append_eval_csv_row(self, row_dict):
