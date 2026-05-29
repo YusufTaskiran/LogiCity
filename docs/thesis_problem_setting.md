@@ -2,52 +2,49 @@
 
 ## 3.1 Safe Path Following in LogiCity
 
-In this thesis, we study **Safe Path Following (SPF)** in the LogiCity simulator. The task is a goal-directed urban navigation problem in which an RL-controlled car must reach its destination while respecting traffic-like logical constraints induced by the map structure and by surrounding agents. We do not study low-level vehicle control. Instead, we study the decision problem of when the ego vehicle should move and when it should stop in the presence of rule-relevant traffic interactions.
+In this thesis, we study **Safe Path Following (SPF)** in the LogiCity simulator under a shared-policy **multi-RL-agent** setting. Let \(K\) denote the number of RL-controlled cars. Each RL agent must reach its own destination while respecting traffic-like logical constraints induced by the map structure and by surrounding agents, which may include both expert-controlled traffic participants and other RL-controlled cars. We do not study low-level vehicle control. Instead, we study the decision problem of when each RL-controlled vehicle should move and when it should stop in the presence of rule-relevant traffic interactions.
 
-This distinction is important. In our setting, a policy can fail in two qualitatively different ways. It can fail **unsafely**, by violating a logical traffic rule and triggering a task failure. It can also fail **conservatively**, by stopping too often and timing out before reaching the goal. We therefore formulate SPF as a safe task-completion problem rather than as a pure safety-filtering problem. The agent must not only avoid rule violations, but also complete its trajectory efficiently enough to succeed within the horizon.
+This distinction matters because the policy can fail in two qualitatively different ways. It can fail **unsafely**, by causing one or more RL agents to violate a logical traffic rule and trigger task failure. It can also fail **conservatively**, by inducing excessive stopping so that the agents do not reach their goals before the horizon expires. We therefore formulate SPF as a safe task-completion problem rather than as a pure safety-filtering problem. The shared policy must not only avoid rule violations, but also guide all RL-controlled agents to make sufficient progress.
 
-The LogiCity simulator is well suited to this problem because it exposes safety-relevant structure through symbolic predicates and explicit task rules. Instead of learning from pixels, the agent operates on a grounded logical representation of nearby entities and their relations. This makes it possible to study shielding in a domain where the safety specification is already naturally relational and interpretable.
+The LogiCity simulator is well suited to this problem because it exposes safety-relevant structure through symbolic predicates and explicit task rules. Instead of learning from pixels, each RL agent operates on a grounded logical representation of nearby entities and their relations. This makes it possible to study shielding in a domain where the safety specification is already naturally relational and interpretable.
 
-## 3.2 Agents, Actions, and Observations
+## 3.2 Shared-Policy Multi-Agent Task
 
-### Agents in the experiments
+At the thesis level, SPF is defined for \(K \ge 1\) RL-controlled cars that share the same policy architecture, action space, and observation-space schema. At each timestep, every RL agent receives its own local observation and independently chooses an action from the same action set, but all RL agents use one shared parameter vector \(\theta\). Background traffic participants remain controlled by the simulator's logic-based expert planner.
 
-Across the main single-agent experiments, the RL-controlled agent is always `Car_1`. In the Lite SPF task family used in this thesis, `Car_1` is a normal car and the remaining agents are background traffic participants controlled by the simulator’s logic-based expert planner. The exact roster varies by difficulty.
+The core thesis setting uses a **controlled LogiCity subset** in which the RL-controlled agents are normal cars and the main non-RL traffic participants are normal cars and pedestrians. This keeps the shared-policy multi-agent problem homogeneous on the RL side while still preserving interactive symbolic traffic structure.
 
-In the current training setups, we use the following agent rosters:
+This means that the thesis problem is multi-agent by construction. The case \(K=1\) is not a separate task definition. It is only the simplest instantiation of the same shared-policy formulation and is useful as a controlled implementation setting before training with multiple RL-controlled cars simultaneously.
 
-- **easy-lite**
-  - `Car_1`: RL-controlled normal car
-  - `Pedestrian_1`: old pedestrian
-  - `Car_2`: ambulance car
-  - `Car_3`: normal car
+In the current implementation, we use the following staged instantiations of the same overall problem:
 
-- **medium-lite**
-  - `Car_1`: RL-controlled normal car
-  - `Pedestrian_1`: old pedestrian
-  - `Car_2`: ambulance car
-  - `Car_3`: bus car
-  - `Car_4`: normal car
+- a controlled benchmark with \(K=1\),
+- a shared-policy multi-agent setting with \(K=2\),
+- and, if budget permits, an extended setting with \(K=3\).
 
-- **hard-lite**
-  - `Car_1`: RL-controlled normal car
-  - `Pedestrian_1`: old pedestrian
-  - `Car_2`: ambulance car
-  - `Car_3`: police car
-  - `Car_4`: bus car
-  - `Car_5`: normal car
+## 3.3 Agents, Actions, and Observations
 
-Thus, difficulty is not increased merely by adding more objects to the map. It is increased by adding more semantically distinct traffic participants, which in turn activates richer rule conditions.
+### Agents in the core thesis setting
 
-### Actions
+In the main experiments of the thesis, all RL-controlled agents are **normal cars**. The controlled background traffic consists of additional normal cars and pedestrians. This choice is deliberate: it keeps the shared policy semantically homogeneous across RL agents and makes the multi-agent scaling results easier to interpret.
 
-The RL policy acts in a discrete four-action space:
+Thus, the core thesis questions are answered in a controlled traffic setting with:
+
+- RL-controlled normal cars,
+- expert-controlled normal cars,
+- expert-controlled pedestrians.
+
+Richer traffic roles such as ambulance, bus, and police vehicles are not part of the default thesis setting. If included, they are treated as an **extension setting** used to explore whether the same qualitative conclusions continue to hold under more heterogeneous traffic semantics.
+
+### Shared action space
+
+Each RL-controlled car uses the same discrete four-action space:
 
 \[
 \mathcal{A} = \{\texttt{Slow}, \texttt{Normal}, \texttt{Fast}, \texttt{Stop}\}.
 \]
 
-These four macro-actions are mapped to the simulator’s underlying 13-dimensional car action model:
+These four macro-actions are mapped to the simulator's underlying 13-dimensional car action model:
 
 - `Slow`: one-cell movement in one of the four cardinal directions,
 - `Normal`: two-cell movement in one of the four cardinal directions,
@@ -61,260 +58,118 @@ At the car level, the underlying action set is:
 \texttt{Left\_Normal}, \dots, \texttt{Down\_Fast}, \texttt{Stop}\}.
 \]
 
-However, the RL policy does not choose directions directly. The direction is implicitly constrained by the car’s route and local planner. In practice:
+However, the RL policy does not choose directions directly. The direction is constrained by the car's route and local planner. In practice:
 
-- `Slow` means “advance one grid cell along an admissible route direction,”
-- `Normal` means “advance two grid cells along an admissible route direction,”
-- `Fast` means “advance three grid cells along an admissible route direction,”
-- `Stop` means “remain in place.”
+- `Slow` means "advance one grid cell along an admissible route direction,"
+- `Normal` means "advance two grid cells along an admissible route direction,"
+- `Fast` means "advance three grid cells along an admissible route direction,"
+- `Stop` means "remain in place."
 
-This makes the RL problem fundamentally a **speed-mode decision problem under safety constraints**.
+All RL-controlled agents therefore share the same action semantics. The learning problem is a shared-policy **speed-mode decision problem under safety constraints**.
 
-### Observations
+### Shared observation-space schema
 
-We do not use visual observations. The policy receives a flattened grounded logical state vector over a local field of view. The observation space is represented as a continuous box:
+We do not use visual observations. Each RL agent receives its own flattened grounded logical state vector over a local field of view. Within a given difficulty, all RL agents share the same observation-space schema, so the observation space is represented as a continuous box
 
 \[
 \mathcal{O} \subseteq [0,1]^d,
 \]
 
-where \(d\) depends on the active ontology and the field-of-view entity budget.
+where \(d\) depends on the active ontology and on the field-of-view entity budget.
 
-The field-of-view entity budgets are:
+In the core thesis setting, this ontology is intentionally kept compact and centered on normal-car and pedestrian interactions. Each unary predicate contributes one grounded value per local entity, and each binary predicate contributes one grounded value per ordered entity pair. Predicates whose function is `None` in the ontology, such as action predicates, are not included in the observation. Thus, all RL agents share the same feature template, even though the actual grounded values differ across agents and states.
 
-- **easy-lite**: `fov_entities.Entity = 3`
-- **medium-lite**: `fov_entities.Entity = 4`
-- **hard-lite**: `fov_entities.Entity = 5`
+## 3.4 Example of a Grounded Observation
 
-Each unary predicate contributes one grounded value per local entity, and each binary predicate contributes one grounded value per ordered entity pair. Predicates whose function is `None` in the ontology, such as action predicates, are not included in the observation.
+Because the observation is flattened before being passed to the neural policy, it is helpful to illustrate what one grounded state actually looks like. Consider a simple core-setting case with three local entities in the field of view:
 
-## 3.3 Grounded Observation Space by Difficulty
+- entity slot 1: another normal car,
+- entity slot 2: a pedestrian,
+- entity slot 3: another normal car.
 
-The observation dimension differs by difficulty because the predicate set becomes richer and the field-of-view entity budget increases.
-
-### Easy-lite observation space
-
-The `easy` ontology contains:
-
-- 7 grounded unary predicates:
-  - `IsPedestrian`
-  - `IsCar`
-  - `IsAmbulance`
-  - `IsOld`
-  - `IsTiro`
-  - `IsAtInter`
-  - `IsInInter`
-- 2 grounded binary predicates:
-  - `HigherPri`
-  - `CollidingClose`
-
-With `3` entities in the field of view, the observation dimension is:
+Suppose the compact ontology contains unary predicates such as `IsPedestrian`, `IsCar`, `IsAtInter`, and `IsInInter`, and binary predicates such as `HigherPri` and `CollidingClose`. One possible grounded observation for the ego agent can then be written schematically as
 
 \[
-7 \cdot 3 + 2 \cdot 3^2 = 21 + 18 = 39.
+o =
+[
+\underbrace{0,1,1,0}_{\text{entity 1 unary}},
+\underbrace{1,0,0,0}_{\text{entity 2 unary}},
+\underbrace{0,1,0,1}_{\text{entity 3 unary}},
+\underbrace{0,1,0,0,0,0,0,0,0}_{\texttt{HigherPri}},
+\underbrace{1,0,0,0,0,0,0,0,0}_{\texttt{CollidingClose}}
+].
 \]
 
-So the easy-lite observation space is:
+The first three blocks encode unary facts for the three entity slots. In the example above, the first entity is a car at an intersection, the second is a pedestrian, and the third is a car currently in an intersection. The last two blocks encode binary relations over ordered pairs of entity slots. Here, one `HigherPri` relation is active and one `CollidingClose` relation is active, while the remaining ordered pairs are zero.
 
-\[
-\mathcal{O}_{\text{easy}} \subseteq [0,1]^{39}.
-\]
+The exact ordering of features is implementation-dependent, but the important point is that the policy does not observe raw symbolic formulas. It observes a fixed-length vector of grounded predicate values. The shield then reads the same grounded information again, but interprets it symbolically through ProbLog facts rather than only through neural function approximation.
 
-### Medium-lite observation space
+## 3.5 Core Observation Space and Extension Space
 
-The `medium` ontology contains:
+In the core thesis setting, the observation space is intentionally compact because the experiments focus on multi-agent scaling and shield design rather than on heterogeneous vehicle roles. The exact observation dimension depends on the chosen compact ontology and field-of-view budget, but the same general principle holds throughout: the observation is a flattened vector of grounded unary and binary predicate values shared across all RL agents.
 
-- 8 grounded unary predicates:
-  - `IsPedestrian`
-  - `IsCar`
-  - `IsAmbulance`
-  - `IsOld`
-  - `IsTiro`
-  - `IsBus`
-  - `IsAtInter`
-  - `IsInInter`
-- 4 grounded binary predicates:
-  - `HigherPri`
-  - `CollidingClose`
-  - `NextTo`
-  - `RightOf`
-
-With `4` entities in the field of view, the observation dimension is:
-
-\[
-8 \cdot 4 + 4 \cdot 4^2 = 32 + 64 = 96.
-\]
-
-So the medium-lite observation space is:
-
-\[
-\mathcal{O}_{\text{medium}} \subseteq [0,1]^{96}.
-\]
-
-### Hard-lite observation space
-
-The `hard` ontology contains:
-
-- 11 grounded unary predicates:
-  - `IsPedestrian`
-  - `IsCar`
-  - `IsAmbulance`
-  - `IsBus`
-  - `IsPolice`
-  - `IsTiro`
-  - `IsReckless`
-  - `IsOld`
-  - `IsYoung`
-  - `IsAtInter`
-  - `IsInInter`
-- 6 grounded binary predicates:
-  - `IsClose`
-  - `HigherPri`
-  - `CollidingClose`
-  - `LeftOf`
-  - `RightOf`
-  - `NextTo`
-
-With `5` entities in the field of view, the observation dimension is:
-
-\[
-11 \cdot 5 + 6 \cdot 5^2 = 55 + 150 = 205.
-\]
-
-So the hard-lite observation space is:
-
-\[
-\mathcal{O}_{\text{hard}} \subseteq [0,1]^{205}.
-\]
-
-### Interpretation
-
-The important point is that the observation difficulty grows in two ways:
+Difficulty in the core setting can still increase in two ways:
 
 1. more entities are represented locally,
-2. more semantic and relational predicates are grounded.
+2. more relational structure must be tracked among normal cars and pedestrians.
 
-This means that harder settings require the policy to reason over a richer symbolic state, not merely over longer trajectories.
+Thus, harder settings still require the shared policy to reason over richer symbolic interactions, even without introducing ambulance, bus, and police semantics into the main thesis experiments.
 
-## 3.4 Safety Rules and Failure Conditions
+If time permits, we additionally consider an **extension setting** with richer heterogeneous background traffic. In that extension, the ontology can be expanded to include ambulance, bus, and police predicates and their associated relations. However, those richer semantics are not required to answer the main multi-agent research questions of the thesis.
 
-In the SPF task family, safety is defined through explicit **Task** rules in the navigation rule files. In all three current Lite difficulties, the active task failure condition is a stop-style implication:
+## 3.6 Safety Rules and Joint Episode Outcomes
+
+In the core SPF task family, safety is defined through explicit **Task** rules in the navigation rule files. At a high level, the active task failure condition has the form
 
 \[
 \texttt{hazard condition} \Rightarrow \texttt{Stop(entity)}.
 \]
 
-Thus, when a rule-relevant hazardous condition holds, the RL-controlled car must choose `Stop`. If it fails to do so, the episode terminates with failure and receives the configured penalty.
+Thus, when a rule-relevant hazardous condition holds for a given RL-controlled car, that car must choose `Stop`. If it fails to do so, the episode terminates with failure and receives the configured penalty.
 
-### Easy-lite safety rule
+In the core thesis setting, the hazard conditions are intentionally centered on normal-car and pedestrian interactions, such as blocked intersection occupancy, priority conflicts, and imminent collision proximity. This is sufficient to create a meaningful symbolic shielding problem while keeping the main multi-agent study focused and interpretable.
 
-In the `easy` difficulty, the task rule requires the ego car to stop if there exists another entity such that at least one of the following is true:
+If we include the richer extension setting, additional role-dependent rules involving ambulance, bus, or police traffic can be added on top of the same overall task structure. Those rules are treated as an extension of the thesis rather than as the default basis for the main research questions.
 
-1. the ego is at an intersection and the other entity is in the intersection,
-2. the ego is at an intersection, the other entity is also at the intersection, and the other entity has higher priority,
-3. the ego is collision-close to the other entity.
-
-So the easy-lite rule set captures three core urban safety relations:
-
-- blocked intersection occupancy,
-- intersection priority,
-- imminent collision proximity.
-
-### Medium-lite safety rule
-
-In the `medium` difficulty, the stop condition is extended. The ego car must stop if there exists another entity such that at least one of the following holds:
-
-1. a non-ambulance, non-old ego car is at an intersection while another entity is in the intersection,
-2. a non-ambulance, non-old ego car is at an intersection while another entity at the intersection has higher priority,
-3. a non-ambulance, non-old ego car is in an intersection while another entity in the intersection is an ambulance,
-4. a bus ego vehicle is not at or in an intersection and a pedestrian is both to its right and next to it,
-5. an ambulance ego vehicle has an old entity to its right,
-6. a non-ambulance, non-old ego car is collision-close to another entity.
-
-Compared with `easy`, the medium stop rule therefore adds:
-
-- role-dependent exceptions,
-- ambulance-related yielding,
-- bus-pedestrian interaction,
-- richer spatial conditions.
-
-### Hard-lite safety rule
-
-In the `hard` difficulty, the stop condition is extended again. The ego car must stop if there exists another entity such that at least one of the following holds:
-
-1. a non-ambulance, non-old ego car is at an intersection while another entity is in the intersection,
-2. a non-ambulance, non-old ego car is at an intersection while another entity at the intersection has higher priority,
-3. a non-ambulance, non-old ego car is in an intersection while another entity in the intersection is an ambulance,
-4. a non-ambulance, non-police ego car that is a car is not at or in an intersection, while a police vehicle is to its left and close to it,
-5. a bus ego vehicle is not at or in an intersection and a pedestrian is both to its right and next to it,
-6. an ambulance ego vehicle has an old entity to its right,
-7. a non-ambulance, non-old ego car is collision-close to another entity.
-
-Thus, the hard-lite setting adds police-related interaction logic on top of the medium conditions.
-
-### Failure and episode termination
+### Joint termination and outcome types
 
 At the environment level, an episode terminates if:
 
-1. the agent reaches its goal,
+1. all RL-controlled agents reach their goals,
 2. the horizon is exceeded,
-3. the task rule is violated.
+3. any RL-controlled agent violates a task rule.
 
 This yields three outcome types:
 
-- **success**: goal reached,
-- **failure**: task-rule violation,
-- **timeout**: horizon exceeded before success.
+- **success**: all RL-controlled agents reach their goals,
+- **failure**: at least one RL-controlled agent triggers a task-rule violation,
+- **timeout**: the horizon is exceeded before joint success.
 
-This distinction is important for the thesis because high safety alone does not imply high task performance: an agent may avoid failure but still time out frequently.
+This distinction is important because high safety alone does not imply high task performance: a shared policy may avoid failures but still induce timeout-dominant behavior. When we instantiate the special case \(K=1\), these same definitions reduce to the familiar single-agent outcomes.
 
-## 3.5 Evaluation Metrics
+## 3.7 Evaluation Metrics
 
-Our primary task metric is **Trajectory Success Rate (TSR)**, defined as the fraction of episodes in which the agent reaches its goal successfully. We focus on TSR because it captures the actual objective of SPF: safe completion of the route.
+Our primary task metric is **Trajectory Success Rate (TSR)**, defined as the fraction of episodes in which the RL-controlled system succeeds. In the general multi-agent case, this means **joint TSR**: all RL-controlled agents reach their goals before any failure and before the horizon is exceeded.
 
-To understand *why* a method succeeds or fails, we also evaluate:
+We focus on joint TSR because it captures the actual objective of shared-policy SPF: safe completion of the route set for all RL-controlled agents. To understand why a method succeeds or fails, we also evaluate:
 
-- **failure rate**, the fraction of episodes ending in task-rule failure,
-- **timeout rate**, the fraction of episodes ending due to horizon exhaustion,
+- **joint failure rate**, the fraction of episodes ending in task-rule failure,
+- **joint timeout rate**, the fraction of episodes ending due to horizon exhaustion,
+- **per-agent TSR**, the fraction of RL-controlled agents that individually reach their goals,
 - **mean reward**, the average episode return,
 - **mean episode length**, the average number of steps taken per episode.
 
-These metrics are complementary. In particular:
+These metrics are complementary:
 
-- failure rate measures unsafe behavior,
-- timeout rate measures over-conservative or ineffective behavior,
-- TSR measures the final balance between safety and progress.
+- joint failure rate measures unsafe behavior,
+- joint timeout rate measures over-conservative or ineffective behavior,
+- per-agent TSR separates local progress from joint coordination success,
+- joint TSR measures the final balance between safety and coordinated progress.
 
 For the sample-efficiency question, we additionally evaluate:
 
-- the number of training timesteps required to reach strong TSR,
+- the number of training timesteps required to reach strong joint TSR,
 - the shape of the validation learning curves over time,
 - the trajectory of failures and timeouts during training.
 
-For shielded methods, we also log shield-specific diagnostics such as intervention rate and estimated policy safety. However, these are explanatory metrics rather than part of the task definition itself.
-
-## 3.6 Single-Agent and Multi-Agent Task Variants
-
-We consider two task variants.
-
-### Single-agent SPF
-
-The main setting is the single-agent task, in which one RL-controlled ego vehicle interacts with expert-controlled background traffic. This is the core setting used to answer our two main research questions about:
-
-- whether probabilistic logic shields improve TSR,
-- whether they improve training efficiency relative to PPO.
-
-It is also the cleanest setting in which to analyze safety failures, timeout collapse, and the effect of different shield designs.
-
-### Shared-policy multi-agent SPF
-
-We also consider a multi-agent extension in which multiple RL-controlled cars act simultaneously while sharing one policy. Each RL-controlled agent receives its own local grounded observation and produces its own action independently through the shared policy. Background non-RL agents remain expert-controlled.
-
-In the current implementation, we begin with an `easy` shared-policy setup and use:
-
-- 2 RL cars first,
-- then 3 RL cars if time permits.
-
-For this setting, we distinguish between **per-agent success** and **joint success**. Joint success holds only if all RL-controlled agents reach their goals before any one of them fails and before the global horizon is exceeded. Joint failure occurs if any RL agent violates a task rule.
-
-This extension is important because it lets us study whether symbolic shielding remains useful not only for individual safe navigation, but also for coordination in a shared traffic environment.
+For shielded methods, we also log shield-specific diagnostics such as intervention rate and estimated policy safety. These are explanatory metrics rather than part of the task definition itself.

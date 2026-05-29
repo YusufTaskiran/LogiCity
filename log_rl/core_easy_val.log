@@ -1,0 +1,11 @@
+2026-05-28 13:37:29 [INFO]: Collecting 20 episodes from expert...
+2026-05-28 13:37:29 [INFO]: Loading simulation config from config/tasks/Nav/easy/experts/core_episode_val.yaml.
+2026-05-28 13:37:29 [INFO]: Simulation config: {'map_yaml_file': 'config/maps/square_2x2.yaml', 'agent_yaml_file': 'config/agents/core_easy/val.yaml', 'ontology_yaml_file': 'config/rules/ontology_core_easy.yaml', 'rule_type': 'Z3_Expert', 'rule_yaml_file': 'config/rules/Nav/easy/expert.yaml', 'rl': True, 'debug': False, 'use_multi': False, 'agent_region': 103, 'rl_agent': {'max_priority': 4, 'use_expert': True, 'agent_name': 'Car_1', 'max_horizon': 300, 'reward_scheme': 'safe_path_following', 'goal_reward': 1.0, 'progress_reward_scale': 0.05, 'time_penalty': -0.01, 'action_space': 4, 'action_mapping': {0: [1, 1, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0], 1: [0, 0, 0, 0, 1, 1, 1, 1, 0, 0, 0, 0, 0], 2: [0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 0], 3: [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1]}, 'fov_entities': {'Entity': 5}, 'action_cost': {0: 0, 1: 0, 2: 0, 3: 0}, 'reset_dist': {'concepts': ['normal'], 'prob': [1.0]}, 'overtime_cost': -0.5}}
+2026-05-28 13:37:29 [INFO]: RL config: {'algorithm': 'ExpertCollector', 'policy_kwargs': {'num_episodes': -1, 'return_full_world': False, 'features_extractor_module': 'logicity.rl_agent.policy.neural', 'features_extractor_class': 'MLPFeatureExtractor', 'features_extractor_kwargs': {'features_dim': 64}}, 'hyperparameters': 'None', 'train': False, 'checkpoint_path': '', 'num_envs': 1, 'total_timesteps': 1000000}
+2026-05-28 13:37:29 [INFO]: Generating 20 successful episodes with 4 workers.
+2026-05-28 14:02:43 [INFO]: Success rate: 1.0
+2026-05-28 14:02:43 [INFO]: Mean Score achieved: 5.182499999999999
+2026-05-28 14:02:43 [INFO]: Total attempts across workers: 573
+2026-05-28 14:02:43 [INFO]: Acceptance ratio: 0.0349
+2026-05-28 14:02:43 [INFO]: Accepted episodes with at least one Stop: 12/20
+2026-05-28 14:02:44 [INFO]: Total time spent: 1514.95792222023

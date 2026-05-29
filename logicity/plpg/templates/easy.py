@@ -16,9 +16,21 @@ class EasyPLPGTemplate(BasePLPGTemplate):
         self._is_in_inter = pred_grounding_index["IsInInter"]
         self._higher_pri = pred_grounding_index["HigherPri"]
         self._colliding_close = pred_grounding_index["CollidingClose"]
+        self._higher_pri_compact = (self._higher_pri[1] - self._higher_pri[0]) == (self.num_entities - 1)
+        self._colliding_close_compact = (self._colliding_close[1] - self._colliding_close[0]) == (self.num_entities - 1)
 
     def _pair_index(self, i, j):
         return i * self.num_entities + j
+
+    def _higher_pri_index(self, i):
+        if self._higher_pri_compact:
+            return self._higher_pri[0] + (i - 1)
+        return self._higher_pri[0] + self._pair_index(i, 0)
+
+    def _colliding_close_index(self, i):
+        if self._colliding_close_compact:
+            return self._colliding_close[0] + (i - 1)
+        return self._colliding_close[0] + self._pair_index(0, i)
 
     def build_program_lines(self):
         lines = [
@@ -63,10 +75,10 @@ class EasyPLPGTemplate(BasePLPGTemplate):
         for i in range(1, self.num_entities):
             fact_weights[f"is_in_inter_{i}"] = self._binary_fact(obs_logic[self._is_in_inter[0] + i].item())
             fact_weights[f"higher_pri_{i}"] = self._binary_fact(
-                obs_logic[self._higher_pri[0] + self._pair_index(i, 0)].item()
+                obs_logic[self._higher_pri_index(i)].item()
             )
             fact_weights[f"colliding_close_{i}"] = self._binary_fact(
-                obs_logic[self._colliding_close[0] + self._pair_index(0, i)].item()
+                obs_logic[self._colliding_close_index(i)].item()
             )
         return fact_weights
 

@@ -25,6 +25,35 @@ if (!(Test-Path $generatedDir)) {
     New-Item -ItemType Directory -Path $generatedDir | Out-Null
 }
 
+function Test-RunCompleted {
+    param(
+        [string]$RunDir,
+        [string]$EvalCsv,
+        [int]$TargetTimesteps
+    )
+
+    $finalCheckpoint = Join-Path $RunDir "easy_lite_plpg_ppo_${TargetTimesteps}_steps.zip"
+    if (Test-Path $finalCheckpoint) {
+        return $true
+    }
+
+    if (Test-Path $EvalCsv) {
+        try {
+            $lastRow = Import-Csv $EvalCsv | Select-Object -Last 1
+            if ($null -ne $lastRow -and $lastRow.PSObject.Properties.Name -contains "timestep") {
+                $lastTimestep = [int][double]$lastRow.timestep
+                if ($lastTimestep -ge $TargetTimesteps) {
+                    return $true
+                }
+            }
+        } catch {
+            Write-Warning "Could not inspect existing eval CSV '$EvalCsv'. Treating run as incomplete."
+        }
+    }
+
+    return $false
+}
+
 $noiseLevels = @("0.00", "0.05", "0.10", "0.20", "0.30")
 $alphaLevels = @("0.01", "0.1", "0.5")
 $adaptivePattern = @'
@@ -46,6 +75,13 @@ foreach ($alpha in $alphaLevels) {
         $alphaLabel = "alpha" + ($alpha.Replace(".", ""))
         $expName = "easy_lite_plpg_${label}_${alphaLabel}_seed$Seed"
         $generatedConfig = Join-Path $generatedDir "plpg_ppo_eval_${label}_${alphaLabel}.yaml"
+        $runDir = Join-Path $repoRoot "checkpoints\$expName"
+        $evalCsv = Join-Path $runDir "${expName}_eval_metrics.csv"
+
+        if (Test-RunCompleted -RunDir $runDir -EvalCsv $evalCsv -TargetTimesteps $TotalTimesteps) {
+            Write-Host "Skipping completed run $expName"
+            continue
+        }
 
         $configText = Get-Content -Raw $baseConfig
 

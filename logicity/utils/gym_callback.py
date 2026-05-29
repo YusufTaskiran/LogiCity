@@ -80,7 +80,10 @@ def _should_force_final_eval(model, current_timestep, last_eval_timestep):
     total_timesteps = getattr(model, "_total_timesteps", None)
     if total_timesteps is None:
         return False
-    return current_timestep >= int(total_timesteps) and current_timestep != last_eval_timestep
+    total_timesteps = int(total_timesteps)
+    # Force exactly one final eval when training first reaches or crosses
+    # the configured budget, but never on subsequent callback steps.
+    return last_eval_timestep < total_timesteps <= current_timestep
 
 def _sanitize_rule_name(rule_name):
     return str(rule_name).replace(" ", "_")

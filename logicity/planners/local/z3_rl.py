@@ -256,6 +256,7 @@ def logic_grounding_shape(
         if method_full_name == "None":
             continue
 
+        grounding_mode = pred_info.get("grounding_mode", "full")
         if arity == 1:
             n_start = n
             # Unary predicate grounding
@@ -264,10 +265,17 @@ def logic_grounding_shape(
             pred_grounding_index[pred_name] = (n_start, n)
         elif arity == 2:
             n_start = n
-            # Binary predicate grounding
-            for _ in entities[eval_pred.domain(0).name()]:
-                for _ in entities[eval_pred.domain(1).name()]:
-                    n += 1
+            domain1 = entities[eval_pred.domain(0).name()]
+            domain2 = entities[eval_pred.domain(1).name()]
+            if grounding_mode == "other_to_ego":
+                n += max(len(domain1) - 1, 0)
+            elif grounding_mode == "ego_to_other":
+                n += max(len(domain2) - 1, 0)
+            else:
+                # Binary predicate grounding
+                for _ in domain1:
+                    for _ in domain2:
+                        n += 1
             pred_grounding_index[pred_name] = (n_start, n)
     logger.info("Given Predicates {}, the FOV entities {}, The logic grounding shape is: {}".format(local_predicates, fov_entities, n))
     return n, pred_grounding_index
@@ -313,6 +321,7 @@ def solve_sub_problem(ego_name,
             module = importlib.import_module(module_name)
             method = getattr(module, method_name)
 
+            grounding_mode = pred_info.get("grounding_mode", "full")
             if arity == 1:
                 # Unary predicate grounding
                 for entity in local_entities[eval_pred.domain(0).name()]:
@@ -323,16 +332,39 @@ def solve_sub_problem(ego_name,
                     else:
                         local_solver.add(Not(eval_pred(entity)))
             elif arity == 2:
-                # Binary predicate grounding
-                for entity1 in local_entities[eval_pred.domain(0).name()]:
-                    entity1_name = entity1.decl().name()
-                    for entity2 in local_entities[eval_pred.domain(1).name()]:
-                        entity2_name = entity2.decl().name()
-                        value = method(partial_world, partial_intersections, partial_agents, entity1_name, entity2_name)
+                domain1 = local_entities[eval_pred.domain(0).name()]
+                domain2 = local_entities[eval_pred.domain(1).name()]
+                if grounding_mode == "other_to_ego":
+                    ego_entity = domain2[0]
+                    ego_name = ego_entity.decl().name()
+                    for entity1 in domain1[1:]:
+                        entity1_name = entity1.decl().name()
+                        value = method(partial_world, partial_intersections, partial_agents, entity1_name, ego_name)
                         if value:
-                            local_solver.add(eval_pred(entity1, entity2))
+                            local_solver.add(eval_pred(entity1, ego_entity))
                         else:
-                            local_solver.add(Not(eval_pred(entity1, entity2)))
+                            local_solver.add(Not(eval_pred(entity1, ego_entity)))
+                elif grounding_mode == "ego_to_other":
+                    ego_entity = domain1[0]
+                    ego_name = ego_entity.decl().name()
+                    for entity2 in domain2[1:]:
+                        entity2_name = entity2.decl().name()
+                        value = method(partial_world, partial_intersections, partial_agents, ego_name, entity2_name)
+                        if value:
+                            local_solver.add(eval_pred(ego_entity, entity2))
+                        else:
+                            local_solver.add(Not(eval_pred(ego_entity, entity2)))
+                else:
+                    # Binary predicate grounding
+                    for entity1 in domain1:
+                        entity1_name = entity1.decl().name()
+                        for entity2 in domain2:
+                            entity2_name = entity2.decl().name()
+                            value = method(partial_world, partial_intersections, partial_agents, entity1_name, entity2_name)
+                            if value:
+                                local_solver.add(eval_pred(entity1, entity2))
+                            else:
+                                local_solver.add(Not(eval_pred(entity1, entity2)))
         # 5. create, ground rules and add to solver
         local_rule_tem = copy.deepcopy(rule_tem)
         for rule_name, rule_template in local_rule_tem.items():
@@ -399,6 +431,7 @@ def solve_sub_problem(ego_name,
             module = importlib.import_module(module_name)
             method = getattr(module, method_name)
 
+            grounding_mode = pred_info.get("grounding_mode", "full")
             if arity == 1:
                 # Unary predicate grounding
                 for entity in local_entities[eval_pred.domain(0).name()]:
@@ -413,19 +446,33 @@ def solve_sub_problem(ego_name,
                         grounding.append(0)
                         k += 1
             elif arity == 2:
-                # Binary predicate grounding
-                for entity1 in local_entities[eval_pred.domain(0).name()]:
-                    entity1_name = entity1.decl().name()
-                    for entity2 in local_entities[eval_pred.domain(1).name()]:
+                domain1 = local_entities[eval_pred.domain(0).name()]
+                domain2 = local_entities[eval_pred.domain(1).name()]
+                if grounding_mode == "other_to_ego":
+                    ego_name = domain2[0].decl().name()
+                    for entity1 in domain1[1:]:
+                        entity1_name = entity1.decl().name()
+                        value = method(partial_world, partial_intersections, partial_agents, entity1_name, ego_name)
+                        grounding_dic["{}_{}".format(pred_name, k)] = 1 if value else 0
+                        grounding.append(1 if value else 0)
+                        k += 1
+                elif grounding_mode == "ego_to_other":
+                    ego_name = domain1[0].decl().name()
+                    for entity2 in domain2[1:]:
                         entity2_name = entity2.decl().name()
-                        value = method(partial_world, partial_intersections, partial_agents, entity1_name, entity2_name)
-                        if value:
-                            grounding_dic["{}_{}".format(pred_name, k)] = 1
-                            grounding.append(1)
-                            k += 1
-                        else:
-                            grounding_dic["{}_{}".format(pred_name, k)] = 0
-                            grounding.append(0)
+                        value = method(partial_world, partial_intersections, partial_agents, ego_name, entity2_name)
+                        grounding_dic["{}_{}".format(pred_name, k)] = 1 if value else 0
+                        grounding.append(1 if value else 0)
+                        k += 1
+                else:
+                    # Binary predicate grounding
+                    for entity1 in domain1:
+                        entity1_name = entity1.decl().name()
+                        for entity2 in domain2:
+                            entity2_name = entity2.decl().name()
+                            value = method(partial_world, partial_intersections, partial_agents, entity1_name, entity2_name)
+                            grounding_dic["{}_{}".format(pred_name, k)] = 1 if value else 0
+                            grounding.append(1 if value else 0)
                             k += 1
 
         agents_actions = {
@@ -481,6 +528,7 @@ def eval_action(rl_action,
                     local_solvers[rule_name].add(Not(eval_pred(entities["Entity"][0])))
             continue
 
+        grounding_mode = pred_info.get("grounding_mode", "full")
         if arity == 1:
             # Unary predicate grounding
             for entity in entities[eval_pred.domain(0).name()]:
@@ -495,19 +543,48 @@ def eval_action(rl_action,
                     for rule_name, rule_template in rule_tem.items():
                         local_solvers[rule_name].add(Not(eval_pred(entity)))
         elif arity == 2:
-            # Binary predicate grounding
-            for entity1 in entities[eval_pred.domain(0).name()]:
-                for entity2 in entities[eval_pred.domain(1).name()]:
+            domain1 = entities[eval_pred.domain(0).name()]
+            domain2 = entities[eval_pred.domain(1).name()]
+            if grounding_mode == "other_to_ego":
+                ego_entity = domain2[0]
+                for entity1 in domain1[1:]:
                     if last_obs_dict["{}_{}".format(pred_name, k)]:
                         grounding.append(1)
                         k += 1
                         for rule_name, rule_template in rule_tem.items():
-                            local_solvers[rule_name].add(eval_pred(entity1, entity2))
+                            local_solvers[rule_name].add(eval_pred(entity1, ego_entity))
                     else:
                         grounding.append(0)
                         k += 1
                         for rule_name, rule_template in rule_tem.items():
-                            local_solvers[rule_name].add(Not(eval_pred(entity1, entity2)))
+                            local_solvers[rule_name].add(Not(eval_pred(entity1, ego_entity)))
+            elif grounding_mode == "ego_to_other":
+                ego_entity = domain1[0]
+                for entity2 in domain2[1:]:
+                    if last_obs_dict["{}_{}".format(pred_name, k)]:
+                        grounding.append(1)
+                        k += 1
+                        for rule_name, rule_template in rule_tem.items():
+                            local_solvers[rule_name].add(eval_pred(ego_entity, entity2))
+                    else:
+                        grounding.append(0)
+                        k += 1
+                        for rule_name, rule_template in rule_tem.items():
+                            local_solvers[rule_name].add(Not(eval_pred(ego_entity, entity2)))
+            else:
+                # Binary predicate grounding
+                for entity1 in domain1:
+                    for entity2 in domain2:
+                        if last_obs_dict["{}_{}".format(pred_name, k)]:
+                            grounding.append(1)
+                            k += 1
+                            for rule_name, rule_template in rule_tem.items():
+                                local_solvers[rule_name].add(eval_pred(entity1, entity2))
+                        else:
+                            grounding.append(0)
+                            k += 1
+                            for rule_name, rule_template in rule_tem.items():
+                                local_solvers[rule_name].add(Not(eval_pred(entity1, entity2)))
 
     # 5. create, ground rules and add to solver
     local_rule_tem = copy.deepcopy(rule_tem)

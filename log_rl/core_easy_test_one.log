@@ -1,0 +1,123 @@
+2026-05-28 14:02:37 [INFO]: Collecting 1 episodes from expert...
+2026-05-28 14:02:37 [INFO]: Loading simulation config from config/tasks/Nav/easy/experts/core_episode_test.yaml.
+2026-05-28 14:02:37 [INFO]: Simulation config: {'map_yaml_file': 'config/maps/square_2x2.yaml', 'agent_yaml_file': 'config/agents/core_easy/test.yaml', 'ontology_yaml_file': 'config/rules/ontology_core_easy.yaml', 'rule_type': 'Z3_Expert', 'rule_yaml_file': 'config/rules/Nav/easy/expert.yaml', 'rl': True, 'debug': False, 'use_multi': False, 'agent_region': 103, 'rl_agent': {'max_priority': 4, 'use_expert': True, 'agent_name': 'Car_1', 'max_horizon': 300, 'reward_scheme': 'safe_path_following', 'goal_reward': 1.0, 'progress_reward_scale': 0.05, 'time_penalty': -0.01, 'action_space': 4, 'action_mapping': {0: [1, 1, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0], 1: [0, 0, 0, 0, 1, 1, 1, 1, 0, 0, 0, 0, 0], 2: [0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 0], 3: [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1]}, 'fov_entities': {'Entity': 5}, 'action_cost': {0: 0, 1: 0, 2: 0, 3: 0}, 'reset_dist': {'concepts': ['normal'], 'prob': [1.0]}, 'overtime_cost': -0.5}}
+2026-05-28 14:02:37 [INFO]: RL config: {'algorithm': 'ExpertCollector', 'policy_kwargs': {'num_episodes': -1, 'return_full_world': False, 'features_extractor_module': 'logicity.rl_agent.policy.neural', 'features_extractor_class': 'MLPFeatureExtractor', 'features_extractor_kwargs': {'features_dim': 64}}, 'hyperparameters': 'None', 'train': False, 'checkpoint_path': '', 'num_envs': 1, 'total_timesteps': 1000000}
+2026-05-28 14:02:37 [INFO]: Trying to creat episode 0 ...
+2026-05-28 14:02:37 [INFO]: Get map info from config/maps/square_2x2.yaml
+2026-05-28 14:02:37 [INFO]: Get agent info from config/agents/core_easy/test.yaml
+2026-05-28 14:02:37 [INFO]: Get onology and rules info from config/rules/ontology_core_easy.yaml, config/rules/Nav/easy/expert.yaml
+2026-05-28 14:02:37 [INFO]: Number of Entity Types: 1
+Entity Types:
+- Entity
+2026-05-28 14:02:37 [INFO]: Number of Predicates: 8
+Predicates:
+- IsAtInter: {'instance': "Function('IsAtInter', entity_sorts['Entity'], BoolSort())", 'arity': 1, 'method': 'IsAtInter(Entity)', 'function': 'logicity.utils.pred_converter.z3.IsAtInter'}
+- IsInInter: {'instance': "Function('IsInInter', entity_sorts['Entity'], BoolSort())", 'arity': 1, 'method': 'IsInInter(Entity)', 'function': 'logicity.utils.pred_converter.z3.IsInInter'}
+- HigherPri: {'instance': "Function('HigherPri', entity_sorts['Entity'], entity_sorts['Entity'], BoolSort())", 'arity': 2, 'method': 'HigherPri(Entity, Entity)', 'function': 'logicity.utils.pred_converter.z3.HigherPri'}
+- CollidingClose: {'instance': "Function('CollidingClose', entity_sorts['Entity'], entity_sorts['Entity'], BoolSort())", 'arity': 2, 'method': 'CollidingClose(Entity, Entity)', 'function': 'logicity.utils.pred_converter.z3.CollidingClose'}
+- Stop: {'instance': "Function('Stop', entity_sorts['Entity'], BoolSort())", 'arity': 1, 'method': 'Stop(Entity)', 'function': 'None'}
+- Fast: {'instance': "Function('Fast', entity_sorts['Entity'], BoolSort())", 'arity': 1, 'method': 'Fast(Entity)', 'function': 'None'}
+- Normal: {'instance': "Function('Normal', entity_sorts['Entity'], BoolSort())", 'arity': 1, 'method': 'Normal(Entity)', 'function': 'None'}
+- Slow: {'instance': "Function('Slow', entity_sorts['Entity'], BoolSort())", 'arity': 1, 'method': 'Slow(Entity)', 'function': 'None'}
+2026-05-28 14:02:37 [INFO]: *** Sim Rule ***: Stop -> 
+ Stop(entity) == Exists(
+  [dummyEntity], 
+  Or(
+    And(
+      IsAtInter(entity), 
+      IsInInter(dummyEntity), 
+    ),
+    And(
+      IsAtInter(entity), 
+      IsAtInter(dummyEntity), 
+      HigherPri(dummyEntity, entity),
+    ),
+    CollidingClose(entity, dummyEntity)
+  )
+)
+
+2026-05-28 14:02:37 [INFO]: *** Task Rule ***: Collision and Intersection -> 
+ Implies(Exists(
+  [dummyEntity], 
+    Or(
+      And(
+        IsAtInter(entity), 
+        IsInInter(dummyEntity), 
+      ),
+      And(
+        IsAtInter(entity), 
+        IsAtInter(dummyEntity), 
+        HigherPri(dummyEntity, entity),
+      ),
+      CollidingClose(entity, dummyEntity)
+    )
+  ),
+  Stop(entity)
+)
+
+2026-05-28 14:02:37 [INFO]: *** Expert Rule ***: Stop -> 
+ Stop(entity) == Exists(
+[dummyEntity], 
+  Or(
+    And(
+      IsAtInter(entity), 
+      IsInInter(dummyEntity), 
+    ),
+    And(
+      IsAtInter(entity), 
+      IsAtInter(dummyEntity), 
+      HigherPri(dummyEntity, entity),
+    ),
+    CollidingClose(entity, dummyEntity)
+  )
+)
+
+2026-05-28 14:02:37 [INFO]: *** Expert Rule ***: Slow -> 
+ Not(Slow(entity))
+
+2026-05-28 14:02:37 [INFO]: *** Expert Rule ***: Fast -> 
+ Not(Fast(entity))
+
+2026-05-28 14:02:37 [INFO]: *** Expert Rule ***: Normal -> 
+ Normal(entity) == Not(Stop(entity))
+2026-05-28 14:02:37 [INFO]: Rules created successfully
+2026-05-28 14:02:37 [INFO]: Rules will be grounded later...
+2026-05-28 14:02:37 [INFO]: Given Predicates {'IsAtInter': {'instance': IsAtInter, 'arity': 1, 'method': 'IsAtInter(Entity)', 'function': 'logicity.utils.pred_converter.z3.IsAtInter'}, 'IsInInter': {'instance': IsInInter, 'arity': 1, 'method': 'IsInInter(Entity)', 'function': 'logicity.utils.pred_converter.z3.IsInInter'}, 'HigherPri': {'instance': HigherPri, 'arity': 2, 'method': 'HigherPri(Entity, Entity)', 'function': 'logicity.utils.pred_converter.z3.HigherPri'}, 'CollidingClose': {'instance': CollidingClose, 'arity': 2, 'method': 'CollidingClose(Entity, Entity)', 'function': 'logicity.utils.pred_converter.z3.CollidingClose'}, 'Stop': {'instance': Stop, 'arity': 1, 'method': 'Stop(Entity)', 'function': 'None'}, 'Fast': {'instance': Fast, 'arity': 1, 'method': 'Fast(Entity)', 'function': 'None'}, 'Normal': {'instance': Normal, 'arity': 1, 'method': 'Normal(Entity)', 'function': 'None'}, 'Slow': {'instance': Slow, 'arity': 1, 'method': 'Slow(Entity)', 'function': 'None'}}, the FOV entities {'Entity': 5}, The logic grounding shape is: 60
+2026-05-28 14:02:37 [INFO]: Local planner constructed!
+2026-05-28 14:02:37 [INFO]: Constructing 22 streets
+2026-05-28 14:02:37 [INFO]: Constructing 16 buildings
+2026-05-28 14:02:38 [INFO]: Adding 6 agents, they are constrained in 103 region
+2026-05-28 14:02:38 [INFO]: Car_1 initialization done!
+2026-05-28 14:02:38 [INFO]: Pedestrian_1 initialization done!
+2026-05-28 14:02:39 [INFO]: Car_2 initialization done!
+2026-05-28 14:02:39 [INFO]: Car_3 initialization done!
+2026-05-28 14:02:40 [INFO]: Car_4 initialization done!
+2026-05-28 14:02:40 [INFO]: Car_5 initialization done!
+2026-05-28 14:02:40 [INFO]: Done!
+2026-05-28 14:02:40 [INFO]: ***Reset RL Agent in Env***
+2026-05-28 14:02:40 [INFO]: Car_1 initialization done!
+2026-05-28 14:02:40 [INFO]: Pedestrian_1 initialization done!
+2026-05-28 14:02:41 [INFO]: Car_2 initialization done!
+2026-05-28 14:02:41 [INFO]: Car_3 initialization done!
+2026-05-28 14:02:42 [INFO]: Car_4 initialization done!
+2026-05-28 14:02:42 [INFO]: Car_5 initialization done!
+2026-05-28 14:02:42 [INFO]: Agent reset priority to 2/4
+2026-05-28 14:02:42 [INFO]: Agent reset concepts to {'type': 'Car', 'priority': 2}
+2026-05-28 14:03:00 [INFO]: will reset agent by success
+2026-05-28 14:03:00 [INFO]: ***Reset RL Agent in Env***
+2026-05-28 14:03:01 [INFO]: Car_1 initialization done!
+2026-05-28 14:03:01 [INFO]: Pedestrian_1 initialization done!
+2026-05-28 14:03:01 [INFO]: Car_2 initialization done!
+2026-05-28 14:03:01 [INFO]: Car_3 initialization done!
+2026-05-28 14:03:02 [INFO]: Car_4 initialization done!
+2026-05-28 14:03:02 [INFO]: Car_5 initialization done!
+2026-05-28 14:03:02 [INFO]: Agent reset priority to 3/4
+2026-05-28 14:03:02 [INFO]: Agent reset concepts to {'type': 'Car', 'priority': 3}
+2026-05-28 14:03:02 [INFO]: Episode 0 took 89 steps.
+2026-05-28 14:03:02 [INFO]: Episode 0 took 19.946707725524902 seconds.
+2026-05-28 14:03:02 [INFO]: Episode 0 achieved a score of 4.360000000000004
+2026-05-28 14:03:02 [INFO]: Episode 0 has label info: {'oracle_step': 89, 'stop_count': 44, 'has_stop': True, 'ego_crosses': True, 'ego_eta': 59, 'ego_direction': 'left', 'other_crosses': 4, 'close_other_count': 0, 'pedestrian_close': None, 'conflicting_approach': False, 'total_crosses': 5}
+2026-05-28 14:03:02 [INFO]: Success rate: 1.0
+2026-05-28 14:03:02 [INFO]: Mean Score achieved: 4.360000000000004
+2026-05-28 14:03:02 [INFO]: Accepted episodes with at least one Stop: 1/1
+2026-05-28 14:03:02 [INFO]: Total time spent: 25.52633547782898

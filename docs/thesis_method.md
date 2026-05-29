@@ -211,16 +211,16 @@ This models discrete symbolic sensing errors rather than soft probabilistic conf
 
 In both cases, noise is injected after observation grounding and before ProbLog evaluation. We therefore isolate uncertainty in the shield's symbolic abstraction while keeping the underlying LogiCity dynamics unchanged.
 
-## 4.5 Multi-Agent Shared-Policy Extension
+## 4.5 Shared-Policy Multi-Agent Formulation
 
-To extend PLPG to the multi-agent setting, we implement a shared-policy architecture in which multiple RL-controlled cars act in the same environment while sharing one set of policy parameters. Let \(K\) denote the number of RL agents. At time \(t\), each agent \(k\) receives its own local observation \(s_t^{(k)}\), and the shared policy is applied independently to each observation:
+The thesis-level formulation of PLPG is a shared-policy multi-agent architecture in which multiple RL-controlled cars act in the same environment while sharing one set of policy parameters. Let \(K\) denote the number of RL agents. At time \(t\), each agent \(k\) receives its own local observation \(s_t^{(k)}\), and the shared policy is applied independently to each observation:
 \[
 \pi_\theta(\cdot\mid s_t^{(1)}),\;
 \pi_\theta(\cdot\mid s_t^{(2)}),\;
 \dots,\;
 \pi_\theta(\cdot\mid s_t^{(K)}).
 \]
-This is therefore a decentralized shared-policy setting: the parameters are shared, but the observations and action decisions remain agent-specific.
+This is therefore a decentralized shared-policy setting: the parameters are shared, but the observations and action decisions remain agent-specific. The single-agent case used in some experiments is simply the special case \(K=1\).
 
 We extend the shield in exactly the same decentralized way. Each RL agent receives its own local shield evaluation from its own grounded observation. For agent \(k\), we form a local fact set \(H_{s^{(k)}}\), compute local action safety scores \(q(s^{(k)},a)\), and build a local shielded policy
 \[
@@ -229,6 +229,6 @@ We extend the shield in exactly the same decentralized way. Each RL agent receiv
 \frac{\pi_\theta(a\mid s_t^{(k)})\, q(s_t^{(k)},a)}
 {\sum_{a'} \pi_\theta(a'\mid s_t^{(k)})\, q(s_t^{(k)},a')}.
 \]
-Thus, our multi-agent extension is a **Decentralized PLS** design: every RL agent is shielded separately, even though all RL agents share the same neural policy parameters.
+Thus, our formulation is a **Decentralized PLS** design: every RL agent is shielded separately, even though all RL agents share the same neural policy parameters.
 
 In implementation terms, the multi-agent wrapper exposes the \(K\) RL agents as a vectorized batch to a single shared PPO or PLPG learner. Rewards are still computed per agent using the same Safe Path Following reward structure, but actions are selected independently for each RL agent from its own shielded distribution. This design allows us to study whether probabilistic logic shielding continues to help when safety and progress depend not only on interaction with expert-controlled traffic, but also on coordination among multiple learning agents.

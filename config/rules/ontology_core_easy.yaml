@@ -1,0 +1,50 @@
+EntityTypes:
+  - Entity
+
+Predicates:
+  - IsAtInter:
+      arity: 1
+      method: IsAtInter(Entity)
+      function: logicity.utils.pred_converter.z3.IsAtInter
+      description: Checks if entity x is at the intersection.
+      semantic: false
+  - IsInInter:
+      arity: 1
+      method: IsInInter(Entity)
+      function: logicity.utils.pred_converter.z3.IsInInter
+      description: Checks if entity x is in the intersection.
+      semantic: false
+  - HigherPri:
+      arity: 2
+      method: HigherPri(Entity, Entity)
+      function: logicity.utils.pred_converter.z3.HigherPri
+      description: Checks if entity x has higher priority than entity y.
+      semantic: false
+      grounding_mode: other_to_ego
+  - CollidingClose:
+      arity: 2
+      method: CollidingClose(Entity, Entity)
+      function: logicity.utils.pred_converter.z3.CollidingClose
+      description: Checks if entity x is about to collide with entity y.
+      semantic: false
+      grounding_mode: ego_to_other
+  - Stop:
+      arity: 1
+      method: Stop(Entity)
+      function: None
+      description: Stop action.
+  - Fast:
+      arity: 1
+      method: Fast(Entity)
+      function: None
+      description: Fast action.
+  - Normal:
+      arity: 1
+      method: Normal(Entity)
+      function: None
+      description: Normal action.
+  - Slow:
+      arity: 1
+      method: Slow(Entity)
+      function: None
+      description: Slow action.
