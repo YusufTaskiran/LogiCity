@@ -1,0 +1,108 @@
+Timestep: 50000 - Elapsed Time (s): 7240.14 - Success Rate: 0.4666666666666667 - Mean Reward: 0.8666667878627777 
+Failure Rate: 0.5333333333333333 - Timeout Rate: 0.0 - Mean Episode Length: 28.466666666666665
+Mean Decision Succ: 0.0
+Average Decision Succ: 0.0
+Decision Succ for each action: {3: 0.0}
+Action Histogram: {0: 0, 1: 0, 2: 870, 3: 0}
+Failure Rule Counts: {}
+Training Rollout Since Last Eval: failures=193 timeouts=13 successes=238
+Eval Schedule Phase: early
+Timestep: 100000 - Elapsed Time (s): 14721.16 - Success Rate: 0.5333333333333333 - Mean Reward: 1.3350001121560733 
+Failure Rate: 0.4666666666666667 - Timeout Rate: 0.0 - Mean Episode Length: 29.133333333333333
+Mean Decision Succ: 0.0
+Average Decision Succ: 0.0
+Decision Succ for each action: {3: 0.0}
+Action Histogram: {0: 0, 1: 0, 2: 888, 3: 0}
+Failure Rule Counts: {}
+Training Rollout Since Last Eval: failures=179 timeouts=7 successes=264
+Eval Schedule Phase: early
+Timestep: 150000 - Elapsed Time (s): 22325.15 - Success Rate: 0.4 - Mean Reward: 0.0210001178085804 
+Failure Rate: 0.6 - Timeout Rate: 0.0 - Mean Episode Length: 24.6
+Mean Decision Succ: 0.0
+Average Decision Succ: 0.0
+Decision Succ for each action: {3: 0.0}
+Action Histogram: {0: 0, 1: 0, 2: 756, 3: 0}
+Failure Rule Counts: {}
+Training Rollout Since Last Eval: failures=199 timeouts=0 successes=316
+Eval Schedule Phase: early
+Timestep: 200000 - Elapsed Time (s): 30038.13 - Success Rate: 0.4666666666666667 - Mean Reward: 0.6220001190900802 
+Failure Rate: 0.5333333333333333 - Timeout Rate: 0.0 - Mean Episode Length: 28.0
+Mean Decision Succ: 0.0
+Average Decision Succ: 0.0
+Decision Succ for each action: {3: 0.0}
+Action Histogram: {0: 0, 1: 0, 2: 856, 3: 0}
+Failure Rule Counts: {}
+Training Rollout Since Last Eval: failures=196 timeouts=0 successes=327
+Eval Schedule Phase: early
+Timestep: 250000 - Elapsed Time (s): 38118.62 - Success Rate: 0.4 - Mean Reward: 0.10866678232947985 
+Failure Rate: 0.6 - Timeout Rate: 0.0 - Mean Episode Length: 25.133333333333333
+Mean Decision Succ: 0.0
+Average Decision Succ: 0.0
+Decision Succ for each action: {3: 0.0}
+Action Histogram: {0: 0, 1: 0, 2: 772, 3: 0}
+Failure Rule Counts: {}
+Training Rollout Since Last Eval: failures=257 timeouts=0 successes=345
+Eval Schedule Phase: early
+Timestep: 300000 - Elapsed Time (s): 46379.23 - Success Rate: 0.4666666666666667 - Mean Reward: 0.7380001125236352 
+Failure Rate: 0.5333333333333333 - Timeout Rate: 0.0 - Mean Episode Length: 27.6
+Mean Decision Succ: 0.0
+Average Decision Succ: 0.0
+Decision Succ for each action: {3: 0.0}
+Action Histogram: {0: 0, 1: 0, 2: 844, 3: 0}
+Failure Rule Counts: {}
+Training Rollout Since Last Eval: failures=261 timeouts=0 successes=341
+Eval Schedule Phase: early
+Timestep: 350000 - Elapsed Time (s): 54653.11 - Success Rate: 0.4666666666666667 - Mean Reward: 0.7516667872667313 
+Failure Rate: 0.5333333333333333 - Timeout Rate: 0.0 - Mean Episode Length: 27.733333333333334
+Mean Decision Succ: 0.0
+Average Decision Succ: 0.0
+Decision Succ for each action: {3: 0.0}
+Action Histogram: {0: 0, 1: 0, 2: 848, 3: 0}
+Failure Rule Counts: {}
+Training Rollout Since Last Eval: failures=253 timeouts=0 successes=354
+Eval Schedule Phase: early
+Timestep: 400000 - Elapsed Time (s): 63112.18 - Success Rate: 0.6666666666666666 - Mean Reward: 3.102000080359479 
+Failure Rate: 0.3333333333333333 - Timeout Rate: 0.0 - Mean Episode Length: 40.2
+Mean Decision Succ: 0.0
+Average Decision Succ: 0.0
+Decision Succ for each action: {3: 0.0}
+Action Histogram: {0: 0, 1: 0, 2: 1196, 3: 20}
+Failure Rule Counts: {}
+Training Rollout Since Last Eval: failures=232 timeouts=0 successes=374
+Eval Schedule Phase: early
+Timestep: 450000 - Elapsed Time (s): 72314.22 - Success Rate: 0.8 - Mean Reward: 4.277333407104015 
+Failure Rate: 0.2 - Timeout Rate: 0.0 - Mean Episode Length: 44.06666666666667
+Mean Decision Succ: 0.0
+Average Decision Succ: 0.0
+Decision Succ for each action: {3: 0.0}
+Action Histogram: {0: 0, 1: 0, 2: 1297, 3: 31}
+Failure Rule Counts: {}
+Training Rollout Since Last Eval: failures=235 timeouts=0 successes=397
+Eval Schedule Phase: early
+Timestep: 500000 - Elapsed Time (s): 81713.31 - Success Rate: 0.8666666666666667 - Mean Reward: 5.005000067253907 
+Failure Rate: 0.13333333333333333 - Timeout Rate: 0.0 - Mean Episode Length: 46.8
+Mean Decision Succ: 0.0
+Average Decision Succ: 0.0
+Decision Succ for each action: {3: 0.0}
+Action Histogram: {0: 0, 1: 0, 2: 1381, 3: 27}
+Failure Rule Counts: {}
+Training Rollout Since Last Eval: failures=219 timeouts=0 successes=397
+Eval Schedule Phase: early
+Timestep: 550000 - Elapsed Time (s): 90287.25 - Success Rate: 0.9333333333333333 - Mean Reward: 5.564666723273694 
+Failure Rate: 0.06666666666666667 - Timeout Rate: 0.0 - Mean Episode Length: 48.266666666666666
+Mean Decision Succ: 0.0
+Average Decision Succ: 0.0
+Decision Succ for each action: {3: 0.0}
+Action Histogram: {0: 0, 1: 0, 2: 1422, 3: 28}
+Failure Rule Counts: {}
+Training Rollout Since Last Eval: failures=198 timeouts=0 successes=401
+Eval Schedule Phase: early
+Timestep: 600000 - Elapsed Time (s): 98844.64 - Success Rate: 1.0 - Mean Reward: 6.256333381806811 
+Failure Rate: 0.0 - Timeout Rate: 0.0 - Mean Episode Length: 51.333333333333336
+Mean Decision Succ: 0.0
+Average Decision Succ: 0.0
+Decision Succ for each action: {3: 0.0}
+Action Histogram: {0: 0, 1: 0, 2: 1496, 3: 44}
+Failure Rule Counts: {}
+Training Rollout Since Last Eval: failures=137 timeouts=0 successes=420
+Eval Schedule Phase: early

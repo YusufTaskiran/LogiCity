@@ -1,0 +1,81 @@
+Timestep: 50000 - Elapsed Time (s): 14693.67 - Success Rate: 0.5333333333333333 - Mean Reward: -1.9033333177367846 
+Failure Rate: 0.4666666666666667 - Timeout Rate: 0.0 - Mean Episode Length: 18.666666666666668
+Mean Decision Succ: 0.0
+Average Decision Succ: 0.0
+Decision Succ for each action: {3: 0.0}
+Action Histogram: {0: 0, 1: 0, 2: 287, 3: 0}
+Failure Rule Counts: {}
+Training Rollout Since Last Eval: failures=349 timeouts=9 successes=551
+Eval Schedule Phase: early
+Timestep: 100000 - Elapsed Time (s): 29354.77 - Success Rate: 0.6 - Mean Reward: -1.1286666507522265 
+Failure Rate: 0.4 - Timeout Rate: 0.0 - Mean Episode Length: 19.2
+Mean Decision Succ: 0.0
+Average Decision Succ: 0.0
+Decision Succ for each action: {3: 0.0}
+Action Histogram: {0: 0, 1: 0, 2: 294, 3: 0}
+Failure Rule Counts: {}
+Training Rollout Since Last Eval: failures=345 timeouts=10 successes=569
+Eval Schedule Phase: early
+Timestep: 150000 - Elapsed Time (s): 44211.11 - Success Rate: 0.6 - Mean Reward: -1.1539999847610791 
+Failure Rate: 0.4 - Timeout Rate: 0.0 - Mean Episode Length: 19.066666666666666
+Mean Decision Succ: 0.0
+Average Decision Succ: 0.0
+Decision Succ for each action: {3: 0.0}
+Action Histogram: {0: 0, 1: 0, 2: 292, 3: 0}
+Failure Rule Counts: {}
+Training Rollout Since Last Eval: failures=352 timeouts=11 successes=594
+Eval Schedule Phase: early
+Timestep: 200000 - Elapsed Time (s): 59355.56 - Success Rate: 0.6 - Mean Reward: -1.15266665071249 
+Failure Rate: 0.4 - Timeout Rate: 0.0 - Mean Episode Length: 18.933333333333334
+Mean Decision Succ: 0.0
+Average Decision Succ: 0.0
+Decision Succ for each action: {3: 0.0}
+Action Histogram: {0: 0, 1: 0, 2: 290, 3: 0}
+Failure Rule Counts: {}
+Training Rollout Since Last Eval: failures=395 timeouts=13 successes=600
+Eval Schedule Phase: early
+Timestep: 250000 - Elapsed Time (s): 74823.81 - Success Rate: 0.5333333333333333 - Mean Reward: -1.9313333198428153 
+Failure Rate: 0.4666666666666667 - Timeout Rate: 0.0 - Mean Episode Length: 18.8
+Mean Decision Succ: 0.0
+Average Decision Succ: 0.0
+Decision Succ for each action: {3: 0.0}
+Action Histogram: {0: 0, 1: 0, 2: 289, 3: 0}
+Failure Rule Counts: {}
+Training Rollout Since Last Eval: failures=352 timeouts=10 successes=670
+Eval Schedule Phase: early
+Timestep: 300000 - Elapsed Time (s): 89911.77 - Success Rate: 0.6 - Mean Reward: -0.8179999817162752 
+Failure Rate: 0.4 - Timeout Rate: 0.0 - Mean Episode Length: 22.133333333333333
+Mean Decision Succ: 0.0
+Average Decision Succ: 0.0
+Decision Succ for each action: {3: 0.0}
+Action Histogram: {0: 0, 1: 0, 2: 331, 3: 7}
+Failure Rule Counts: {}
+Training Rollout Since Last Eval: failures=374 timeouts=7 successes=661
+Eval Schedule Phase: early
+Timestep: 350000 - Elapsed Time (s): 104665.02 - Success Rate: 0.9333333333333333 - Mean Reward: 3.9966666950533787 
+Failure Rate: 0.06666666666666667 - Timeout Rate: 0.0 - Mean Episode Length: 33.666666666666664
+Mean Decision Succ: 0.0
+Average Decision Succ: 0.0
+Decision Succ for each action: {3: 0.0}
+Action Histogram: {0: 0, 1: 0, 2: 473, 3: 33}
+Failure Rule Counts: {}
+Training Rollout Since Last Eval: failures=390 timeouts=9 successes=640
+Eval Schedule Phase: early
+Timestep: 400000 - Elapsed Time (s): 119481.56 - Success Rate: 0.9333333333333333 - Mean Reward: 3.991333356251319 
+Failure Rate: 0.06666666666666667 - Timeout Rate: 0.0 - Mean Episode Length: 34.2
+Mean Decision Succ: 0.0
+Average Decision Succ: 0.0
+Decision Succ for each action: {3: 0.0}
+Action Histogram: {0: 0, 1: 0, 2: 488, 3: 26}
+Failure Rule Counts: {}
+Training Rollout Since Last Eval: failures=358 timeouts=12 successes=660
+Eval Schedule Phase: early
+Timestep: 450000 - Elapsed Time (s): 135191.55 - Success Rate: 0.8666666666666667 - Mean Reward: 3.225333357602358 
+Failure Rate: 0.13333333333333333 - Timeout Rate: 0.0 - Mean Episode Length: 32.8
+Mean Decision Succ: 0.0
+Average Decision Succ: 0.0
+Decision Succ for each action: {3: 0.0}
+Action Histogram: {0: 0, 1: 0, 2: 476, 3: 18}
+Failure Rule Counts: {}
+Training Rollout Since Last Eval: failures=373 timeouts=4 successes=732
+Eval Schedule Phase: early

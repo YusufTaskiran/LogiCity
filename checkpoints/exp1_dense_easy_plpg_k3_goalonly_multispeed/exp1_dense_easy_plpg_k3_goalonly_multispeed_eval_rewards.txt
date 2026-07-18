@@ -1,0 +1,11 @@
+Timestep: 1002 - Elapsed Time (s): 1093.28 - Success Rate: 1.0 - Mean Reward: 1.0000000298023224 
+Failure Rate: 0.0 - Timeout Rate: 0.0 - Mean Episode Length: 57.75
+Mean Decision Succ: 0.0
+Average Decision Succ: 0.0
+Decision Succ for each action: {3: 0.0}
+Action Histogram: {0: 0, 1: 0, 2: 3298, 3: 167}
+Failure Rule Counts: {}
+Training Rollout Since Last Eval: failures=10 timeouts=0 successes=0
+Training Stop-Demand Since Last Eval: stop_needed_steps=39 agent_steps=1002 required_stop_rate=0.038922155688622756
+Eval Schedule Phase: fixed
+PLPG Metrics: base_safe=0.8769001756481623 shielded_safe=0.899096927515528 gain=0.02219675186736587 intervention_rate=1.0 kl=0.026405360191942208 l1=0.09321590034132568 hazard_rate=0.048196248196248195 forced_stop_rate=1.0
