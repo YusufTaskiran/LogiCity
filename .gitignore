@@ -19,4 +19,6 @@ checkpoints/
 profile*.txt
 src
 *.zip
+*.png
+
 
