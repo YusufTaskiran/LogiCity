@@ -25,14 +25,18 @@ def translate_easy_rule_yaml_to_hazard_rules(rule_yaml_file, num_entities):
     _require_tokens(
         formula,
         rule_yaml_file,
-        ["IsAtInter", "IsInInter", "HigherPri", "CollidingClose", "Stop(entity)"],
+        ["IsAtInter", "IsInInter", "SameInter", "HigherPri", "CollidingClose", "IsPedestrian", "Stop(entity)"],
         "easy",
     )
     lines = []
     for i in range(1, num_entities):
-        lines.append(f"hazard :- is_at_inter_ego, is_in_inter_{i}.")
-        lines.append(f"hazard :- is_at_inter_ego, higher_pri_{i}.")
-        lines.append(f"hazard :- colliding_close_{i}.")
+        lines.append(f"hazard :- ego_is_at_inter, other_{i}_same_inter, other_{i}_is_in_inter.")
+        lines.append(f"hazard :- ego_is_at_inter, other_{i}_same_inter, other_{i}_is_at_inter, other_{i}_higher_pri.")
+        lines.append(f"hazard :- ego_is_car, other_{i}_is_pedestrian, other_{i}_same_inter, ego_is_at_inter, other_{i}_is_at_inter.")
+        lines.append(f"hazard :- ego_is_car, other_{i}_is_pedestrian, other_{i}_same_inter, ego_is_at_inter, other_{i}_is_in_inter.")
+        lines.append(f"hazard :- ego_is_car, other_{i}_is_pedestrian, other_{i}_same_inter, ego_is_in_inter, other_{i}_is_at_inter.")
+        lines.append(f"hazard :- ego_is_car, other_{i}_is_pedestrian, other_{i}_same_inter, ego_is_in_inter, other_{i}_is_in_inter.")
+        lines.append(f"hazard :- other_{i}_colliding_close.")
     return lines
 
 
@@ -46,6 +50,7 @@ def translate_medium_rule_yaml_to_hazard_rules(rule_yaml_file, num_entities):
             "Not(IsOld(entity))",
             "IsAtInter(entity)",
             "IsInInter(dummyEntityA)",
+            "SameInter(entity, dummyEntityA)",
             "HigherPri(dummyEntityA, entity)",
             "IsAmbulance(dummyEntityA)",
             "IsBus(entity)",
@@ -61,13 +66,13 @@ def translate_medium_rule_yaml_to_hazard_rules(rule_yaml_file, num_entities):
     lines = []
     for i in range(1, num_entities):
         lines.append(
-            f"hazard :- \\+ ego_is_ambulance, \\+ ego_is_old, ego_is_at_inter, other_{i}_is_in_inter."
+            f"hazard :- \\+ ego_is_ambulance, \\+ ego_is_old, ego_is_at_inter, other_{i}_same_inter, other_{i}_is_in_inter."
         )
         lines.append(
-            f"hazard :- \\+ ego_is_ambulance, \\+ ego_is_old, ego_is_at_inter, other_{i}_is_at_inter, other_{i}_higher_pri."
+            f"hazard :- \\+ ego_is_ambulance, \\+ ego_is_old, ego_is_at_inter, other_{i}_same_inter, other_{i}_is_at_inter, other_{i}_higher_pri."
         )
         lines.append(
-            f"hazard :- \\+ ego_is_ambulance, \\+ ego_is_old, ego_is_in_inter, other_{i}_is_in_inter, other_{i}_is_ambulance."
+            f"hazard :- \\+ ego_is_ambulance, \\+ ego_is_old, ego_is_in_inter, other_{i}_same_inter, other_{i}_is_in_inter, other_{i}_is_ambulance."
         )
         lines.append(
             f"hazard :- ego_is_bus, \\+ ego_is_in_inter, \\+ ego_is_at_inter, other_{i}_right_of_ego, other_{i}_next_to_ego, other_{i}_is_pedestrian."
@@ -91,6 +96,7 @@ def translate_hard_rule_yaml_to_hazard_rules(rule_yaml_file, num_entities):
             "Not(IsOld(entity))",
             "IsAtInter(entity)",
             "IsInInter(dummyEntityA)",
+            "SameInter(entity, dummyEntityA)",
             "HigherPri(dummyEntityA, entity)",
             "IsAmbulance(dummyEntityA)",
             "Not(IsPolice(entity))",
@@ -111,13 +117,13 @@ def translate_hard_rule_yaml_to_hazard_rules(rule_yaml_file, num_entities):
     lines = []
     for i in range(1, num_entities):
         lines.append(
-            f"hazard :- \\+ ego_is_ambulance, \\+ ego_is_old, ego_is_at_inter, other_{i}_is_in_inter."
+            f"hazard :- \\+ ego_is_ambulance, \\+ ego_is_old, ego_is_at_inter, other_{i}_same_inter, other_{i}_is_in_inter."
         )
         lines.append(
-            f"hazard :- \\+ ego_is_ambulance, \\+ ego_is_old, ego_is_at_inter, other_{i}_is_at_inter, other_{i}_higher_pri."
+            f"hazard :- \\+ ego_is_ambulance, \\+ ego_is_old, ego_is_at_inter, other_{i}_same_inter, other_{i}_is_at_inter, other_{i}_higher_pri."
         )
         lines.append(
-            f"hazard :- \\+ ego_is_ambulance, \\+ ego_is_old, ego_is_in_inter, other_{i}_is_in_inter, other_{i}_is_ambulance."
+            f"hazard :- \\+ ego_is_ambulance, \\+ ego_is_old, ego_is_in_inter, other_{i}_same_inter, other_{i}_is_in_inter, other_{i}_is_ambulance."
         )
         lines.append(
             f"hazard :- \\+ ego_is_ambulance, \\+ ego_is_police, ego_is_car, \\+ ego_is_in_inter, \\+ ego_is_at_inter, other_{i}_left_of_ego, other_{i}_is_close_to_ego, other_{i}_is_police."

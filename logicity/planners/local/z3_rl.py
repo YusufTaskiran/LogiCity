@@ -16,12 +16,49 @@ from .z3 import PesudoAgent
 
 logger = logging.getLogger(__name__)
 
+
+def _is_observed_predicate(pred_info):
+    return pred_info.get("observe", True)
+
+
+def _build_predicate_runtime(predicates):
+    runtime = {}
+    for pred_name, pred_info in predicates.items():
+        method_full_name = pred_info["function"]
+        method = None
+        if method_full_name != "None":
+            module_name, method_name = method_full_name.rsplit(".", 1)
+            module = importlib.import_module(module_name)
+            method = getattr(module, method_name)
+        runtime[pred_name] = {
+            "arity": pred_info["arity"],
+            "observe": _is_observed_predicate(pred_info),
+            "instance_expr": pred_info["instance"],
+            "method": method,
+        }
+    return runtime
+
+
+def _instantiate_local_predicates(predicates, predicate_runtime, eval_context=None):
+    eval_context = eval_context or {}
+    local_predicates = {}
+    for pred_name, pred_info in predicates.items():
+        runtime_info = predicate_runtime[pred_name]
+        local_predicates[pred_name] = {
+            "instance": eval(runtime_info["instance_expr"], globals(), eval_context),
+            "arity": runtime_info["arity"],
+            "function": pred_info["function"],
+            "observe": runtime_info["observe"],
+        }
+    return local_predicates
+
 class Z3PlannerRL(Z3Planner):
     def __init__(self, yaml_path):        
         super().__init__(yaml_path)
         self.rl_input_shape = None
         self.last_rl_obs = None
         self.last_rl_obs_map = {}
+        self.predicate_runtime = _build_predicate_runtime(self.predicates)
 
     def reset(self):
         self.last_rl_obs = None
@@ -78,8 +115,8 @@ class Z3PlannerRL(Z3Planner):
             self.rules["Task"][rule_name]["reward"] = rule_dict["reward"]
             self.rules["Task"][rule_name]["dead"] = rule_dict["dead"]
         
-        logger.info("Rules created successfully")
-        logger.info("Rules will be grounded later...")
+        logger.debug("Rules created successfully")
+        logger.debug("Rules will be grounded later...")
 
     def plan(self, world_matrix, 
              intersect_matrix, 
@@ -106,7 +143,7 @@ class Z3PlannerRL(Z3Planner):
                 for batch_keys in agent_batches:
                     batch_results = pool.starmap(solve_sub_problem, 
                                                 [(ego_name, ego_agent[ego_name].action_mapping, ego_agent[ego_name].action_dist,
-                                                self.rule_tem, self.entity_types, self.predicates, self.z3_vars,
+                                                self.rule_tem, self.entity_types, self.predicates, self.predicate_runtime, self.z3_vars,
                                                 partial_agents[ego_name], partial_world[ego_name], partial_intersections[ego_name],
                                                 self.fov_entities, rl_flags[ego_name], self.rl_input_shape)
                                                 for ego_name in batch_keys])
@@ -120,18 +157,18 @@ class Z3PlannerRL(Z3Planner):
                 if rl_flags[ego_name]:
                     # RL agent only gets the observation
                     result = solve_sub_problem(ego_name, ego_agent[ego_name].action_mapping, ego_agent[ego_name].action_dist,
-                                            self.rules['Task'], self.entity_types, self.predicates, self.z3_vars,
+                                            self.rules['Task'], self.entity_types, self.predicates, self.predicate_runtime, self.z3_vars,
                                             partial_agents[ego_name], partial_world[ego_name], partial_intersections[ego_name], 
                                             self.fov_entities, True, rl_input_shape=self.rl_input_shape)
                     obs_cache = {
-                        "last_obs_dict": copy.deepcopy(result["{}_grounding_dic".format(ego_name)]),
+                        "last_obs_dict": dict(result["{}_grounding_dic".format(ego_name)]),
                         "last_obs": result["{}_grounding".format(ego_name)].copy()
                     }
                     self.last_rl_obs = obs_cache
                     self.last_rl_obs_map[ego_agent[ego_name].layer_id] = obs_cache
                 else:
                     result = solve_sub_problem(ego_name, ego_agent[ego_name].action_mapping, ego_agent[ego_name].action_dist,
-                                            self.rules['Sim'], self.entity_types, self.predicates, self.z3_vars,
+                                            self.rules['Sim'], self.entity_types, self.predicates, self.predicate_runtime, self.z3_vars,
                                             partial_agents[ego_name], partial_world[ego_name], partial_intersections[ego_name], 
                                             self.fov_entities, False)
                 combined_results.update(result)
@@ -147,7 +184,7 @@ class Z3PlannerRL(Z3Planner):
             last_rl_obs = self.last_rl_obs
         if last_rl_obs is None:
             return 0
-        fail, reward, violated_rules = eval_action(rl_action, self.rules['Task'], self.entity_types, self.predicates, self.z3_vars, self.fov_entities,
+        fail, reward, violated_rules = eval_action(rl_action, self.rules['Task'], self.entity_types, self.predicates, self.predicate_runtime, self.z3_vars, self.fov_entities,
                              last_rl_obs["last_obs_dict"], last_rl_obs["last_obs"])
         if rl_agent is not None:
             self.last_rl_obs_map.pop(rl_agent, None)
@@ -185,21 +222,29 @@ class Z3PlannerRL(Z3Planner):
             non_zero_layer_indices = torch.where(non_zero_layers)[0]
             partial_world_squeezed = partial_world_all[non_zero_layers]
             partial_agent = {}
+            rl_budget = self.fov_entities["Entity"] if rl_flag[ego_name] else None
             for layer_id in range(partial_world_squeezed.shape[0]):
                 layer = partial_world_squeezed[layer_id]
                 layer_nonzero_int = torch.logical_and(layer != 0, layer == layer.to(torch.int64))
                 if layer_nonzero_int.nonzero().shape[0] > 1:
                     continue
-                if len(partial_agent) >= self.fov_entities["Entity"] and rl_flag[ego_name]:
-                    # can only handle fixed number of agents
-                    break
                 non_zero_values = int(layer[layer_nonzero_int.nonzero()[0][0], layer_nonzero_int.nonzero()[0][1]])
                 agent_type = LABEL_MAP[non_zero_values]
                 # find this agent
                 other_agent_layer_id = int(non_zero_layer_indices[layer_id])
                 other_agent = agents[layerid2listid[other_agent_layer_id]]
                 assert other_agent.type == agent_type
-                if other_agent_layer_id == agent.layer_id:
+                is_ego_entity = other_agent_layer_id == agent.layer_id
+                if rl_budget is not None and len(partial_agent) >= rl_budget:
+                    if not is_ego_entity:
+                        # The RL local view has reached its entity budget already.
+                        continue
+                    # Ensure the ego agent is always kept inside the fixed RL entity budget.
+                    removable_key = next((key for key in reversed(list(partial_agent.keys())) if not key.startswith("ego_")), None)
+                    if removable_key is None:
+                        continue
+                    partial_agent.pop(removable_key)
+                if is_ego_entity:
                     partial_agent["ego_{}".format(layer_id)] = PesudoAgent(agent_type, layer_id, other_agent.concepts, other_agent.last_move_dir)
                 else:
                     partial_agent[str(layer_id)] = PesudoAgent(agent_type, layer_id, other_agent.concepts, other_agent.last_move_dir)
@@ -246,10 +291,15 @@ def logic_grounding_shape(
         entity_num = fov_entities[entity_type]
         entities[entity_type] = [Const(f"{entity_type}_{i}", entity_sorts[entity_type]) for i in range(entity_num)]
     # 4. create, ground predicates and add to solver
-    local_predicates = copy.deepcopy(predicates)
+    local_predicates = _instantiate_local_predicates(
+        predicates,
+        _build_predicate_runtime(predicates),
+        {"entity_sorts": entity_sorts},
+    )
     for pred_name, pred_info in local_predicates.items():
-        eval_pred = eval(pred_info["instance"])
-        pred_info["instance"] = eval_pred
+        if not _is_observed_predicate(pred_info):
+            continue
+        eval_pred = pred_info["instance"]
         arity = pred_info["arity"]
 
         method_full_name = pred_info["function"]
@@ -278,6 +328,7 @@ def solve_sub_problem(ego_name,
                       rule_tem, 
                       entity_types, 
                       predicates, 
+                      predicate_runtime,
                       var_names,
                       partial_agents, 
                       partial_world, 
@@ -296,7 +347,11 @@ def solve_sub_problem(ego_name,
     # 2. partial world to entities
     local_entities = world2entity(entity_sorts, partial_intersections, partial_agents, fov_entities, rl_flag)
     # 3. create, ground predicates and add to solver
-    local_predicates = copy.deepcopy(predicates)
+    local_predicates = _instantiate_local_predicates(
+        predicates,
+        predicate_runtime,
+        {"entity_sorts": entity_sorts},
+    )
     # 4. create, ground predicates and add to solver
     if not rl_flag:
         local_solver = Solver()
@@ -305,13 +360,9 @@ def solve_sub_problem(ego_name,
             pred_info["instance"] = eval_pred
             arity = pred_info["arity"]
 
-            # Import the grounding method
-            method_full_name = pred_info["function"]
-            if method_full_name == "None":
+            method = predicate_runtime[pred_name]["method"]
+            if method is None:
                 continue
-            module_name, method_name = method_full_name.rsplit('.', 1)
-            module = importlib.import_module(module_name)
-            method = getattr(module, method_name)
 
             if arity == 1:
                 # Unary predicate grounding
@@ -334,8 +385,7 @@ def solve_sub_problem(ego_name,
                         else:
                             local_solver.add(Not(eval_pred(entity1, entity2)))
         # 5. create, ground rules and add to solver
-        local_rule_tem = copy.deepcopy(rule_tem)
-        for rule_name, rule_template in local_rule_tem.items():
+        for rule_name, rule_template in rule_tem.items():
             # the first entity is the ego agent
             entity = local_entities["Entity"][0]
             # Replace placeholder in the rule template with the actual agent entity
@@ -383,34 +433,46 @@ def solve_sub_problem(ego_name,
             agents_actions = {ego_name: action_dist}
             return agents_actions
     else:
+        ego_entity_name = local_entities["Entity"][0].decl().name()
+        same_inter_method = predicate_runtime["SameInter"]["method"]
         for pred_name, pred_info in local_predicates.items():
             k = 0
             eval_pred = eval(pred_info["instance"])
             pred_info["instance"] = eval_pred
             arity = pred_info["arity"]
+            observe_pred = _is_observed_predicate(pred_info)
 
-            # Import the grounding method
-            method_full_name = pred_info["function"]
-
-            if method_full_name == "None":
+            method = predicate_runtime[pred_name]["method"]
+            if method is None:
                 continue
-
-            module_name, method_name = method_full_name.rsplit('.', 1)
-            module = importlib.import_module(module_name)
-            method = getattr(module, method_name)
 
             if arity == 1:
                 # Unary predicate grounding
                 for entity in local_entities[eval_pred.domain(0).name()]:
                     entity_name = entity.decl().name()
                     value = method(partial_world, partial_intersections, partial_agents, entity_name)
+                    if pred_name in ("IsAtInter", "IsInInter") and entity_name != ego_entity_name:
+                        value = int(
+                            bool(value)
+                            and bool(
+                                same_inter_method(
+                                    partial_world,
+                                    partial_intersections,
+                                    partial_agents,
+                                    ego_entity_name,
+                                    entity_name,
+                                )
+                            )
+                        )
                     if value:
                         grounding_dic["{}_{}".format(pred_name, k)] = 1
-                        grounding.append(1)
+                        if observe_pred:
+                            grounding.append(1)
                         k += 1
                     else:
                         grounding_dic["{}_{}".format(pred_name, k)] = 0
-                        grounding.append(0)
+                        if observe_pred:
+                            grounding.append(0)
                         k += 1
             elif arity == 2:
                 # Binary predicate grounding
@@ -421,11 +483,13 @@ def solve_sub_problem(ego_name,
                         value = method(partial_world, partial_intersections, partial_agents, entity1_name, entity2_name)
                         if value:
                             grounding_dic["{}_{}".format(pred_name, k)] = 1
-                            grounding.append(1)
+                            if observe_pred:
+                                grounding.append(1)
                             k += 1
                         else:
                             grounding_dic["{}_{}".format(pred_name, k)] = 0
-                            grounding.append(0)
+                            if observe_pred:
+                                grounding.append(0)
                             k += 1
 
         agents_actions = {
@@ -440,6 +504,7 @@ def eval_action(rl_action,
                 rule_tem, 
                 entity_types, 
                 predicates, 
+                predicate_runtime,
                 var_names,
                 fov_entities,
                 last_obs_dict,
@@ -457,7 +522,11 @@ def eval_action(rl_action,
         entity_num = fov_entities[entity_type]
         entities[entity_type] = [Const(f"{entity_type}_{i}", entity_sorts[entity_type]) for i in range(entity_num)]
     # 3. create, ground predicates and add to solver
-    local_predicates = copy.deepcopy(predicates)
+    local_predicates = _instantiate_local_predicates(
+        predicates,
+        predicate_runtime,
+        {"entity_sorts": entity_sorts},
+    )
     # 4. create, ground predicates and add to solver
     local_solvers = {rule_name: Solver() for rule_name in rule_tem.keys()}
     for pred_name, pred_info in local_predicates.items():
@@ -465,6 +534,7 @@ def eval_action(rl_action,
         eval_pred = eval(pred_info["instance"])
         pred_info["instance"] = eval_pred
         arity = pred_info["arity"]
+        observe_pred = _is_observed_predicate(pred_info)
 
         # Import the grounding method
         method_full_name = pred_info["function"]
@@ -485,12 +555,14 @@ def eval_action(rl_action,
             # Unary predicate grounding
             for entity in entities[eval_pred.domain(0).name()]:
                 if last_obs_dict["{}_{}".format(pred_name, k)]:
-                    grounding.append(1)
+                    if observe_pred:
+                        grounding.append(1)
                     k += 1
                     for rule_name, rule_template in rule_tem.items():
                         local_solvers[rule_name].add(eval_pred(entity))
                 else:
-                    grounding.append(0)
+                    if observe_pred:
+                        grounding.append(0)
                     k += 1
                     for rule_name, rule_template in rule_tem.items():
                         local_solvers[rule_name].add(Not(eval_pred(entity)))
@@ -499,19 +571,20 @@ def eval_action(rl_action,
             for entity1 in entities[eval_pred.domain(0).name()]:
                 for entity2 in entities[eval_pred.domain(1).name()]:
                     if last_obs_dict["{}_{}".format(pred_name, k)]:
-                        grounding.append(1)
+                        if observe_pred:
+                            grounding.append(1)
                         k += 1
                         for rule_name, rule_template in rule_tem.items():
                             local_solvers[rule_name].add(eval_pred(entity1, entity2))
                     else:
-                        grounding.append(0)
+                        if observe_pred:
+                            grounding.append(0)
                         k += 1
                         for rule_name, rule_template in rule_tem.items():
                             local_solvers[rule_name].add(Not(eval_pred(entity1, entity2)))
 
     # 5. create, ground rules and add to solver
-    local_rule_tem = copy.deepcopy(rule_tem)
-    for rule_name, rule_template in local_rule_tem.items():
+    for rule_name, rule_template in rule_tem.items():
         # the first entity is the ego agent
         entity = entities["Entity"][0]
         # Replace placeholder in the rule template with the actual agent entity
@@ -537,7 +610,7 @@ def eval_action(rl_action,
         else:
             if rule_tem[rule_name]["dead"]:
                 fail = True
-            reward += local_rule_tem[rule_name]["reward"]
+            reward += rule_tem[rule_name]["reward"]
             violated_rules.append(rule_name)
 
     return fail, reward, violated_rules

@@ -1,0 +1,127 @@
+Rules:
+  Sim: # how the determinist agents move
+    - name: Stop
+      formula: |
+        Stop(entity) == Exists(
+          [dummyEntity], 
+          Or(
+            And(
+              IsCar(entity),
+              IsPedestrian(dummyEntity),
+              SameInter(entity, dummyEntity),
+              Or(
+                And(IsAtInter(entity), IsAtInter(dummyEntity)),
+                And(IsAtInter(entity), IsInInter(dummyEntity)),
+                And(IsInInter(entity), IsAtInter(dummyEntity)),
+                And(IsInInter(entity), IsInInter(dummyEntity))
+              )
+            ),
+            And(
+              IsAtInter(entity), 
+              IsInInter(dummyEntity), 
+              SameInter(entity, dummyEntity),
+            ),
+            And(
+              IsAtInter(entity), 
+              IsAtInter(dummyEntity), 
+              SameInter(entity, dummyEntity),
+              HigherPri(dummyEntity, entity),
+            ),
+            CollidingClose(entity, dummyEntity)
+          )
+        )
+      description: Stop for same-intersection conflicts and crossing pedestrians.
+  Task: # how the reward/score is calculated
+    - name: Collision and Intersection
+      description: should not collide.
+      dead: true
+      reward: -10
+      formula: |
+        Implies(Exists(
+          [dummyEntity], 
+            Or(
+              And(
+                IsCar(entity),
+                IsPedestrian(dummyEntity),
+                SameInter(entity, dummyEntity),
+                Or(
+                  And(IsAtInter(entity), IsAtInter(dummyEntity)),
+                  And(IsAtInter(entity), IsInInter(dummyEntity)),
+                  And(IsInInter(entity), IsAtInter(dummyEntity)),
+                  And(IsInInter(entity), IsInInter(dummyEntity))
+                )
+              ),
+              And(
+                IsAtInter(entity), 
+                IsInInter(dummyEntity), 
+                SameInter(entity, dummyEntity),
+              ),
+              And(
+                IsAtInter(entity), 
+                IsAtInter(dummyEntity), 
+                SameInter(entity, dummyEntity),
+                HigherPri(dummyEntity, entity),
+              ),
+              CollidingClose(entity, dummyEntity)
+            )
+          ),
+          Stop(entity)
+        )
+  Expert: # how the expert agents should move
+    - name: Stop
+      description: should not disobey rules.
+      formula: |
+        Stop(entity) == Exists(
+        [dummyEntity], 
+          Or(
+            And(
+              IsCar(entity),
+              IsPedestrian(dummyEntity),
+              SameInter(entity, dummyEntity),
+              Or(
+                And(IsAtInter(entity), IsAtInter(dummyEntity)),
+                And(IsAtInter(entity), IsInInter(dummyEntity)),
+                And(IsInInter(entity), IsAtInter(dummyEntity)),
+                And(IsInInter(entity), IsInInter(dummyEntity))
+              )
+            ),
+            And(
+              IsAtInter(entity), 
+              IsInInter(dummyEntity), 
+              SameInter(entity, dummyEntity),
+            ),
+            And(
+              IsAtInter(entity), 
+              IsAtInter(dummyEntity), 
+              SameInter(entity, dummyEntity),
+              HigherPri(dummyEntity, entity),
+            ),
+            CollidingClose(entity, dummyEntity)
+          )
+        )
+    - name: Slow
+      description: Approach intersections cautiously when no full stop is required.
+      formula: |
+        Slow(entity) == And(
+          Not(Stop(entity)),
+          IsAtInter(entity)
+        )
+    - name: Fast
+      description: Cruise fast only when far from the intersection.
+      formula: |
+        Fast(entity) == And(
+          Not(Stop(entity)),
+          Not(Slow(entity)),
+          Not(IsAtInter(entity)),
+          Not(IsInInter(entity))
+        )
+    - name: Normal
+      description: Normal action is the default residual action.
+      formula: |
+        Normal(entity) == Not(
+          Or(
+            Stop(entity),
+            Slow(entity),
+            Fast(entity)
+          )
+        )

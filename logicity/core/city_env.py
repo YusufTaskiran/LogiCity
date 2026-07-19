@@ -13,6 +13,21 @@ class CityEnv(City):
         self.rl_agent = rl_agent
         self.logic_grounding_shape, self.pred_grounding_index = self.local_planner.logic_grounding_shape(self.rl_agent["fov_entities"])
 
+    def _decode_action_label(self, agent, action_dist):
+        if action_dist is None:
+            return "Unknown"
+        active = (action_dist > 0).nonzero(as_tuple=False).flatten().tolist()
+        if len(active) == 0:
+            return "Unknown"
+        labels = [agent.action_mapping.get(int(idx), str(int(idx))) for idx in active]
+        return "|".join(labels)
+
+    def _snapshot_agent_positions(self):
+        positions = {}
+        for agent in self.agents:
+            positions["{}_{}".format(agent.type, agent.layer_id)] = [int(agent.pos[0].item()), int(agent.pos[1].item())]
+        return positions
+
     def move_rl_agent(self, action, idx):
         current_obs = {}
         current_obs["Fail"] = []
@@ -97,6 +112,8 @@ class CityEnv(City):
         current_obs["Expert_actions"] = []
         current_obs["Expert_sg"] = []
         current_obs["Ground_dic"] = []
+        current_obs["Planner_actions"] = {}
+        current_obs["Agent_positions"] = self._snapshot_agent_positions()
 
         new_matrix = torch.zeros_like(self.city_grid)
         current_world = self.city_grid.clone()
@@ -120,11 +137,14 @@ class CityEnv(City):
                 if "{}_scene_graph".format(agent_name) in agent_action_dist:
                     current_obs["Expert_sg"].append(agent_action_dist["{}_scene_graph".format(agent_name)])
                 if "{}_action".format(agent_name) in agent_action_dist:
-                    current_obs["Expert_actions"].append(agent_action_dist["{}_action".format(agent_name)].clone())
+                    expert_action = agent_action_dist["{}_action".format(agent_name)].clone()
+                    current_obs["Expert_actions"].append(expert_action)
+                    current_obs["Planner_actions"][agent_name] = self._decode_action_label(agent, expert_action)
                 continue
             else: 
                 local_action_dist = agent_action_dist[agent_name]
                 local_action, new_matrix[agent.layer_id] = agent.get_next_action(self.city_grid, local_action_dist)
+                current_obs["Planner_actions"][agent_name] = agent.action_mapping.get(int(local_action.item()), str(int(local_action.item())))
 
             if agent.reach_goal:
                 continue

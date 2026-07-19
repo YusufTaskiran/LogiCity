@@ -1,0 +1,135 @@
+simulation:
+  map_yaml_file: config/maps/square_5x5.yaml
+  agent_yaml_file: config/agents/hard_5x5/test.yaml
+  ontology_yaml_file: config/rules/ontology_full.yaml
+  rule_type: Z3_Expert
+  rule_yaml_file: config/rules/Nav/hard/expert.yaml
+  rl: true
+  debug: false
+  use_multi: false
+  agent_region: 250
+  rl_agent:
+    max_priority: 21
+    use_expert: true
+    agent_names:
+    - Car_1
+    - Car_2
+    - Car_3
+    - Car_4
+    - Car_5
+    max_horizon: 1200
+    reward_scheme: safe_path_following
+    goal_reward: 1.0
+    progress_reward_scale: 0.05
+    time_penalty: -0.01
+    action_space: 4
+    action_mapping:
+      0:
+      - 1
+      - 1
+      - 1
+      - 1
+      - 0
+      - 0
+      - 0
+      - 0
+      - 0
+      - 0
+      - 0
+      - 0
+      - 0
+      1:
+      - 0
+      - 0
+      - 0
+      - 0
+      - 1
+      - 1
+      - 1
+      - 1
+      - 0
+      - 0
+      - 0
+      - 0
+      - 0
+      2:
+      - 0
+      - 0
+      - 0
+      - 0
+      - 0
+      - 0
+      - 0
+      - 0
+      - 1
+      - 1
+      - 1
+      - 1
+      - 0
+      3:
+      - 0
+      - 0
+      - 0
+      - 0
+      - 0
+      - 0
+      - 0
+      - 0
+      - 0
+      - 0
+      - 0
+      - 0
+      - 1
+    fov_entities:
+      Entity: 5
+    action_cost:
+      0: 0
+      1: 0
+      2: 0
+      3: 0
+    reset_dist:
+      concepts:
+      - normal
+      prob:
+      - 1.0
+    overtime_cost: -0.75
+stable_baselines:
+  algorithm: PLPGPPO
+  policy_network: MlpPolicy
+  policy_kwargs:
+    features_extractor_module: logicity.rl_agent.policy.neural
+    features_extractor_class: MLPFeatureExtractor
+    features_extractor_kwargs:
+      features_dim: 64
+  hyperparameters:
+    learning_rate: 3.0e-05
+    clip_range: 0.2
+    vf_coef: 0.5
+    batch_size: 256
+    n_steps: 128
+    n_epochs: 4
+    ent_coef: 0.01
+    verbose: 1
+    tensorboard_log: ./tb_logs
+    plpg_kwargs:
+      template: hard_fine
+      alpha: 0.1
+      rule_yaml_file: config/rules/Nav/hard/expert.yaml
+      safety_loss_source: shielded
+  train: false
+  checkpoint_path: ''
+  eval_actions:
+    Stop: 3
+  vis_id:
+  - -1
+  continuous_eval:
+    enabled: true
+    stop_mode: time_budget
+    total_steps: 300
+    resolved_goal_quota_per_agent: null
+    reset_on_failure: true
+    visualize:
+      enabled: true
+      frame_every: 1
+      resolution: 1000
+      agent_layers: -1

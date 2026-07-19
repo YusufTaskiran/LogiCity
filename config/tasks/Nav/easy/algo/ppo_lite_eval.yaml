@@ -42,8 +42,8 @@ simulation:
     overtime_cost: -0.5
 
 eval_checkpoint:
-  eval_freq: 75000
-  save_freq: 75000
+  eval_freq: 100000
+  save_freq: 100000
   simulation_config:
     map_yaml_file: "config/maps/square_2x2.yaml"
     agent_yaml_file: "config/agents/easy_lite/val.yaml"
@@ -106,4 +106,4 @@ stable_baselines:
   train: true
   checkpoint_path: ""
   num_envs: 2
-  total_timesteps: 375000
+  total_timesteps: 1000000

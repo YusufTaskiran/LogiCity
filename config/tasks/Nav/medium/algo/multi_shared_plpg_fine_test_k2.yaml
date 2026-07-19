@@ -1,0 +1,65 @@
+simulation:
+  map_yaml_file: "config/maps/square_2x2.yaml"
+  agent_yaml_file: "config/agents/medium_lite/test.yaml"
+  ontology_yaml_file: "config/rules/ontology_medium.yaml"
+  rule_type: "Z3_Expert"
+  rule_yaml_file: "config/rules/Nav/medium/expert.yaml"
+  rl: true
+  debug: false
+  use_multi: false
+  agent_region: 103
+  rl_agent:
+    max_priority: 5
+    use_expert: true
+    agent_names: ["Car_1", "Car_2"]
+    max_horizon: 320
+    reward_scheme: "safe_path_following"
+    goal_reward: 1.0
+    progress_reward_scale: 0.05
+    time_penalty: -0.01
+    action_space: 4
+    action_mapping:
+      0: [1, 1, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+      1: [0, 0, 0, 0, 1, 1, 1, 1, 0, 0, 0, 0, 0]
+      2: [0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 0]
+      3: [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1]
+    fov_entities:
+      Entity: 4
+    action_cost:
+      0: 0
+      1: 0
+      2: 0
+      3: 0
+    reset_dist:
+      concepts: ['normal']
+      prob: [1.0]
+    overtime_cost: -0.6
+
+stable_baselines:
+  algorithm: "PLPGPPO"
+  policy_network: "MlpPolicy"
+  policy_kwargs:
+    features_extractor_module: "logicity.rl_agent.policy.neural"
+    features_extractor_class: "MLPFeatureExtractor"
+    features_extractor_kwargs:
+      features_dim: 64
+  hyperparameters:
+    learning_rate: 0.00003
+    clip_range: 0.2
+    vf_coef: 0.5
+    batch_size: 256
+    n_steps: 128
+    n_epochs: 4
+    ent_coef: 0.01
+    verbose: 1
+    tensorboard_log: "./tb_logs"
+    plpg_kwargs:
+      template: "medium_fine"
+      alpha: 0.1
+      rule_yaml_file: "config/rules/Nav/medium/expert.yaml"
+      safety_loss_source: "shielded"
+  train: false
+  checkpoint_path: ""
+  episode_data: "log_rl/medium_lite_test_episodes.pkl"
+  eval_actions: {"Stop": 3}
+  vis_id: [-1]

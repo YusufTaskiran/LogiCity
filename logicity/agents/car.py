@@ -25,11 +25,11 @@ logger = logging.getLogger(__name__)
 TYPE_MAP = {v: k for k, v in LABEL_MAP.items()}
 
 class Car(Agent):
-    def __init__(self, size, id, world_state_matrix, global_planner, concepts, init_info=None, debug=False, region=240):
+    def __init__(self, size, id, world_state_matrix, global_planner, concepts, init_info=None, debug=False, region=240, sampling_config=None):
         self.start_point_list = None
         self.goal_point_list = None
         self.global_planner_type = global_planner
-        super().__init__(size, id, world_state_matrix, concepts, init_info=init_info, debug=debug, region=region)
+        super().__init__(size, id, world_state_matrix, concepts, init_info=init_info, debug=debug, region=region, sampling_config=sampling_config)
         # Actions: ["left_1", "right_1", "up_1", "down_1", "left_2", "right_2", "up_2", "down_2", "left_3", "right_3", "up_3", "down_3", "stop"]
         self.action_space = torch.tensor(range(13))
         self.action_to_move = {
@@ -69,6 +69,10 @@ class Car(Agent):
     def init(self, world_state_matrix, init_info=None, debug=False):
         Traffic_STREET = TYPE_MAP['Traffic Street']
         CROSSING_STREET = TYPE_MAP['Overlap']
+        self.movable_region = (world_state_matrix[STREET_ID] == Traffic_STREET) | (world_state_matrix[STREET_ID] == CROSSING_STREET)
+        self.midline_matrix = (world_state_matrix[STREET_ID] == Traffic_STREET+MID_LINE_CODE_PLUS)
+        self.global_planner = GPlanner_mapper[self.global_planner_type](self.movable_region, self.midline_matrix, CAR_STREET_OFFSET)
+        self.intersection_points = torch.cat([torch.cat(self.global_planner.start_lists, dim=0), torch.cat(self.global_planner.end_lists, dim=0)], dim=0)
         if init_info is not None:
             self.init_from_dict(init_info)
             _ = self.get_start(world_state_matrix)
@@ -80,16 +84,11 @@ class Car(Agent):
             else:
                 self.start, self.goal = self._sample_start_and_goal(world_state_matrix)
                 self.pos = self.start.clone()
-        # specify the occupacy map
-        self.movable_region = (world_state_matrix[STREET_ID] == Traffic_STREET) | (world_state_matrix[STREET_ID] == CROSSING_STREET)
-        self.midline_matrix = (world_state_matrix[STREET_ID] == Traffic_STREET+MID_LINE_CODE_PLUS)
-        self.global_planner = GPlanner_mapper[self.global_planner_type](self.movable_region, self.midline_matrix, CAR_STREET_OFFSET)
-        self.intersection_points = torch.cat([torch.cat(self.global_planner.start_lists, dim=0), torch.cat(self.global_planner.end_lists, dim=0)], dim=0)
         # get global traj on the occupacy map
         self.global_traj = self.global_planner.plan(self.start, self.goal, 1)
         self.reach_goal = False
         self.last_move_dir = None
-        logger.info("{}_{} initialization done!".format(self.type, self.id))
+        logger.debug("%s_%s initialization done!", self.type, self.id)
 
     def _sample_start_and_goal(self, world_state_matrix, max_attempts=64):
         for _ in range(max_attempts):
@@ -98,6 +97,60 @@ class Car(Agent):
             if goal is not None:
                 return start, torch.tensor(goal)
         raise RuntimeError("Failed to sample a valid car start/goal pair after {} attempts.".format(max_attempts))
+
+    def _center_intersection_goal_filter(self, start_point, goal_point_list):
+        if len(goal_point_list) == 0:
+            return goal_point_list
+
+        goal_cfg = self.sampling_config.get("car", {}) if isinstance(self.sampling_config, dict) else {}
+        if goal_cfg.get("goal_constraint_mode") != "cross_center_intersection":
+            return goal_point_list
+
+        map_center = torch.tensor(
+            [self.movable_region.shape[0] / 2.0, self.movable_region.shape[1] / 2.0],
+            dtype=torch.float32,
+        )
+        road_nodes = torch.cat(self.global_planner.start_lists + self.global_planner.end_lists, dim=0).float()
+        node_distances = torch.norm(road_nodes - map_center, dim=1)
+        nearest_distance = float(node_distances.min().item())
+        node_band = float(goal_cfg.get("center_node_band", 12.0))
+        selected_nodes = road_nodes[node_distances <= nearest_distance + node_band]
+        if selected_nodes.shape[0] == 0:
+            selected_nodes = road_nodes[node_distances == node_distances.min()]
+
+        bbox_pad = int(goal_cfg.get("intersection_bbox_pad", TRAFFIC_STREET_WID + WALKING_STREET_WID))
+        x_min = max(0, int(torch.floor(selected_nodes[:, 0].min()).item()) - bbox_pad)
+        x_max = min(self.movable_region.shape[0], int(torch.ceil(selected_nodes[:, 0].max()).item()) + bbox_pad + 1)
+        y_min = max(0, int(torch.floor(selected_nodes[:, 1].min()).item()) - bbox_pad)
+        y_max = min(self.movable_region.shape[1], int(torch.ceil(selected_nodes[:, 1].max()).item()) + bbox_pad + 1)
+
+        max_goals_to_check = int(goal_cfg.get("max_goal_candidates_to_check", 24))
+        accepted_goal_limit = int(goal_cfg.get("accepted_goal_pool_size", 8))
+        candidate_indices = torch.randperm(len(goal_point_list)).tolist()
+        accepted = []
+        checked = 0
+
+        start_tensor = start_point if torch.is_tensor(start_point) else torch.tensor(start_point)
+        for idx in candidate_indices:
+            goal_tensor = torch.tensor(goal_point_list[idx])
+            try:
+                route = self.global_planner.plan(start_tensor, goal_tensor, 1)
+            except Exception:
+                continue
+            checked += 1
+            route_x = route[:, 0]
+            route_y = route[:, 1]
+            crosses_center = bool(
+                ((route_x >= x_min) & (route_x < x_max) & (route_y >= y_min) & (route_y < y_max)).any().item()
+            )
+            if crosses_center:
+                accepted.append(goal_point_list[idx])
+                if len(accepted) >= accepted_goal_limit:
+                    break
+            if checked >= max_goals_to_check:
+                break
+
+        return accepted if len(accepted) > 0 else goal_point_list
 
     def reset_concepts(self, max_priority, concepts_dist=None):
         self.priority = np.random.randint(1, max_priority)
@@ -121,8 +174,7 @@ class Car(Agent):
         building = [TYPE_MAP[b] for b in CAR_GOAL_START]
         # Find cells that are walking streets and have a house or office around them
         desired_locations = sample_start_goal_vh(world_state_matrix, TYPE_MAP['Traffic Street'], building, kernel_size=CAR_GOAL_START_INCLUDE_KERNEL)
-        desired_locations[self.region:, :] = False
-        desired_locations[:, self.region:] = False
+        desired_locations = self.apply_region_mask(desired_locations)
 
         self.start_point_list = torch.nonzero(desired_locations).tolist()
         if len(self.start_point_list) == 0:
@@ -157,14 +209,14 @@ class Car(Agent):
         expanded_mask = F.max_pool2d(building_mask[None, None].float(), exclusion_radius, stride=1, padding=(exclusion_radius - 1) // 2) > 0
         
         desired_locations[expanded_mask[0, 0]] = False
-        desired_locations[self.region:, :] = False
-        desired_locations[:, self.region:] = False
+        desired_locations = self.apply_region_mask(desired_locations)
         desired_locations[start_point[0], start_point[1]] = False
 
         # Return the indices of the desired locations
         goal_point_list = torch.nonzero(desired_locations).tolist()
         if len(goal_point_list) == 0:
             return None
+        goal_point_list = self._center_intersection_goal_filter(start_point, goal_point_list)
         random_index = torch.randint(0, len(goal_point_list), (1,)).item()
         
         # Fetch the corresponding location
@@ -208,8 +260,7 @@ class Car(Agent):
             expanded_mask = F.max_pool2d(building_mask[None, None].float(), exclusion_radius, stride=1, padding=(exclusion_radius - 1) // 2) > 0
             
             desired_locations[expanded_mask[0, 0]] = False
-            desired_locations[self.region:, :] = False
-            desired_locations[:, self.region:] = False
+            desired_locations = self.apply_region_mask(desired_locations)
 
             # Return the indices of the desired locations
             goal_point_list = torch.nonzero(desired_locations).tolist()

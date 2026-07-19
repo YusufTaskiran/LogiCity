@@ -33,11 +33,16 @@ simulation:
     reset_dist:
       concepts: ['normal']
       prob: [1.0]
+    reset_prefilter:
+      intersection_selector: "center"
+      require_ego_intersection: true
+      require_all_agents_intersection: false
+      min_other_intersection_agents: 1
     overtime_cost: -0.75
 
 eval_checkpoint:
-  eval_freq: 10000
-  save_freq: 10000
+  eval_freq: 500
+  save_freq: 500
   simulation_config:
     map_yaml_file: "config/maps/square_2x2.yaml"
     agent_yaml_file: "config/agents/hard_lite/val.yaml"
@@ -86,13 +91,13 @@ stable_baselines:
     features_extractor_module: "logicity.rl_agent.policy.neural"
     features_extractor_class: "MLPFeatureExtractor"
     features_extractor_kwargs:
-      features_dim: 128
+      features_dim: 64
   hyperparameters:
     learning_rate: 0.00003
     clip_range: 0.2
     vf_coef: 0.5
-    batch_size: 512
-    n_steps: 256
+    batch_size: 256
+    n_steps: 128
     n_epochs: 4
     ent_coef: 0.01
     verbose: 1
@@ -105,4 +110,4 @@ stable_baselines:
   train: true
   checkpoint_path: ""
   num_envs: 2
-  total_timesteps: 400000
+  total_timesteps: 1000

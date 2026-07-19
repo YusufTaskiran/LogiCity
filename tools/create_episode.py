@@ -14,6 +14,7 @@ from logicity.core.config import *
 from logicity.utils.load import CityLoader
 from logicity.utils.logger import setup_logger
 from logicity.utils.vis import visualize_city
+from logicity.utils.pred_converter import z3 as z3_predicates
 # RL
 from logicity.rl_agent.alg import *
 from logicity.utils.gym_wrapper import GymCityWrapper
@@ -251,6 +252,187 @@ def _passes_episode_prefilter(eval_env, episode_generation):
         "total_crosses": total_crosses,
     }
 
+
+def _format_discard_reason(reason, info=None):
+    if not info:
+        return str(reason)
+    details = ", ".join("{}={}".format(k, v) for k, v in sorted(info.items()))
+    return "{} ({})".format(reason, details)
+
+
+def _log_step_trace(logger_fn, step_idx, planner_actions, agent_positions):
+    logger_fn("Trace step {}:".format(step_idx))
+    for agent_name in sorted(agent_positions.keys()):
+        position = agent_positions.get(agent_name)
+        action = planner_actions.get(agent_name, "Unknown")
+        logger_fn("  {} pos={} action={}".format(agent_name, position, action))
+
+
+def _build_predicate_context(eval_env):
+    return {str(agent.layer_id): agent for agent in eval_env.env.agents}
+
+
+def _entity_name(agent):
+    return "Agent_{}_{}".format(agent.type, agent.layer_id)
+
+
+def _planner_action_is_stop(planner_actions, agent):
+    action = planner_actions.get("{}_{}".format(agent.type, agent.layer_id), "")
+    return action == "Stop" or str(action).endswith("_Stop")
+
+
+def _compute_stop_causes(world_matrix, intersect_matrix, agents_ctx, agent, others):
+    entity1 = _entity_name(agent)
+    is_at_inter = bool(z3_predicates.IsAtInter(world_matrix, intersect_matrix, agents_ctx, entity1))
+    causes = []
+
+    for other in others:
+        if other.layer_id == agent.layer_id:
+            continue
+        entity2 = _entity_name(other)
+        same_inter = bool(z3_predicates.SameInter(world_matrix, intersect_matrix, agents_ctx, entity1, entity2))
+        higher_pri = bool(z3_predicates.HigherPri(world_matrix, intersect_matrix, agents_ctx, entity2, entity1))
+        colliding_close = bool(z3_predicates.CollidingClose(world_matrix, intersect_matrix, agents_ctx, entity1, entity2))
+        is_other_at_inter = bool(z3_predicates.IsAtInter(world_matrix, intersect_matrix, agents_ctx, entity2))
+        is_other_in_inter = bool(z3_predicates.IsInInter(world_matrix, intersect_matrix, agents_ctx, entity2))
+
+        branch_causes = []
+        if is_at_inter and is_other_in_inter and same_inter:
+            branch_causes.append("intersection_in_inter")
+        if is_at_inter and is_other_at_inter and same_inter and higher_pri:
+            branch_causes.append("intersection_priority")
+        if colliding_close:
+            branch_causes.append("collision_close")
+
+        if branch_causes:
+            causes.append(
+                {
+                    "other": "{}_{}".format(other.type, other.layer_id),
+                    "branches": branch_causes,
+                    "same_inter": int(same_inter),
+                    "other_at_inter": int(is_other_at_inter),
+                    "other_in_inter": int(is_other_in_inter),
+                    "higher_pri": int(higher_pri),
+                    "colliding_close": int(colliding_close),
+                }
+            )
+    return causes
+
+
+def _car_intersection_debug(eval_env, agent):
+    world_matrix = eval_env.env.city_grid
+    intersect_matrix = eval_env.env.intersection_matrix
+    agent_layer = world_matrix[agent.layer_id]
+    agent_position = (agent_layer == z3_predicates.TYPE_MAP[agent.type]).nonzero()[0]
+    traj = getattr(agent, "global_traj", None)
+    current_idx = None
+    prev_point = None
+    next_point = None
+    next_in_inter_id = 0
+    prev_in_inter_id = 0
+    if traj is not None and len(traj) > 0:
+        matches = torch.all(traj == agent_position, dim=1).nonzero(as_tuple=False)
+        if matches.numel() > 0:
+            current_idx = int(matches[0].item())
+            if current_idx > 0:
+                prev_point = traj[current_idx - 1]
+                prev_in_inter_id = int(intersect_matrix[2, prev_point[0], prev_point[1]].item())
+            if current_idx < len(traj) - 1:
+                next_point = traj[current_idx + 1]
+                next_in_inter_id = int(intersect_matrix[2, next_point[0], next_point[1]].item())
+    current_block_id = int(intersect_matrix[2, agent_position[0], agent_position[1]].item())
+    at_line_id = int(intersect_matrix[0, agent_position[0], agent_position[1]].item())
+    ped_line_id = int(intersect_matrix[1, agent_position[0], agent_position[1]].item())
+    context_id = int(z3_predicates._intersection_context_id(world_matrix, intersect_matrix, {str(a.layer_id): a for a in eval_env.env.agents}, _entity_name(agent)))
+    return {
+        "pos": [int(agent_position[0].item()), int(agent_position[1].item())],
+        "traj_idx": current_idx,
+        "car_line_id": at_line_id,
+        "ped_line_id": ped_line_id,
+        "block_id": current_block_id,
+        "context_id": context_id,
+        "prev_point": None if prev_point is None else [int(prev_point[0].item()), int(prev_point[1].item())],
+        "prev_block_id": prev_in_inter_id,
+        "next_point": None if next_point is None else [int(next_point[0].item()), int(next_point[1].item())],
+        "next_block_id": next_in_inter_id,
+    }
+
+
+def _log_predicate_trace(logger_fn, step_idx, eval_env):
+    world_matrix = eval_env.env.city_grid
+    intersect_matrix = eval_env.env.intersection_matrix
+    agents_ctx = _build_predicate_context(eval_env)
+    planner_actions = getattr(eval_env, "last_planner_actions", {}) if hasattr(eval_env, "last_planner_actions") else {}
+    logger_fn("Predicate trace step {}:".format(step_idx))
+
+    for agent in sorted(eval_env.env.agents, key=lambda a: (a.type, a.layer_id)):
+        entity = _entity_name(agent)
+        unary_parts = [
+            "IsAtInter={}".format(z3_predicates.IsAtInter(world_matrix, intersect_matrix, agents_ctx, entity)),
+            "IsInInter={}".format(z3_predicates.IsInInter(world_matrix, intersect_matrix, agents_ctx, entity)),
+        ]
+        logger_fn("  {} {}".format("{}_{}".format(agent.type, agent.layer_id), " ".join(unary_parts)))
+        if agent.type == "Car":
+            dbg = _car_intersection_debug(eval_env, agent)
+            logger_fn(
+                "  {} debug pos={} traj_idx={} car_line_id={} ped_line_id={} block_id={} context_id={} prev_point={} prev_block_id={} next_point={} next_block_id={}".format(
+                    "{}_{}".format(agent.type, agent.layer_id),
+                    dbg["pos"],
+                    dbg["traj_idx"],
+                    dbg["car_line_id"],
+                    dbg["ped_line_id"],
+                    dbg["block_id"],
+                    dbg["context_id"],
+                    dbg["prev_point"],
+                    dbg["prev_block_id"],
+                    dbg["next_point"],
+                    dbg["next_block_id"],
+                )
+            )
+
+    for agent in sorted(eval_env.env.agents, key=lambda a: (a.type, a.layer_id)):
+        if agent.type != "Car":
+            continue
+        entity1 = _entity_name(agent)
+        positive_relations = []
+        for other in sorted(eval_env.env.agents, key=lambda a: (a.type, a.layer_id)):
+            if other.layer_id == agent.layer_id:
+                continue
+            entity2 = _entity_name(other)
+            same_inter = z3_predicates.SameInter(world_matrix, intersect_matrix, agents_ctx, entity1, entity2)
+            higher_pri = z3_predicates.HigherPri(world_matrix, intersect_matrix, agents_ctx, entity2, entity1)
+            colliding_close = z3_predicates.CollidingClose(world_matrix, intersect_matrix, agents_ctx, entity1, entity2)
+            if same_inter or higher_pri or colliding_close:
+                positive_relations.append(
+                    "{}:SameInter={},HigherPri(other,ego)={},CollidingClose={}".format(
+                        "{}_{}".format(other.type, other.layer_id),
+                        same_inter,
+                        higher_pri,
+                        colliding_close,
+                    )
+                )
+        if positive_relations:
+            logger_fn("  {} relations {}".format("{}_{}".format(agent.type, agent.layer_id), " | ".join(positive_relations)))
+        if _planner_action_is_stop(planner_actions, agent):
+            stop_causes = _compute_stop_causes(world_matrix, intersect_matrix, agents_ctx, agent, eval_env.env.agents)
+            if stop_causes:
+                cause_parts = []
+                for cause in stop_causes:
+                    cause_parts.append(
+                        "{}:{} [SameInter={},OtherAtInter={},OtherInInter={},HigherPri(other,ego)={},CollidingClose={}]".format(
+                            cause["other"],
+                            "+".join(cause["branches"]),
+                            cause["same_inter"],
+                            cause["other_at_inter"],
+                            cause["other_in_inter"],
+                            cause["higher_pri"],
+                            cause["colliding_close"],
+                        )
+                    )
+                logger_fn("  {} stop_causes {}".format("{}_{}".format(agent.type, agent.layer_id), " | ".join(cause_parts)))
+            else:
+                logger_fn("  {} stop_causes none".format("{}_{}".format(agent.type, agent.layer_id)))
+
 def _generate_success_only_batch(worker_id, config_path, seed, target_episodes, vis_count=0, progress_every=5):
     torch.manual_seed(seed)
     np.random.seed(seed)
@@ -260,6 +442,8 @@ def _generate_success_only_batch(worker_id, config_path, seed, target_episodes, 
     simulation_config = config["simulation"]
     rl_config = config["stable_baselines"]
     episode_generation = config.get("episode_generation", {})
+    trace_steps = int(episode_generation.get("trace_first_n_steps", 0) or 0)
+    trace_predicates = bool(episode_generation.get("trace_predicates", False))
     algorithm_class = dynamic_import("logicity.rl_agent.alg", rl_config["algorithm"])
     assert rl_config["algorithm"] == "ExpertCollector"
 
@@ -274,8 +458,29 @@ def _generate_success_only_batch(worker_id, config_path, seed, target_episodes, 
         eval_env, cached_observation = make_env(simulation_config, True)
         model = algorithm_class(eval_env)
         o, tem_episode = eval_env.reset(True)
+        if trace_steps > 0:
+            _log_step_trace(
+                lambda msg: print("[worker {}] {}".format(worker_id, msg), flush=True),
+                0,
+                getattr(eval_env, "last_planner_actions", {}) if hasattr(eval_env, "last_planner_actions") else {},
+                getattr(eval_env, "last_agent_positions", {}) if hasattr(eval_env, "last_agent_positions") else {},
+            )
+            if trace_predicates:
+                _log_predicate_trace(
+                    lambda msg: print("[worker {}] {}".format(worker_id, msg), flush=True),
+                    0,
+                    eval_env,
+                )
         prefilter_ok, prefilter_info = _passes_episode_prefilter(eval_env, episode_generation)
         if not prefilter_ok:
+            print(
+                "[worker {}] discarded attempt {} before rollout: {}".format(
+                    worker_id,
+                    attempts,
+                    _format_discard_reason(prefilter_info.get("reason", "prefilter_failed"), prefilter_info),
+                ),
+                flush=True,
+            )
             continue
         rew = 0
         step = 0
@@ -288,13 +493,47 @@ def _generate_success_only_batch(worker_id, config_path, seed, target_episodes, 
             action, _ = model.predict(o, deterministic=True)
             if int(action) == 3:
                 stop_count += 1
-            o, r, done, info = eval_env.step(action)
+            step_result = eval_env.step(action)
+            if len(step_result) == 5:
+                o, r, terminated, truncated, info = step_result
+                done = terminated or truncated
+            else:
+                o, r, done, info = step_result
+            if step <= trace_steps:
+                _log_step_trace(
+                    lambda msg: print("[worker {}] {}".format(worker_id, msg), flush=True),
+                    step,
+                    info.get("Planner_actions", {}),
+                    info.get("Agent_positions", {}),
+                )
+                if trace_predicates:
+                    _log_predicate_trace(
+                        lambda msg: print("[worker {}] {}".format(worker_id, msg), flush=True),
+                        step,
+                        eval_env,
+                    )
             if capture_world:
                 cached_observation["Time_Obs"][step] = info
             rew += r
 
         success_flag = bool(info.get("success", info.get("is_success", False)))
         if not success_flag:
+            print(
+                "[worker {}] discarded attempt {} after rollout: {}".format(
+                    worker_id,
+                    attempts,
+                    _format_discard_reason(
+                        "expert_rollout_unsuccessful",
+                        {
+                            "steps": step,
+                            "reward": rew,
+                            "success": success_flag,
+                            "has_stop": stop_count > 0,
+                        },
+                    ),
+                ),
+                flush=True,
+            )
             continue
 
         tem_episode["label_info"] = {
@@ -377,7 +616,7 @@ def _run_parallel_success_only(args, logger):
     logger.info("Acceptance ratio: {:.4f}".format(args.max_episodes / total_attempts if total_attempts > 0 else 0.0))
     logger.info("Accepted episodes with at least one Stop: {}/{}".format(total_stop_episodes, args.max_episodes))
 
-    for ts in range(min(len(worlds), 5)):
+    for ts in range(min(len(worlds), args.vis_count)):
         with open(os.path.join(args.log_dir, "{}_{}.pkl".format(args.exp, ts)), "wb") as f:
             pkl.dump(worlds[ts], f)
 
@@ -397,6 +636,8 @@ def main(args, logger):
     logger.info("RL config: {}".format(rl_config))
     episode_generation = config.get("episode_generation", {})
     generation_mode = episode_generation.get("mode", "legacy_balanced")
+    trace_steps = int(episode_generation.get("trace_first_n_steps", 0) or 0)
+    trace_predicates = bool(episode_generation.get("trace_predicates", False))
 
     if args.num_workers > 1:
         if generation_mode not in ("success_only", "intersection_biased_success_only"):
@@ -417,6 +658,7 @@ def main(args, logger):
     all_episodes = {}
     stop_episode_count = 0
     key = 0
+    attempts = 0
     vis_id = list(range(min(args.vis_count, args.max_episodes)))
     # 0: Slow, 1: Normal, 2: Fast, 3: Stop
     # Test
@@ -509,6 +751,7 @@ def main(args, logger):
     #     }
     # }
     while key < args.max_episodes: 
+        attempts += 1
         if generation_mode == "legacy_balanced":
             # print current counter and desired in a table
             logger.info("Current counter and desired in a table:")
@@ -521,8 +764,23 @@ def main(args, logger):
         assert rl_config["algorithm"] == "ExpertCollector"
         model = algorithm_class(eval_env)
         o, tem_episodes = eval_env.reset(True)
+        if trace_steps > 0:
+            _log_step_trace(
+                logger.info,
+                0,
+                getattr(eval_env, "last_planner_actions", {}) if hasattr(eval_env, "last_planner_actions") else {},
+                getattr(eval_env, "last_agent_positions", {}) if hasattr(eval_env, "last_agent_positions") else {},
+            )
+            if trace_predicates:
+                _log_predicate_trace(logger.info, 0, eval_env)
         prefilter_ok, prefilter_info = _passes_episode_prefilter(eval_env, episode_generation)
         if not prefilter_ok:
+            logger.info(
+                "Discarded attempt {} before rollout: {}".format(
+                    attempts,
+                    _format_discard_reason(prefilter_info.get("reason", "prefilter_failed"), prefilter_info),
+                )
+            )
             continue
         concept = 'normal'
         if generation_mode in ("legacy_balanced", "intersection_biased_legacy_balanced"):
@@ -543,6 +801,15 @@ def main(args, logger):
                 logger.info("Skipping episode due to counter")
                 skip = True
             if skip:
+                logger.info(
+                    "Discarded attempt {} before rollout: {}".format(
+                        attempts,
+                        _format_discard_reason(
+                            "legacy_counter_saturated",
+                            {"concept": concept},
+                        ),
+                    )
+                )
                 continue
         else:
             using_dict = {}
@@ -559,7 +826,21 @@ def main(args, logger):
             action, _ = model.predict(o, deterministic=True)
             if int(action) == 3:
                 stop_count += 1
-            o, r, d, i = eval_env.step(action)
+            step_result = eval_env.step(action)
+            if len(step_result) == 5:
+                o, r, terminated, truncated, i = step_result
+                d = terminated or truncated
+            else:
+                o, r, d, i = step_result
+            if step <= trace_steps:
+                _log_step_trace(
+                    logger.info,
+                    step,
+                    i.get("Planner_actions", {}),
+                    i.get("Agent_positions", {}),
+                )
+                if trace_predicates:
+                    _log_predicate_trace(logger.info, step, eval_env)
             if key in vis_id:
                 cached_observation["Time_Obs"][step] = i
             if generation_mode in ("legacy_balanced", "intersection_biased_legacy_balanced"):
@@ -570,6 +851,38 @@ def main(args, logger):
                         save = True
             rew += r
         success_flag = bool(i.get("success", i.get("is_success", False)))
+        if not success_flag:
+            logger.info(
+                "Discarded attempt {} after rollout: {}".format(
+                    attempts,
+                    _format_discard_reason(
+                        "expert_rollout_unsuccessful",
+                        {
+                            "steps": step,
+                            "reward": rew,
+                            "success": success_flag,
+                            "has_stop": stop_count > 0,
+                        },
+                    ),
+                )
+            )
+            continue
+        if not save:
+            logger.info(
+                "Discarded attempt {} after rollout: {}".format(
+                    attempts,
+                    _format_discard_reason(
+                        "did_not_match_generation_target",
+                        {
+                            "steps": step,
+                            "reward": rew,
+                            "has_stop": stop_count > 0,
+                            "mode": generation_mode,
+                        },
+                    ),
+                )
+            )
+            continue
         if save and success_flag:
             logger.info("Episode {} took {} steps.".format(key, step))
             label_info = {

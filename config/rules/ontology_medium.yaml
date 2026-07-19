@@ -50,6 +50,13 @@ Predicates:
       function: logicity.utils.pred_converter.z3.IsInInter
       description: Checks if agent x in the intersection.
       semantic: false
+  - SameInter:
+      arity: 2
+      method: SameInter(Entity, Entity)
+      function: logicity.utils.pred_converter.z3.SameInter
+      description: Checks if two agents are at or in the same intersection.
+      semantic: false
+      observe: true
   - HigherPri:
       arity: 2
       method: HigherPri(Entity, Entity)

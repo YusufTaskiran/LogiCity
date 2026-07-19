@@ -23,7 +23,8 @@ class CityLoader:
                   rl_agent=None, 
                   use_multi=False, 
                   episode_cache=None,
-                  agent_region=240):
+                  agent_region=240,
+                  agent_sampling=None):
 
         cached_observation = {
                 "Time_Obs": {},
@@ -103,6 +104,9 @@ class CityLoader:
 
         # Add agents to the city
         logger.info("Adding {} agents, they are constrained in {} region".format(len(city_config["agents"]), agent_region))
+        rl_agent_names = set()
+        if rl_agent is not None:
+            rl_agent_names = set(rl_agent.get("agent_names", []))
         for agents_data in tqdm(city_config["agents"]):
             name = "{}_{}".format(agents_data["concepts"]["type"], agents_data["id"])
             init_info = episode_cache["agents"][name] if episode_cache is not None else None
@@ -114,15 +118,19 @@ class CityLoader:
                 world_state_matrix=city.city_grid,
                 init_info=init_info,
                 debug=debug,
-                region=agent_region
+                region=agent_region,
+                sampling_config=agent_sampling
             )
             city.add_agent(agent)
             agent_name = "{}_{}".format(agent.type, agent.layer_id)
+            config_agent_name = "{}_{}".format(agent.type, agent.id)
             cached_observation["Static Info"]["Agents"][agent_name] = {
                 "layer_id": agent.layer_id,
+                "id": agent.id,
                 "type": agent.type,
                 "size": agent.size,
-                "concepts": agent.concepts
+                "concepts": agent.concepts,
+                "is_rl_agent": config_agent_name in rl_agent_names,
             }
             for predicate in city.local_planner.predicates.keys():
                 # ONLY Arity-1 predicate is supported

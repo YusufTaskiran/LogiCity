@@ -162,17 +162,115 @@ def IsAtInter(world_matrix, intersect_matrix, agents, entity1):
     layer_id = int(layer_id)
     agent_layer = world_matrix[layer_id]
     agent_position = (agent_layer == TYPE_MAP[agent_type]).nonzero()[0]
-    # at intersection needs to care if the car is "entering" or "leaving", so use intersect_matrix[0]
+    # For cars, "at intersection" should capture the route boundary of an
+    # intersection, not only a narrow precomputed line mask. In the compact
+    # 2x2 benchmark, cars often sit one cell off the line mask while still
+    # being the next vehicle to enter the same intersection. We therefore
+    # treat a car as "at" the intersection when it is currently outside the
+    # block but has an adjacent route point inside that block.
     if agent_type == "Car":
+        if intersect_matrix[2, agent_position[0], agent_position[1]]:
+            return 0
+        agent_key = str(layer_id) if str(layer_id) in agents else "ego_{}".format(layer_id)
+        assert agent_key in agents, "Agent {} not found in predicate context".format(layer_id)
+        agent = agents[agent_key]
+        traj = getattr(agent, "global_traj", None)
+        if traj is None or len(traj) == 0:
+            return 0
+
+        matches = torch.all(traj == agent_position, dim=1).nonzero(as_tuple=False)
+        if matches.numel() == 0:
+            return 0
+
+        current_idx = int(matches[0].item())
+        neighbor_points = []
+        if current_idx > 0:
+            neighbor_points.append(traj[current_idx - 1])
+        if current_idx < len(traj) - 1:
+            neighbor_points.append(traj[current_idx + 1])
+
+        for point in neighbor_points:
+            if intersect_matrix[2, point[0], point[1]]:
+                return 1
         if intersect_matrix[0, agent_position[0], agent_position[1]]:
             return 1
-        else:
-            return 0
+        return 0
     else:
         if intersect_matrix[1, agent_position[0], agent_position[1]]:
             return 1
         else:
             return 0
+
+
+def _intersection_context_id(world_matrix, intersect_matrix, agents, entity):
+    if "PH" in entity:
+        return 0
+    _, agent_type, layer_id = entity.split("_")
+    layer_id = int(layer_id)
+    agent_layer = world_matrix[layer_id]
+    agent_position = (agent_layer == TYPE_MAP[agent_type]).nonzero()[0]
+
+    current_inter_id = int(intersect_matrix[2, agent_position[0], agent_position[1]].item())
+    if current_inter_id > 0:
+        return current_inter_id
+
+    if agent_type != "Car":
+        return 0
+
+    current_line_inter_id = int(intersect_matrix[0, agent_position[0], agent_position[1]].item())
+    if current_line_inter_id > 0:
+        return current_line_inter_id
+
+    agent_key = str(layer_id) if str(layer_id) in agents else "ego_{}".format(layer_id)
+    if agent_key not in agents:
+        return 0
+    agent = agents[agent_key]
+    traj = getattr(agent, "global_traj", None)
+    if traj is None or len(traj) == 0:
+        return 0
+
+    matches = torch.all(traj == agent_position, dim=1).nonzero(as_tuple=False)
+    if matches.numel() == 0:
+        return 0
+
+    current_idx = int(matches[0].item())
+
+    # Prefer the upcoming intersection along the agent's route. Falling back to
+    # a previous route point can incorrectly bind a car to the intersection it
+    # has just left, which delays SameInter for approaching traffic.
+    lookahead_limit = min(len(traj), current_idx + 7)
+    for idx in range(current_idx + 1, lookahead_limit):
+        point = traj[idx]
+        inter_id = int(intersect_matrix[2, point[0], point[1]].item())
+        if inter_id > 0:
+            return inter_id
+        line_inter_id = int(intersect_matrix[0, point[0], point[1]].item())
+        if line_inter_id > 0:
+            return line_inter_id
+
+    lookbehind_start = max(0, current_idx - 3)
+    for idx in range(current_idx - 1, lookbehind_start - 1, -1):
+        point = traj[idx]
+        inter_id = int(intersect_matrix[2, point[0], point[1]].item())
+        if inter_id > 0:
+            return inter_id
+        line_inter_id = int(intersect_matrix[0, point[0], point[1]].item())
+        if line_inter_id > 0:
+            return line_inter_id
+    return 0
+
+
+def _get_agent_direction(agents, layer_id):
+    agent = None
+    if layer_id in agents.keys():
+        agent = agents[layer_id]
+    else:
+        ego_key = "ego_{}".format(layer_id)
+        assert ego_key in agents.keys()
+        agent = agents[ego_key]
+    if hasattr(agent, "moving_direction"):
+        return agent.moving_direction
+    return getattr(agent, "last_move_dir", None)
 
 def IsInInter(world_matrix, intersect_matrix, agents, entity1):
     if "PH" in entity1:
@@ -185,6 +283,18 @@ def IsInInter(world_matrix, intersect_matrix, agents, entity1):
         return 1
     else:
         return 0
+
+
+def SameInter(world_matrix, intersect_matrix, agents, entity1, entity2):
+    if entity1 == entity2:
+        return 0
+    if "PH" in entity1 or "PH" in entity2:
+        return 0
+    inter_id_1 = _intersection_context_id(world_matrix, intersect_matrix, agents, entity1)
+    inter_id_2 = _intersection_context_id(world_matrix, intersect_matrix, agents, entity2)
+    if inter_id_1 > 0 and inter_id_1 == inter_id_2:
+        return 1
+    return 0
 
 def IsClose(world_matrix, intersect_matrix, agents, entity1, entity2):
     if entity1 == entity2:
@@ -245,22 +355,36 @@ def CollidingClose(world_matrix, intersect_matrix, agents, entity1, entity2):
     agent_position1 = (agent_layer1 == TYPE_MAP[agent_type1]).nonzero()[0]
     agent_position2 = (agent_layer2 == TYPE_MAP[agent_type2]).nonzero()[0]
     # 2. Get the moving direction of the first agent
-    if layer_id1 in agents.keys():
-        agent1_dire = agents[layer_id1].moving_direction
-    else:
-        assert "ego_{}".format(layer_id1) in agents.keys()
-        agent1_dire = agents["ego_{}".format(layer_id1)].moving_direction
+    agent1_dire = _get_agent_direction(agents, layer_id1)
+    agent2_dire = _get_agent_direction(agents, layer_id2)
     if agent1_dire == None:
         return 0
     else:
+        if agent_type1 == "Car" and agent_type2 == "Car":
+            same_inter = SameInter(world_matrix, intersect_matrix, agents, entity1, entity2)
+            if same_inter:
+                ego_at_inter = IsAtInter(world_matrix, intersect_matrix, agents, entity1)
+                other_at_inter = IsAtInter(world_matrix, intersect_matrix, agents, entity2)
+                ego_in_inter = IsInInter(world_matrix, intersect_matrix, agents, entity1)
+                other_in_inter = IsInInter(world_matrix, intersect_matrix, agents, entity2)
+                # In dense validation scenes, collision fallback was triggering
+                # too early for same-intersection traffic, masking the intended
+                # right-of-way rules. Keep the fallback only once interaction is
+                # truly imminent: one car already inside, or both queued at the
+                # intersection boundary.
+                if not (ego_in_inter or other_in_inter or (ego_at_inter and other_at_inter)):
+                    return 0
         dist = torch.sqrt(torch.sum((agent_position1 - agent_position2)**2))
         if dist > OCC_CHECK_RANGE[agent_type1]:
             return 0
         elif dist == 0:
             return np.random.choice([0, 1], p=[0.5, 0.5])
         else:
-            agent1_dire_vec = torch.tensor(DIRECTION_VECTOR[agent1_dire])
-            angle = torch.acos(torch.dot(agent1_dire_vec, (agent_position2 - agent_position1)) / dist)
+            agent1_dire_vec = torch.tensor(DIRECTION_VECTOR[agent1_dire], dtype=torch.float32)
+            relative_vec = (agent_position2 - agent_position1).to(torch.float32)
+            cos_angle = torch.dot(agent1_dire_vec, relative_vec) / dist
+            cos_angle = torch.clamp(cos_angle, -1.0, 1.0)
+            angle = torch.acos(cos_angle)
             if angle < OCC_CHECK_ANGEL:
                 if agent_type1 == "Car":
                     # Cars will definitely stop to avoid collide

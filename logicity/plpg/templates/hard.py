@@ -14,6 +14,7 @@ class HardPLPGTemplate(BasePLPGTemplate):
         self.num_entities = pred_grounding_index["IsAtInter"][1] - pred_grounding_index["IsAtInter"][0]
         self._is_at_inter = pred_grounding_index["IsAtInter"]
         self._is_in_inter = pred_grounding_index["IsInInter"]
+        self._same_inter = pred_grounding_index["SameInter"]
         self._is_close = pred_grounding_index["IsClose"]
         self._higher_pri = pred_grounding_index["HigherPri"]
         self._colliding_close = pred_grounding_index["CollidingClose"]
@@ -29,6 +30,7 @@ class HardPLPGTemplate(BasePLPGTemplate):
         self._obs_logic_end = max(
             self._is_at_inter[1],
             self._is_in_inter[1],
+            self._same_inter[1],
             self._is_close[1],
             self._higher_pri[1],
             self._colliding_close[1],
@@ -59,6 +61,7 @@ class HardPLPGTemplate(BasePLPGTemplate):
         ]
         for i in range(1, self.num_entities):
             lines.append(f"0.0::other_{i}_is_in_inter.")
+            lines.append(f"0.0::other_{i}_same_inter.")
             lines.append(f"0.0::other_{i}_is_at_inter.")
             lines.append(f"0.0::other_{i}_higher_pri.")
             lines.append(f"0.0::other_{i}_colliding_close.")
@@ -76,13 +79,13 @@ class HardPLPGTemplate(BasePLPGTemplate):
         else:
             for i in range(1, self.num_entities):
                 lines.append(
-                    f"hazard :- \\+ ego_is_ambulance, \\+ ego_is_old, ego_is_at_inter, other_{i}_is_in_inter."
+                    f"hazard :- \\+ ego_is_ambulance, \\+ ego_is_old, ego_is_at_inter, other_{i}_same_inter, other_{i}_is_in_inter."
                 )
                 lines.append(
-                    f"hazard :- \\+ ego_is_ambulance, \\+ ego_is_old, ego_is_at_inter, other_{i}_is_at_inter, other_{i}_higher_pri."
+                    f"hazard :- \\+ ego_is_ambulance, \\+ ego_is_old, ego_is_at_inter, other_{i}_same_inter, other_{i}_is_at_inter, other_{i}_higher_pri."
                 )
                 lines.append(
-                    f"hazard :- \\+ ego_is_ambulance, \\+ ego_is_old, ego_is_in_inter, other_{i}_is_in_inter, other_{i}_is_ambulance."
+                    f"hazard :- \\+ ego_is_ambulance, \\+ ego_is_old, ego_is_in_inter, other_{i}_same_inter, other_{i}_is_in_inter, other_{i}_is_ambulance."
                 )
                 lines.append(
                     f"hazard :- \\+ ego_is_ambulance, \\+ ego_is_police, ego_is_car, \\+ ego_is_in_inter, \\+ ego_is_at_inter, other_{i}_left_of_ego, other_{i}_is_close_to_ego, other_{i}_is_police."
@@ -99,13 +102,10 @@ class HardPLPGTemplate(BasePLPGTemplate):
 
         lines.extend(
             [
-                "need_to_stop :- hazard.",
-                "okay_to_move :- \\+ need_to_stop.",
-                "appropriate :- act(stop), need_to_stop.",
-                "appropriate :- act(slow), okay_to_move.",
-                "appropriate :- act(normal), okay_to_move.",
-                "appropriate :- act(fast), okay_to_move.",
-                "safe :- appropriate.",
+                "unsafe :- hazard, act(slow).",
+                "unsafe :- hazard, act(normal).",
+                "unsafe :- hazard, act(fast).",
+                "safe :- \\+ unsafe.",
                 "query(safe).",
                 "query(act(slow)).",
                 "query(act(normal)).",
@@ -118,39 +118,42 @@ class HardPLPGTemplate(BasePLPGTemplate):
     def obs_to_fact_weights(self, obs_row: th.Tensor):
         obs_logic = obs_row[: self._obs_logic_end]
         fact_weights = {
-            "ego_is_ambulance": self._binary_fact(obs_logic[self._is_ambulance[0]].item()),
-            "ego_is_police": self._binary_fact(obs_logic[self._is_police[0]].item()),
-            "ego_is_car": self._binary_fact(obs_logic[self._is_car[0]].item()),
-            "ego_is_bus": self._binary_fact(obs_logic[self._is_bus[0]].item()),
-            "ego_is_old": self._binary_fact(obs_logic[self._is_old[0]].item()),
-            "ego_is_at_inter": self._binary_fact(obs_logic[self._is_at_inter[0]].item()),
-            "ego_is_in_inter": self._binary_fact(obs_logic[self._is_in_inter[0]].item()),
+            "ego_is_ambulance": self._prob_fact(obs_logic[self._is_ambulance[0]].item()),
+            "ego_is_police": self._prob_fact(obs_logic[self._is_police[0]].item()),
+            "ego_is_car": self._prob_fact(obs_logic[self._is_car[0]].item()),
+            "ego_is_bus": self._prob_fact(obs_logic[self._is_bus[0]].item()),
+            "ego_is_old": self._prob_fact(obs_logic[self._is_old[0]].item()),
+            "ego_is_at_inter": self._prob_fact(obs_logic[self._is_at_inter[0]].item()),
+            "ego_is_in_inter": self._prob_fact(obs_logic[self._is_in_inter[0]].item()),
         }
         for i in range(1, self.num_entities):
-            fact_weights[f"other_{i}_is_in_inter"] = self._binary_fact(obs_logic[self._is_in_inter[0] + i].item())
-            fact_weights[f"other_{i}_is_at_inter"] = self._binary_fact(obs_logic[self._is_at_inter[0] + i].item())
-            fact_weights[f"other_{i}_higher_pri"] = self._binary_fact(
+            fact_weights[f"other_{i}_is_in_inter"] = self._prob_fact(obs_logic[self._is_in_inter[0] + i].item())
+            fact_weights[f"other_{i}_same_inter"] = self._prob_fact(
+                obs_logic[self._same_inter[0] + self._pair_index(0, i)].item()
+            )
+            fact_weights[f"other_{i}_is_at_inter"] = self._prob_fact(obs_logic[self._is_at_inter[0] + i].item())
+            fact_weights[f"other_{i}_higher_pri"] = self._prob_fact(
                 obs_logic[self._higher_pri[0] + self._pair_index(i, 0)].item()
             )
-            fact_weights[f"other_{i}_colliding_close"] = self._binary_fact(
+            fact_weights[f"other_{i}_colliding_close"] = self._prob_fact(
                 obs_logic[self._colliding_close[0] + self._pair_index(0, i)].item()
             )
-            fact_weights[f"other_{i}_is_ambulance"] = self._binary_fact(obs_logic[self._is_ambulance[0] + i].item())
-            fact_weights[f"other_{i}_is_police"] = self._binary_fact(obs_logic[self._is_police[0] + i].item())
-            fact_weights[f"other_{i}_is_pedestrian"] = self._binary_fact(
+            fact_weights[f"other_{i}_is_ambulance"] = self._prob_fact(obs_logic[self._is_ambulance[0] + i].item())
+            fact_weights[f"other_{i}_is_police"] = self._prob_fact(obs_logic[self._is_police[0] + i].item())
+            fact_weights[f"other_{i}_is_pedestrian"] = self._prob_fact(
                 obs_logic[self._is_pedestrian[0] + i].item()
             )
-            fact_weights[f"other_{i}_is_old"] = self._binary_fact(obs_logic[self._is_old[0] + i].item())
-            fact_weights[f"other_{i}_left_of_ego"] = self._binary_fact(
+            fact_weights[f"other_{i}_is_old"] = self._prob_fact(obs_logic[self._is_old[0] + i].item())
+            fact_weights[f"other_{i}_left_of_ego"] = self._prob_fact(
                 obs_logic[self._left_of[0] + self._pair_index(i, 0)].item()
             )
-            fact_weights[f"other_{i}_right_of_ego"] = self._binary_fact(
+            fact_weights[f"other_{i}_right_of_ego"] = self._prob_fact(
                 obs_logic[self._right_of[0] + self._pair_index(i, 0)].item()
             )
-            fact_weights[f"other_{i}_next_to_ego"] = self._binary_fact(
+            fact_weights[f"other_{i}_next_to_ego"] = self._prob_fact(
                 obs_logic[self._next_to[0] + self._pair_index(i, 0)].item()
             )
-            fact_weights[f"other_{i}_is_close_to_ego"] = self._binary_fact(
+            fact_weights[f"other_{i}_is_close_to_ego"] = self._prob_fact(
                 obs_logic[self._is_close[0] + self._pair_index(i, 0)].item()
             )
         return fact_weights
@@ -163,12 +166,14 @@ class HardPLPGTemplate(BasePLPGTemplate):
                     fact_weights["ego_is_ambulance"] <= 0.5
                     and fact_weights["ego_is_old"] <= 0.5
                     and fact_weights["ego_is_at_inter"] > 0.5
+                    and fact_weights[f"other_{i}_same_inter"] > 0.5
                     and fact_weights[f"other_{i}_is_in_inter"] > 0.5
                 )
                 or (
                     fact_weights["ego_is_ambulance"] <= 0.5
                     and fact_weights["ego_is_old"] <= 0.5
                     and fact_weights["ego_is_at_inter"] > 0.5
+                    and fact_weights[f"other_{i}_same_inter"] > 0.5
                     and fact_weights[f"other_{i}_is_at_inter"] > 0.5
                     and fact_weights[f"other_{i}_higher_pri"] > 0.5
                 )
@@ -176,6 +181,7 @@ class HardPLPGTemplate(BasePLPGTemplate):
                     fact_weights["ego_is_ambulance"] <= 0.5
                     and fact_weights["ego_is_old"] <= 0.5
                     and fact_weights["ego_is_in_inter"] > 0.5
+                    and fact_weights[f"other_{i}_same_inter"] > 0.5
                     and fact_weights[f"other_{i}_is_in_inter"] > 0.5
                     and fact_weights[f"other_{i}_is_ambulance"] > 0.5
                 )

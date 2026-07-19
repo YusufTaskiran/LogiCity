@@ -20,10 +20,10 @@ logger = logging.getLogger(__name__)
 TYPE_MAP = {v: k for k, v in LABEL_MAP.items()}
 
 class Bus(Car):
-    def __init__(self, size, id, world_state_matrix, global_planner, concepts, debug=False, region=240):
-        super().__init__(size, id, world_state_matrix, global_planner, concepts, debug=debug, region=region)
+    def __init__(self, size, id, world_state_matrix, global_planner, concepts, debug=False, region=240, sampling_config=None):
+        super().__init__(size, id, world_state_matrix, global_planner, concepts, debug=debug, region=region, sampling_config=sampling_config)
 
-    def init(self, world_state_matrix, debug=False):
+    def init(self, world_state_matrix, init_info=None, debug=False):
         Traffic_STREET = TYPE_MAP['Traffic Street']
         CROSSING_STREET = TYPE_MAP['Overlap']
         self.movable_region = (world_state_matrix[STREET_ID] == Traffic_STREET) | (world_state_matrix[STREET_ID] == CROSSING_STREET)
@@ -34,7 +34,7 @@ class Bus(Car):
         self.midline_matrix = (world_state_matrix[STREET_ID] == Traffic_STREET+MID_LINE_CODE_PLUS)
         self.global_planner = GPlanner_mapper[self.global_planner_type](self.movable_region, self.midline_matrix, CAR_STREET_OFFSET)
         self.intersection_points = torch.cat([torch.cat(self.global_planner.start_lists, dim=0), torch.cat(self.global_planner.end_lists, dim=0)], dim=0)
-        logger.info("{}_{} initialization done!".format(self.type, self.id))
+        logger.debug("%s_%s initialization done!", self.type, self.id)
 
     def route2waypoints(self, route_list, max_step):
         road_nodes = np.loadtxt(ROAD_GRAPH_NODES)

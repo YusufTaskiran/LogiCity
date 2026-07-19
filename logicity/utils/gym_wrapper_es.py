@@ -1,10 +1,11 @@
-import gym
+import gymnasium as gym
 import torch
 import numpy as np
+import random
 from gym.spaces import Box, Dict
 import torch.nn.functional as F
 from ..core.config import *
-from .gym_wrapper import GymCityWrapper
+from .gym_wrapper import GymCityWrapper, _RESET_SENTINEL
 
 import logging
 logger = logging.getLogger(__name__)
@@ -158,11 +159,16 @@ class GymCityWrapperES(GymCityWrapper):
             return self.action_cost[3]
     
     
-    def reset(self, return_info=False):
+    def reset(self, return_info=False, seed=_RESET_SENTINEL, options=_RESET_SENTINEL):
+        if seed is not _RESET_SENTINEL and seed is not None:
+            self.seed(seed)
         logger.info("***Reset RL Agent in Env***")
         self.t = 0
-        self.agent.init(self.env.city_grid)
-        self.agent.reset_concepts(self.max_priority, self.reset_dist)
+        if getattr(self.agent, "cached_init_info", None) is not None:
+            self.agent.init(self.env.city_grid, init_info=self.agent.cached_init_info)
+        else:
+            self.agent.init(self.env.city_grid)
+            self.agent.reset_concepts(self.max_priority, self.reset_dist)
         logger.info("Agent reset priority to {}/{}".format(self.agent.priority, self.max_priority))
         logger.info("Agent reset concepts to {}".format(self.agent.concepts))
         self.path_length = len(self.agent.global_traj)*4
@@ -194,7 +200,7 @@ class GymCityWrapperES(GymCityWrapper):
             expert_info["Next_sg"] = ob_dict["Expert_sg"][0]
             return self.current_obs, expert_info
         else:
-            return self.current_obs
+            return self.current_obs, {}
     
     def init(self):
         # init does not reset the agent
@@ -237,27 +243,28 @@ class GymCityWrapperES(GymCityWrapper):
         self.current_obs = obs
         
         # offset the index by 3 layers 0,1,2 are static in world matrix
-        done = reached_goal
+        terminated = reached_goal
+        truncated = False
         info["success"] = False
 
-        if done:
+        if terminated:
             info["success"] = True
             logger.info("will reset agent by success")
             self.reset()
         
         if self.t >= self.horizon: 
-            done = True
+            truncated = True
             rew += self.overtime_cost
             info["overtime"] = True
             logger.info("Reset agent by overtime")
             self.reset()
             
         if info["Fail"][0]: 
-            done = True
+            terminated = True
             logger.info("Reset agent by failing")
             self.reset()
 
-        return self.current_obs, rew, done, info
+        return self.current_obs, rew, terminated, truncated, info
     
     def render(self):
         return self.env.render()
@@ -292,7 +299,9 @@ class GymCityWrapperES(GymCityWrapper):
     def seed(self, seed=None):
         if seed is not None:
             try:
+                random.seed(seed)
                 np.random.seed(seed)
+                torch.manual_seed(seed)
             except:
                 TypeError("Seed must be an integer type!")
     

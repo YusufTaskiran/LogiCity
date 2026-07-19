@@ -23,7 +23,6 @@ agents:
   concepts:
     type: Car
     priority: 2
-    ambulance: 1.0
 
 - class: Private_car
   id: 3
@@ -31,8 +30,7 @@ agents:
   gplanner: A*vg
   concepts:
     type: Car
-    priority: 5
-    police: 1.0
+    priority: 3
 
 - class: Private_car
   id: 4
@@ -40,7 +38,7 @@ agents:
   gplanner: A*vg
   concepts:
     type: Car
-    priority: 3
+    priority: 4
     bus: 1.0
 
 - class: Private_car
@@ -49,4 +47,5 @@ agents:
   gplanner: A*vg
   concepts:
     type: Car
-    priority: 4
+    priority: 5
+    police: 1.0

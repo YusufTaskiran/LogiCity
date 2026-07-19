@@ -6,12 +6,25 @@ Rules:
           [dummyEntity], 
           Or(
             And(
+              IsCar(entity),
+              IsPedestrian(dummyEntity),
+              SameInter(entity, dummyEntity),
+              Or(
+                And(IsAtInter(entity), IsAtInter(dummyEntity)),
+                And(IsAtInter(entity), IsInInter(dummyEntity)),
+                And(IsInInter(entity), IsAtInter(dummyEntity)),
+                And(IsInInter(entity), IsInInter(dummyEntity))
+              )
+            ),
+            And(
               IsAtInter(entity), 
               IsInInter(dummyEntity), 
+              SameInter(entity, dummyEntity),
             ),
             And(
               IsAtInter(entity), 
               IsAtInter(dummyEntity), 
+              SameInter(entity, dummyEntity),
               HigherPri(dummyEntity, entity),
             ),
             CollidingClose(entity, dummyEntity)
@@ -28,12 +41,25 @@ Rules:
           [dummyEntity], 
             Or(
               And(
+                IsCar(entity),
+                IsPedestrian(dummyEntity),
+                SameInter(entity, dummyEntity),
+                Or(
+                  And(IsAtInter(entity), IsAtInter(dummyEntity)),
+                  And(IsAtInter(entity), IsInInter(dummyEntity)),
+                  And(IsInInter(entity), IsAtInter(dummyEntity)),
+                  And(IsInInter(entity), IsInInter(dummyEntity))
+                )
+              ),
+              And(
                 IsAtInter(entity), 
                 IsInInter(dummyEntity), 
+                SameInter(entity, dummyEntity),
               ),
               And(
                 IsAtInter(entity), 
                 IsAtInter(dummyEntity), 
+                SameInter(entity, dummyEntity),
                 HigherPri(dummyEntity, entity),
               ),
               CollidingClose(entity, dummyEntity)
@@ -49,12 +75,25 @@ Rules:
         [dummyEntity], 
           Or(
             And(
+              IsCar(entity),
+              IsPedestrian(dummyEntity),
+              SameInter(entity, dummyEntity),
+              Or(
+                And(IsAtInter(entity), IsAtInter(dummyEntity)),
+                And(IsAtInter(entity), IsInInter(dummyEntity)),
+                And(IsInInter(entity), IsAtInter(dummyEntity)),
+                And(IsInInter(entity), IsInInter(dummyEntity))
+              )
+            ),
+            And(
               IsAtInter(entity), 
               IsInInter(dummyEntity), 
+              SameInter(entity, dummyEntity),
             ),
             And(
               IsAtInter(entity), 
               IsAtInter(dummyEntity), 
+              SameInter(entity, dummyEntity),
               HigherPri(dummyEntity, entity),
             ),
             CollidingClose(entity, dummyEntity)

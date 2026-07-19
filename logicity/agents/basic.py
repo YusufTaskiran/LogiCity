@@ -1,11 +1,14 @@
+import copy
+
 import torch
 from torch.distributions import Categorical
 from ..core.config import *
 
 class Agent:
-    def __init__(self, size, id, world_state_matrix, concepts, init_info=None, debug=False, region=240):
+    def __init__(self, size, id, world_state_matrix, concepts, init_info=None, debug=False, region=240, sampling_config=None):
         self.size = size
         self.concepts = concepts
+        self.cached_init_info = copy.deepcopy(init_info) if init_info is not None else None
         self.type = concepts["type"]
         self.priority = concepts["priority"]
         self.id = id
@@ -30,7 +33,23 @@ class Agent:
         self.reach_goal_buffer = 0
         self.debug = debug
         self.region = region
+        self.sampling_config = copy.deepcopy(sampling_config) if sampling_config is not None else {}
         self.init(world_state_matrix, init_info, debug)
+
+    def apply_region_mask(self, candidate_mask):
+        if isinstance(self.region, int):
+            candidate_mask[self.region:, :] = False
+            candidate_mask[:, self.region:] = False
+            return candidate_mask
+        if isinstance(self.region, dict):
+            x_min = int(self.region.get("x_min", 0))
+            y_min = int(self.region.get("y_min", 0))
+            x_max = int(self.region.get("x_max", candidate_mask.shape[0]))
+            y_max = int(self.region.get("y_max", candidate_mask.shape[1]))
+            bounded_mask = torch.zeros_like(candidate_mask, dtype=torch.bool)
+            bounded_mask[x_min:x_max, y_min:y_max] = candidate_mask[x_min:x_max, y_min:y_max]
+            return bounded_mask
+        return candidate_mask
 
     def init(self, world_state_matrix, init_info=None, debug=False):
         # init global planner, global traj, local planner, start and goal point

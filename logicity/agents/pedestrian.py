@@ -14,11 +14,11 @@ logger = logging.getLogger(__name__)
 TYPE_MAP = {v: k for k, v in LABEL_MAP.items()}
 
 class Pedestrian(Agent):
-    def __init__(self, size, id, world_state_matrix, global_planner, concepts, init_info=None, debug=False, region=240):
+    def __init__(self, size, id, world_state_matrix, global_planner, concepts, init_info=None, debug=False, region=240, sampling_config=None):
         self.start_point_list = None
         self.goal_point_list = None
         self.global_planner = GPlanner_mapper[global_planner]
-        super().__init__(size, id, world_state_matrix, concepts, init_info=init_info, debug=debug, region=region)
+        super().__init__(size, id, world_state_matrix, concepts, init_info=init_info, debug=debug, region=region, sampling_config=sampling_config)
         # pedestrian use A*, which is just a function
         self.action_mapping = {
             0: "Left_Normal", 
@@ -57,7 +57,7 @@ class Pedestrian(Agent):
         self.global_traj = self.global_planner(self.movable_region, self.start, self.goal)
         self.reach_goal = False
         self.last_move_dir = None
-        logger.info("{}_{} initialization done!".format(self.type, self.id))
+        logger.debug("%s_%s initialization done!", self.type, self.id)
 
     def _sample_start_and_goal(self, world_state_matrix, max_attempts=64):
         for _ in range(max_attempts):
@@ -75,9 +75,7 @@ class Pedestrian(Agent):
             building,
             kernel_size=PED_GOAL_START_INCLUDE_KERNEL,
         )
-        desired_locations[self.region:, :] = False
-        desired_locations[:, self.region:] = False
-        return desired_locations
+        return self.apply_region_mask(desired_locations)
 
     def get_start(self, world_state_matrix):
         # Prefer house/office-adjacent starts, but relax to any building-adjacent
@@ -118,8 +116,7 @@ class Pedestrian(Agent):
         expanded_mask = F.max_pool2d(building_mask[None, None].float(), exclusion_radius, stride=1, padding=(exclusion_radius - 1) // 2) > 0
         
         desired_locations[expanded_mask[0, 0]] = False
-        desired_locations[self.region:, :] = False
-        desired_locations[:, self.region:] = False
+        desired_locations = self.apply_region_mask(desired_locations)
         # Return the indices of the desired locations
         goal_point_list = torch.nonzero(desired_locations).tolist()
         if len(goal_point_list) == 0:
@@ -174,8 +171,7 @@ class Pedestrian(Agent):
             expanded_mask = F.max_pool2d(building_mask[None, None].float(), exclusion_radius, stride=1, padding=(exclusion_radius - 1) // 2) > 0
             
             desired_locations[expanded_mask[0, 0]] = False
-            desired_locations[self.region:, :] = False
-            desired_locations[:, self.region:] = False
+            desired_locations = self.apply_region_mask(desired_locations)
 
             # Return the indices of the desired locations
             goal_point_list = torch.nonzero(desired_locations).tolist()

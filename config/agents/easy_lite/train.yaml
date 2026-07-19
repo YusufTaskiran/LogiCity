@@ -24,7 +24,6 @@ agents:
   concepts:
     type: Car
     priority: 2
-    ambulance: 1.0
 
 - class: Private_car
   id: 3

@@ -1,0 +1,278 @@
+agents:
+- class: Private_car
+  id: 1
+  size: 1
+  gplanner: A*vg
+  concepts:
+    type: Car
+    priority: 1
+
+- class: Private_car
+  id: 2
+  size: 1
+  gplanner: A*vg
+  concepts:
+    type: Car
+    priority: 2
+
+- class: Private_car
+  id: 3
+  size: 1
+  gplanner: A*vg
+  concepts:
+    type: Car
+    priority: 3
+
+- class: Private_car
+  id: 4
+  size: 1
+  gplanner: A*vg
+  concepts:
+    type: Car
+    priority: 4
+
+- class: Private_car
+  id: 5
+  size: 1
+  gplanner: A*vg
+  concepts:
+    type: Car
+    priority: 5
+
+- class: Private_car
+  id: 6
+  size: 1
+  gplanner: A*vg
+  concepts:
+    type: Car
+    priority: 6
+
+- class: Private_car
+  id: 7
+  size: 1
+  gplanner: A*vg
+  concepts:
+    type: Car
+    priority: 7
+
+- class: Private_car
+  id: 8
+  size: 1
+  gplanner: A*vg
+  concepts:
+    type: Car
+    priority: 8
+
+- class: Private_car
+  id: 9
+  size: 1
+  gplanner: A*vg
+  concepts:
+    type: Car
+    priority: 9
+
+- class: Private_car
+  id: 10
+  size: 1
+  gplanner: A*vg
+  concepts:
+    type: Car
+    priority: 10
+
+- class: Private_car
+  id: 11
+  size: 1
+  gplanner: A*vg
+  concepts:
+    type: Car
+    priority: 11
+
+- class: Private_car
+  id: 12
+  size: 1
+  gplanner: A*vg
+  concepts:
+    type: Car
+    priority: 12
+
+- class: Private_car
+  id: 13
+  size: 1
+  gplanner: A*vg
+  concepts:
+    type: Car
+    priority: 13
+
+- class: Private_car
+  id: 14
+  size: 1
+  gplanner: A*vg
+  concepts:
+    type: Car
+    priority: 14
+
+- class: Private_car
+  id: 15
+  size: 1
+  gplanner: A*vg
+  concepts:
+    type: Car
+    priority: 15
+
+- class: Private_car
+  id: 16
+  size: 1
+  gplanner: A*vg
+  concepts:
+    type: Car
+    priority: 16
+
+- class: Private_car
+  id: 17
+  size: 1
+  gplanner: A*vg
+  concepts:
+    type: Car
+    priority: 17
+
+- class: Private_car
+  id: 18
+  size: 1
+  gplanner: A*vg
+  concepts:
+    type: Car
+    priority: 18
+
+- class: Private_car
+  id: 19
+  size: 1
+  gplanner: A*vg
+  concepts:
+    type: Car
+    priority: 19
+
+- class: Private_car
+  id: 20
+  size: 1
+  gplanner: A*vg
+  concepts:
+    type: Car
+    priority: 20
+
+- class: Private_car
+  id: 21
+  size: 1
+  gplanner: A*vg
+  concepts:
+    type: Car
+    priority: 21
+    ambulance: 1.0
+
+- class: Private_car
+  id: 22
+  size: 1
+  gplanner: A*vg
+  concepts:
+    type: Car
+    priority: 22
+    ambulance: 1.0
+
+- class: Private_car
+  id: 23
+  size: 1
+  gplanner: A*vg
+  concepts:
+    type: Car
+    priority: 23
+    bus: 1.0
+
+- class: Private_car
+  id: 24
+  size: 1
+  gplanner: A*vg
+  concepts:
+    type: Car
+    priority: 24
+    police: 1.0
+
+- class: Pedestrian
+  id: 1
+  size: 1
+  gplanner: A*
+  concepts:
+    type: Pedestrian
+    priority: 0
+    old: 1.0
+
+- class: Pedestrian
+  id: 2
+  size: 1
+  gplanner: A*
+  concepts:
+    type: Pedestrian
+    priority: 0
+    old: 1.0
+
+- class: Pedestrian
+  id: 3
+  size: 1
+  gplanner: A*
+  concepts:
+    type: Pedestrian
+    priority: 0
+
+- class: Pedestrian
+  id: 4
+  size: 1
+  gplanner: A*
+  concepts:
+    type: Pedestrian
+    priority: 0
+
+- class: Pedestrian
+  id: 5
+  size: 1
+  gplanner: A*
+  concepts:
+    type: Pedestrian
+    priority: 0
+
+- class: Pedestrian
+  id: 6
+  size: 1
+  gplanner: A*
+  concepts:
+    type: Pedestrian
+    priority: 0
+
+- class: Pedestrian
+  id: 7
+  size: 1
+  gplanner: A*
+  concepts:
+    type: Pedestrian
+    priority: 0
+
+- class: Pedestrian
+  id: 8
+  size: 1
+  gplanner: A*
+  concepts:
+    type: Pedestrian
+    priority: 0
+
+- class: Pedestrian
+  id: 9
+  size: 1
+  gplanner: A*
+  concepts:
+    type: Pedestrian
+    priority: 0
+
+- class: Pedestrian
+  id: 10
+  size: 1
+  gplanner: A*
+  concepts:
+    type: Pedestrian
+    priority: 0

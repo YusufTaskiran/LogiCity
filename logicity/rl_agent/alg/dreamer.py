@@ -321,7 +321,8 @@ class Dreamer(OffPolicyAlgorithm):
                 log_interval=log_interval,
             )
         
-        obs, score = self.env.reset(), 0
+        reset_result = self.env.reset()
+        obs, score = (reset_result[0] if isinstance(reset_result, tuple) else reset_result), 0
         done = False
         prev_rssmstate = self.policy.RSSM._init_rssm_state(1)
         prev_action = th.zeros(1, self.action_size).to(self.device)
@@ -344,7 +345,12 @@ class Dreamer(OffPolicyAlgorithm):
 
             # Step the env, using the discrete numbers, not the one-hot
             env_action = th.argmax(action, dim=-1).cpu().numpy()
-            next_obs, rew, done, info = self.env.step(env_action)
+            step_result = self.env.step(env_action)
+            if len(step_result) == 5:
+                next_obs, rew, terminated, truncated, info = step_result
+                done = terminated or truncated
+            else:
+                next_obs, rew, done, info = step_result
             score += rew
 
             # Retrieve reward and episode length if using Monitor wrapper
@@ -356,7 +362,8 @@ class Dreamer(OffPolicyAlgorithm):
                 self.logger.record("train/train_rewards", np.mean(score))
                 self.logger.record("train/action_ent", np.mean(np.mean(episode_actor_ent)))
                 
-                obs, score = self.env.reset(), 0
+                reset_result = self.env.reset()
+                obs, score = (reset_result[0] if isinstance(reset_result, tuple) else reset_result), 0
                 done = False
                 prev_rssmstate = self.policy.RSSM._init_rssm_state(1)
                 prev_action = th.zeros(1, self.action_size).to(self.device)

@@ -40,10 +40,25 @@ simulation:
       require_all_agents_intersection: false
       min_other_intersection_agents: 1
     overtime_cost: -0.5
+    observation_noise:
+      mode: "soft_symmetric"
+      epsilon: 0.1
 
 eval_checkpoint:
-  eval_freq: 2000
-  save_freq: 2000
+  eval_freq: 1000
+  save_freq: 1000
+  adaptive_eval_schedule:
+    target_tsr: 1.0
+    consecutive_target_evals: 2
+    early_eval_freq: 1000
+    post_target_eval_offsets: [2000, 5000, 10000]
+    late_eval_freq: 10000
+  adaptive_save_schedule:
+    target_tsr: 1.0
+    consecutive_target_evals: 2
+    early_eval_freq: 1000
+    post_target_eval_offsets: [2000, 5000, 10000]
+    late_eval_freq: 10000
   simulation_config:
     map_yaml_file: "config/maps/square_2x2.yaml"
     agent_yaml_file: "config/agents/easy_lite/val.yaml"
@@ -80,6 +95,9 @@ eval_checkpoint:
         concepts: ['normal']
         prob: [1.0]
       overtime_cost: -0.5
+      observation_noise:
+        mode: "soft_symmetric"
+        epsilon: 0.1
   save_path: './checkpoints/'
   name_prefix: 'easy_lite_plpg_ppo_soft10'
   episode_data: "log_rl/easy_lite_val_episodes.pkl"
@@ -108,10 +126,7 @@ stable_baselines:
       alpha: 0.1
       rule_yaml_file: "config/rules/Nav/easy/expert.yaml"
       safety_loss_source: "shielded"
-      sensor_noise:
-        mode: "soft_symmetric"
-        epsilon: 0.1
   train: true
   checkpoint_path: ""
   num_envs: 2
-  total_timesteps: 30000
+  total_timesteps: 100000

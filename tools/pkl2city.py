@@ -211,12 +211,27 @@ def create_custom_mask(image, threshold=0.1):
     
 def get_steet_type(gridmap, position):
     l, t, r, b = position
-    partial_grid_horizontal = gridmap[2, t, l-10:l+10]
+    partial_grid_horizontal = gridmap[STREET_ID, t, l-10:l+10]
     if np.sum(partial_grid_horizontal == TYPE_MAP["Mid Lane"]) > 0:
         return "v"
-    partial_grid_vertical = gridmap[2, t-10:t+10, l]
+    partial_grid_vertical = gridmap[STREET_ID, t-10:t+10, l]
     if np.sum(partial_grid_vertical == TYPE_MAP["Mid Lane"]) > 0:
         return "h"
+    return None
+
+
+def _get_agent_metadata(agents, agent_type, layer_id):
+    if not agents:
+        return None
+
+    agent_name = "{}_{}".format(agent_type, layer_id)
+    if agent_name in agents:
+        return agents[agent_name]
+
+    for metadata in agents.values():
+        if metadata.get("layer_id") == layer_id:
+            return metadata
+
     return None
 
 def paste_car_on_map(map_image, car_image, position, direction, type, position_last=None, street_type=None):
@@ -301,6 +316,7 @@ def paste_car_on_map(map_image, car_image, position, direction, type, position_l
 def gridmap2img_agents(gridmap, gridmap_, icon_dict, static_map, ego_id, last_icons=None, agents=None):
     current_map = static_map.copy()
     current_map = Image.fromarray(current_map)
+    resized_world = np.repeat(np.repeat(gridmap, SCALE, axis=1), SCALE, axis=2)
     agent_layer = gridmap[BASIC_LAYER:]
     resized_grid = np.repeat(np.repeat(agent_layer, SCALE, axis=1), SCALE, axis=2)
     agent_layer_ = gridmap_[BASIC_LAYER:]
@@ -319,9 +335,11 @@ def gridmap2img_agents(gridmap, gridmap_, icon_dict, static_map, ego_id, last_ic
         pos = (left, top, right, bottom)
         
         agent_type = LABEL_MAP[local_layer[top, left].item()]     
-        agent_name = "{}_{}".format(agent_type, BASIC_LAYER + i)
-        if agents != None:
-            concepts = agents[agent_name]["concepts"]
+        layer_id = BASIC_LAYER + i
+        agent_metadata = _get_agent_metadata(agents, agent_type, layer_id)
+        if agent_metadata is not None:
+            concepts = agent_metadata.get("concepts", {})
+            is_rl_agent = bool(agent_metadata.get("is_rl_agent", False))
             is_ambulance = False
             is_police = False
             is_young = False
@@ -354,7 +372,9 @@ def gridmap2img_agents(gridmap, gridmap_, icon_dict, static_map, ego_id, last_ic
                 icon = icon_dict["Ambulance"]
             elif is_bus:
                 icon = icon_dict["Bus"]
-            elif agent_type == "Car" and BASIC_LAYER + i == ego_id:
+            elif agent_type == "Car" and is_rl_agent:
+                icon = icon_dict["Tiro"]
+            elif agent_type == "Car" and layer_id == ego_id:
                 icon = icon_dict["Tiro"]
             elif is_tiro:
                 icon = icon_dict["Tiro"]
@@ -376,12 +396,15 @@ def gridmap2img_agents(gridmap, gridmap_, icon_dict, static_map, ego_id, last_ic
                     icon_id = i%len(icon_list)
                     icon = icon_list[icon_id]
         else:
-            icon_list = icon_dict[agent_type]
-            icon_id = i%len(icon_list)
-            icon = icon_list[icon_id]
+            if agent_type == "Car" and layer_id == ego_id:
+                icon = icon_dict["Tiro"]
+            else:
+                icon_list = icon_dict[agent_type]
+                icon_id = i%len(icon_list)
+                icon = icon_list[icon_id]
 
         if agent_type == "Car":
-            street_type = get_steet_type(resized_grid, pos)
+            street_type = get_steet_type(resized_world, pos)
         else:
             street_type = None    
 
@@ -389,16 +412,38 @@ def gridmap2img_agents(gridmap, gridmap_, icon_dict, static_map, ego_id, last_ic
             if direction == "none":
                 icon = last_icons["icon"]["{}_{}".format(agent_type, i)][1]
                 position = last_icons["pos"]["{}_{}".format(agent_type, i)]
-                icon, current_map, last_position = paste_car_on_map(current_map, icon, pos, direction, agent_type, position, street_type)
+                icon, current_map, last_position = paste_car_on_map(
+                    current_map,
+                    icon,
+                    pos,
+                    direction,
+                    agent_type,
+                    position_last=position,
+                    street_type=street_type,
+                )
             else:
                 icon = last_icons["icon"]["{}_{}".format(agent_type, i)][0]
-                icon, current_map, last_position = paste_car_on_map(current_map, icon, pos, direction, agent_type, street_type)
+                icon, current_map, last_position = paste_car_on_map(
+                    current_map,
+                    icon,
+                    pos,
+                    direction,
+                    agent_type,
+                    street_type=street_type,
+                )
             last_icons["icon"]["{}_{}".format(agent_type, i)][1] = icon
             last_icons["pos"]["{}_{}".format(agent_type, i)] = last_position
         else:
             icon_img = Image.fromarray(icon) 
             icon_dict_local["icon"]["{}_{}".format(agent_type, i)] = [icon_img]
-            current_icon, current_map, last_position = paste_car_on_map(current_map, icon_img, pos, direction, agent_type, street_type)
+            current_icon, current_map, last_position = paste_car_on_map(
+                current_map,
+                icon_img,
+                pos,
+                direction,
+                agent_type,
+                street_type=street_type,
+            )
             icon_dict_local["icon"]["{}_{}".format(agent_type, i)].append(current_icon)
             icon_dict_local["pos"]["{}_{}".format(agent_type, i)] = last_position
 
@@ -407,7 +452,7 @@ def gridmap2img_agents(gridmap, gridmap_, icon_dict, static_map, ego_id, last_ic
     else:
         return current_map, icon_dict_local
 
-def main(pkl_path, ego_id, output_folder, scale_factor=1, crop_size=None):
+def main(pkl_path, ego_id, output_folder, scale_factor=1, crop_size=None, max_step=None, target_step=None, show_step_label=True):
     icon_dict = {}
     os.path.exists(output_folder) or os.makedirs(output_folder)
     for key in PATH_DICT.keys():
@@ -425,37 +470,49 @@ def main(pkl_path, ego_id, output_folder, scale_factor=1, crop_size=None):
         obs = data["Time_Obs"]
         agents = data["Static Info"]["Agents"]
 
-    print(obs.keys())
     time_steps = list(obs.keys())
     time_steps.sort()
+    if max_step is not None:
+        time_steps = [step for step in time_steps if step <= max_step]
+        if len(time_steps) < 2:
+            raise RuntimeError("Need at least two timesteps to render up to max_step={}.".format(max_step))
+    if target_step is not None:
+        if target_step not in time_steps:
+            raise RuntimeError("target_step={} not found in rollout.".format(target_step))
+        next_step = target_step + 1
+        if next_step not in obs:
+            raise RuntimeError("Need target_step+1={} to render target_step={}.".format(next_step, target_step))
+        time_steps = [target_step, next_step]
     static_map = gridmap2img_static(obs[time_steps[0]]["World"].numpy(), icon_dict, ego_id)
     static_map_img = Image.fromarray(static_map)
     # static_map_img.save("{}/static_layout.png".format(output_folder))
     last_icons = None
-    for key in trange(time_steps[0], time_steps[-2]):
+    if target_step is not None:
+        render_iter = [(time_steps[0], time_steps[1])]
+        use_pairs = True
+    else:
+        render_iter = trange(time_steps[0], time_steps[-2] + 1)
+        use_pairs = False
+
+    for item in render_iter:
+        if use_pairs:
+            key, next_key = item
+        else:
+            key = item
+            next_key = key + 1
         grid = obs[key]["World"].numpy()
-        grid_ = obs[key+1]["World"].numpy()
+        grid_ = obs[next_key]["World"].numpy()
         img, last_icons = gridmap2img_agents(grid, grid_, icon_dict, static_map, ego_id, last_icons, agents)
-        # Define the text to be added
-        text = "#{}".format(key)
-
-        # Specify the position for the text (x, y coordinates)
-        position = (10, 10)  # 10 pixels from the left and 30 from the top
-
-        # Create an ImageDraw object
-        draw = ImageDraw.Draw(img)
-
-        # Define font type and size (you might need to provide the path to a .ttf font file)
-        try:
-            font = ImageFont.truetype("arial.ttf", size=100)  # Example font, adjust the path and size as needed
-        except IOError:
-            font = ImageFont.load_default()
-
-        # Define text color
-        color = (255, 255, 255)  # White color
-
-        # Add text to image
-        draw.text(position, text, fill=color, font=font)
+        if show_step_label:
+            text = "#{}".format(key)
+            position = (10, 10)
+            draw = ImageDraw.Draw(img)
+            try:
+                font = ImageFont.truetype("arial.ttf", size=100)
+            except IOError:
+                font = ImageFont.load_default()
+            color = (255, 255, 255)
+            draw.text(position, text, fill=color, font=font)
 
         if crop_size is not None:
             img = img.crop((0, 0, min(crop_size, img.width), min(crop_size, img.height)))
@@ -480,8 +537,20 @@ if __name__ == "__main__":
     parser.add_argument("--output_folder", default="vis", help="Output folder.")
     parser.add_argument("--scale_factor", type=float, default=1.0, help="Upscale rendered frames by this factor.")
     parser.add_argument("--crop_size", type=int, default=None, help="Optional top-left square crop size. Defaults to full frame.")
+    parser.add_argument("--max_step", type=int, default=None, help="Optional maximum timestep to render.")
+    parser.add_argument("--target_step", type=int, default=None, help="Optional single timestep to render.")
+    parser.add_argument("--hide_step_label", action="store_true", help="Do not draw the timestep label on rendered frames.")
     
     args = parser.parse_args()
 
     # Call the function with provided arguments
-    main(args.pkl, args.ego_id, args.output_folder, scale_factor=args.scale_factor, crop_size=args.crop_size)
+    main(
+        args.pkl,
+        args.ego_id,
+        args.output_folder,
+        scale_factor=args.scale_factor,
+        crop_size=args.crop_size,
+        max_step=args.max_step,
+        target_step=args.target_step,
+        show_step_label=not args.hide_step_label,
+    )

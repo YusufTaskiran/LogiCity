@@ -11,7 +11,7 @@ from ...core.config import *
 from multiprocessing import Pool
 from ...utils.find import find_agent
 from ...utils.sample import split_into_subsets
-from .z3_rl import world2entity, get_action_name, logic_grounding_shape
+from .z3_rl import world2entity, get_action_name, logic_grounding_shape, _is_observed_predicate
 from .z3_expert import Z3PlannerExpert
 
 logger = logging.getLogger(__name__)
@@ -22,10 +22,12 @@ class Z3PlannerExpertES(Z3PlannerExpert):
         self.rl_input_shape = None
         self.last_rl_obs = None
         self.max_priority = None
+        self.last_rl_obs_map = {}
 
     def reset(self):
         self.last_rl_obs = None
         self.max_priority = None
+        self.last_rl_obs_map = {}
 
     def plan(self, world_matrix, 
              intersect_matrix, 
@@ -70,12 +72,14 @@ class Z3PlannerExpertES(Z3PlannerExpert):
                                             partial_agents[ego_name], partial_world[ego_name], partial_intersections[ego_name], 
                                             self.fov_entities, True, rl_input_shape=self.rl_input_shape, semantic_pred2index=self.semantic_pred2index, \
                                             max_priority=self.max_priority)
-                    self.last_rl_obs = {
+                    obs_cache = {
                         "last_obs_dict": copy.deepcopy(result["{}_grounding_dic".format(ego_name)]),
                         "last_obs": result["{}_grounding".format(ego_name)].copy(),
                         "last_obs_es": result["{}_obs_es".format(ego_name)].clone(),
                         "expert_action": result["{}_action".format(ego_name)].clone(),
                     }
+                    self.last_rl_obs = obs_cache
+                    self.last_rl_obs_map[ego_agent[ego_name].layer_id] = obs_cache
                 else:
                     result = solve_sub_problem(ego_name, ego_agent[ego_name].action_mapping, ego_agent[ego_name].action_dist,
                                             self.rules['Sim'], self.entity_types, self.predicates, self.z3_vars,
@@ -87,12 +91,19 @@ class Z3PlannerExpertES(Z3PlannerExpert):
         # logger.info("Solve sub-problem time: {}".format(e2-e))
         return combined_results
     
-    def eval(self, rl_action):
-        if self.last_rl_obs is None:
+    def eval(self, rl_action, rl_agent=None):
+        if rl_agent is not None:
+            last_rl_obs = self.last_rl_obs_map.get(rl_agent)
+        else:
+            last_rl_obs = self.last_rl_obs
+        if last_rl_obs is None:
             return 0
         fail, reward, violated_rules = eval_action(rl_action, self.rules['Task'], self.entity_types, self.predicates, self.z3_vars, self.fov_entities,
-                             self.last_rl_obs["last_obs_dict"], self.last_rl_obs["last_obs"])
-        self.last_rl_obs = None
+                             last_rl_obs["last_obs_dict"], last_rl_obs["last_obs"])
+        if rl_agent is not None:
+            self.last_rl_obs_map.pop(rl_agent, None)
+        else:
+            self.last_rl_obs = None
         return fail, reward, violated_rules
     
     def eval_state_action(self, state, action):
@@ -298,6 +309,7 @@ def solve_sub_problem(ego_name,
             eval_pred = eval(pred_info["instance"])
             pred_info["instance"] = eval_pred
             arity = pred_info["arity"]
+            observe_pred = _is_observed_predicate(pred_info)
 
             # Import the grounding method
             method_full_name = pred_info["function"]
@@ -319,7 +331,8 @@ def solve_sub_problem(ego_name,
                         scene_graph["objects"][layer_id]["attributes"].append(pred_name)
                         local_solver.add(eval_pred(entity))
                         grounding_dic["{}_{}".format(pred_name, k)] = 1
-                        grounding.append(1)
+                        if observe_pred:
+                            grounding.append(1)
                         k += 1
                         if pred_name in semantic_pred2index.keys():
                             layer_id_int = int(layer_id)
@@ -357,7 +370,8 @@ def solve_sub_problem(ego_name,
                     else:
                         local_solver.add(Not(eval_pred(entity)))
                         grounding_dic["{}_{}".format(pred_name, k)] = 0
-                        grounding.append(0)
+                        if observe_pred:
+                            grounding.append(0)
                         k += 1
             elif arity == 2:
                 # Binary predicate grounding
@@ -376,12 +390,14 @@ def solve_sub_problem(ego_name,
                             scene_graph["objects"][layer_id1]["relations"].append(relation_info)
                             local_solver.add(eval_pred(entity1, entity2))
                             grounding_dic["{}_{}".format(pred_name, k)] = 1
-                            grounding.append(1)
+                            if observe_pred:
+                                grounding.append(1)
                             k += 1
                         else:
                             local_solver.add(Not(eval_pred(entity1, entity2)))
                             grounding_dic["{}_{}".format(pred_name, k)] = 0
-                            grounding.append(0)
+                            if observe_pred:
+                                grounding.append(0)
                             k += 1
 
         # 5. create, ground rules and add to solver
@@ -474,6 +490,7 @@ def eval_action(rl_action,
         eval_pred = eval(pred_info["instance"])
         pred_info["instance"] = eval_pred
         arity = pred_info["arity"]
+        observe_pred = _is_observed_predicate(pred_info)
 
         # Import the grounding method
         method_full_name = pred_info["function"]
@@ -494,12 +511,14 @@ def eval_action(rl_action,
             # Unary predicate grounding
             for entity in entities[eval_pred.domain(0).name()]:
                 if last_obs_dict["{}_{}".format(pred_name, k)]:
-                    grounding.append(1)
+                    if observe_pred:
+                        grounding.append(1)
                     k += 1
                     for rule_name, rule_template in rule_tem.items():
                         local_solvers[rule_name].add(eval_pred(entity))
                 else:
-                    grounding.append(0)
+                    if observe_pred:
+                        grounding.append(0)
                     k += 1
                     for rule_name, rule_template in rule_tem.items():
                         local_solvers[rule_name].add(Not(eval_pred(entity)))
@@ -508,12 +527,14 @@ def eval_action(rl_action,
             for entity1 in entities[eval_pred.domain(0).name()]:
                 for entity2 in entities[eval_pred.domain(1).name()]:
                     if last_obs_dict["{}_{}".format(pred_name, k)]:
-                        grounding.append(1)
+                        if observe_pred:
+                            grounding.append(1)
                         k += 1
                         for rule_name, rule_template in rule_tem.items():
                             local_solvers[rule_name].add(eval_pred(entity1, entity2))
                     else:
-                        grounding.append(0)
+                        if observe_pred:
+                            grounding.append(0)
                         k += 1
                         for rule_name, rule_template in rule_tem.items():
                             local_solvers[rule_name].add(Not(eval_pred(entity1, entity2)))

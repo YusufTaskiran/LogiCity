@@ -42,14 +42,20 @@ simulation:
     overtime_cost: -0.5
 
 eval_checkpoint:
-  eval_freq: 5000
-  save_freq: 5000
+  eval_freq: 1000
+  save_freq: 1000
   adaptive_eval_schedule:
     target_tsr: 1.0
     consecutive_target_evals: 2
     early_eval_freq: 1000
     post_target_eval_offsets: [2000, 5000, 10000]
-    late_eval_freq: 20000
+    late_eval_freq: 10000
+  adaptive_save_schedule:
+    target_tsr: 1.0
+    consecutive_target_evals: 2
+    early_eval_freq: 1000
+    post_target_eval_offsets: [2000, 5000, 10000]
+    late_eval_freq: 10000
   simulation_config:
     map_yaml_file: "config/maps/square_2x2.yaml"
     agent_yaml_file: "config/agents/easy_lite/val.yaml"
@@ -117,4 +123,4 @@ stable_baselines:
   train: true
   checkpoint_path: ""
   num_envs: 2
-  total_timesteps: 500000
+  total_timesteps: 100000

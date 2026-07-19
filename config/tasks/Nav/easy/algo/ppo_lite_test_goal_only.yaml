@@ -1,0 +1,59 @@
+simulation:
+  map_yaml_file: "config/maps/square_2x2.yaml"
+  agent_yaml_file: "config/agents/easy_lite/test.yaml"
+  ontology_yaml_file: "config/rules/ontology_easy.yaml"
+  rule_type: "Z3_Expert"
+  rule_yaml_file: "config/rules/Nav/easy/expert_goal_only.yaml"
+  rl: true
+  debug: false
+  use_multi: false
+  agent_region: 103
+  rl_agent:
+    max_priority: 4
+    use_expert: true
+    agent_name: "Car_1"
+    max_horizon: 300
+    reward_scheme: "safe_path_following"
+    goal_reward: 1.0
+    progress_reward_scale: 0.0
+    time_penalty: 0.0
+    action_space: 4
+    action_mapping:
+      0: [1, 1, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+      1: [0, 0, 0, 0, 1, 1, 1, 1, 0, 0, 0, 0, 0]
+      2: [0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 0]
+      3: [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1]
+    fov_entities:
+      Entity: 3
+    action_cost:
+      0: 0
+      1: 0
+      2: 0
+      3: 0
+    reset_dist:
+      concepts: ['normal']
+      prob: [1.0]
+    overtime_cost: 0.0
+
+stable_baselines:
+  algorithm: "PPO"
+  policy_network: "MlpPolicy"
+  policy_kwargs:
+    features_extractor_module: "logicity.rl_agent.policy.neural"
+    features_extractor_class: "MLPFeatureExtractor"
+    features_extractor_kwargs:
+      features_dim: 64
+  hyperparameters:
+    learning_rate: 0.00003
+    clip_range: 0.2
+    vf_coef: 0.5
+    batch_size: 256
+    n_steps: 128
+    n_epochs: 4
+    ent_coef: 0.01
+    verbose: 1
+    tensorboard_log: "./tb_logs"
+  train: false
+  checkpoint_path: ""
+  episode_data: "log_rl/easy_lite_test_episodes.pkl"
+  eval_actions: {"Stop": 3}

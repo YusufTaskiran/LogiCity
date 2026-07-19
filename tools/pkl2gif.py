@@ -35,6 +35,7 @@ def main():
     parser.add_argument("--duration_ms", type=int, default=150, help="GIF frame duration in milliseconds.")
     parser.add_argument("--scale_factor", type=float, default=1.0, help="Upscale rendered frames by this factor before GIF assembly.")
     parser.add_argument("--crop_size", type=int, default=None, help="Optional top-left square crop size. Defaults to full frame.")
+    parser.add_argument("--max_step", type=int, default=None, help="Optional maximum timestep to render into the GIF.")
     args = parser.parse_args()
 
     render_pkl_to_frames(
@@ -43,6 +44,7 @@ def main():
         args.output_folder,
         scale_factor=args.scale_factor,
         crop_size=args.crop_size,
+        max_step=args.max_step,
     )
 
     output_gif = args.output_gif

@@ -131,7 +131,8 @@ class PLPGPPO(PPO):
             dim=1,
         )
         l1_shift = th.sum(th.abs(base_probs - shielded_probs), dim=1)
-        intervened = (l1_shift > 1e-8).float()
+        # Ignore tiny floating-point renormalization noise when counting interventions.
+        intervened = (l1_shift > 1e-4).float()
         hazard = shield_info.get("template_metrics", {}).get(
             "hazard",
             th.zeros(base_probs.shape[0], dtype=base_probs.dtype, device=base_probs.device),
@@ -235,6 +236,11 @@ class PLPGPPO(PPO):
         entropy_losses = []
         pg_losses, value_losses, safety_losses = [], [], []
         clip_fractions = []
+        mean_base_probs = []
+        mean_shielded_probs = []
+        mean_prob_shifts = []
+        mean_total_variation_shifts = []
+        mean_stop_bias_shifts = []
         continue_training = True
 
         for epoch in range(self.n_epochs):
@@ -247,10 +253,11 @@ class PLPGPPO(PPO):
                 if self.use_sde:
                     self.policy.reset_noise(self.batch_size)
 
-                _, shield_info, shielded_dist, values = self._base_and_shielded(rollout_data.observations)
+                base_probs, shield_info, shielded_dist, values = self._base_and_shielded(rollout_data.observations)
                 values = values.flatten()
                 log_prob = shielded_dist.log_prob(actions)
                 entropy = shielded_dist.entropy()
+                shielded_probs = shielded_dist.probs
 
                 advantages = rollout_data.advantages
                 if self.normalize_advantage and len(advantages) > 1:
@@ -291,6 +298,15 @@ class PLPGPPO(PPO):
                     log_ratio = log_prob - rollout_data.old_log_prob
                     approx_kl_div = th.mean((th.exp(log_ratio) - 1) - log_ratio).cpu().numpy()
                     approx_kl_divs.append(approx_kl_div)
+                    mean_base_probs.append(base_probs.mean(dim=0).detach().cpu().numpy())
+                    mean_shielded_probs.append(shielded_probs.mean(dim=0).detach().cpu().numpy())
+                    mean_prob_shifts.append((shielded_probs - base_probs).mean(dim=0).detach().cpu().numpy())
+                    mean_total_variation_shifts.append(
+                        0.5 * th.abs(shielded_probs - base_probs).sum(dim=1).mean().item()
+                    )
+                    mean_stop_bias_shifts.append(
+                        (shielded_probs[:, 3] - base_probs[:, 3]).mean().item()
+                    )
 
                 if self.target_kl is not None and approx_kl_div > 1.5 * self.target_kl:
                     continue_training = False
@@ -319,6 +335,18 @@ class PLPGPPO(PPO):
         self.logger.record("train/n_updates", self._n_updates, exclude="tensorboard")
         self.logger.record("train/clip_range", clip_range)
         self.logger.record("train/plpg_alpha", self.plpg_alpha)
+        if len(mean_base_probs) > 0:
+            avg_base_probs = np.mean(np.asarray(mean_base_probs), axis=0)
+            avg_shielded_probs = np.mean(np.asarray(mean_shielded_probs), axis=0)
+            avg_prob_shifts = np.mean(np.asarray(mean_prob_shifts), axis=0)
+            action_names = getattr(self._plpg_shield, "action_names", [str(i) for i in range(len(avg_base_probs))])
+            for action_id, action_name in enumerate(action_names):
+                self.logger.record(f"train/base_prob_{action_name}", float(avg_base_probs[action_id]))
+                self.logger.record(f"train/shielded_prob_{action_name}", float(avg_shielded_probs[action_id]))
+                self.logger.record(f"train/prob_shift_{action_name}", float(avg_prob_shifts[action_id]))
+        if len(mean_total_variation_shifts) > 0:
+            self.logger.record("train/mean_total_variation_shift", float(np.mean(mean_total_variation_shifts)))
+            self.logger.record("train/mean_stop_bias_shift", float(np.mean(mean_stop_bias_shifts)))
         if self.clip_range_vf is not None:
             self.logger.record("train/clip_range_vf", clip_range_vf)
 

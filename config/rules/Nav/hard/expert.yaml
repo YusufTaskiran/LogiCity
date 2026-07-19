@@ -10,12 +10,14 @@ Rules:
               Not(IsOld(entity)),
               IsAtInter(entity), 
               IsInInter(dummyEntityA), 
+              SameInter(entity, dummyEntityA),
             ),
             And(
               Not(IsAmbulance(entity)), 
               Not(IsOld(entity)),
               IsAtInter(entity), 
               IsAtInter(dummyEntityA), 
+              SameInter(entity, dummyEntityA),
               HigherPri(dummyEntityA, entity),
             ),
             And(
@@ -23,6 +25,7 @@ Rules:
               Not(IsOld(entity)),
               IsInInter(entity), 
               IsInInter(dummyEntityA), 
+              SameInter(entity, dummyEntityA),
               IsAmbulance(dummyEntityA)
             ),
             And(
@@ -82,12 +85,14 @@ Rules:
                 Not(IsOld(entity)),
                 IsAtInter(entity), 
                 IsInInter(dummyEntityA), 
+                SameInter(entity, dummyEntityA),
               ),
               And(
                 Not(IsAmbulance(entity)), 
                 Not(IsOld(entity)),
                 IsAtInter(entity), 
                 IsAtInter(dummyEntityA), 
+                SameInter(entity, dummyEntityA),
                 HigherPri(dummyEntityA, entity),
               ),
               And(
@@ -95,6 +100,7 @@ Rules:
                 Not(IsOld(entity)),
                 IsInInter(entity), 
                 IsInInter(dummyEntityA), 
+                SameInter(entity, dummyEntityA),
                 IsAmbulance(dummyEntityA)
               ),
               And(
@@ -141,12 +147,14 @@ Rules:
               Not(IsOld(entity)),
               IsAtInter(entity), 
               IsInInter(dummyEntityA), 
+              SameInter(entity, dummyEntityA),
             ),
             And(
               Not(IsAmbulance(entity)), 
               Not(IsOld(entity)),
               IsAtInter(entity), 
               IsAtInter(dummyEntityA), 
+              SameInter(entity, dummyEntityA),
               HigherPri(dummyEntityA, entity),
             ),
             And(
@@ -154,6 +162,7 @@ Rules:
               Not(IsOld(entity)),
               IsInInter(entity), 
               IsInInter(dummyEntityA), 
+              SameInter(entity, dummyEntityA),
               IsAmbulance(dummyEntityA)
             ),
             And(

@@ -55,6 +55,7 @@ class ProbLogCircuitShield:
             for key, value in self.template.fact_weights_to_metrics(fact_weights).items():
                 metric_acc.setdefault(key, []).append(value)
             action_scores = [self._evaluate_safe_query(action_prob, fact_weights) for action_prob in one_hot_actions]
+            action_scores = self.template.postprocess_action_scores(action_scores, fact_weights, obs_row=obs_row)
             safety_probs.append(action_scores)
         return (
             th.tensor(safety_probs, dtype=obs_tensor.dtype, device=obs_tensor.device),

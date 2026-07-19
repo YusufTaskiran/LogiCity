@@ -1,11 +1,44 @@
-Timestep: 1002 - Elapsed Time (s): 1093.28 - Success Rate: 1.0 - Mean Reward: 1.0000000298023224 
-Failure Rate: 0.0 - Timeout Rate: 0.0 - Mean Episode Length: 57.75
+Timestep: 2004 - Elapsed Time (s): 4740.72 - Success Rate: 1.0 - Mean Reward: 1.0000000298023224 
+Failure Rate: 0.0 - Timeout Rate: 0.0 - Mean Episode Length: 57.95
 Mean Decision Succ: 0.0
 Average Decision Succ: 0.0
 Decision Succ for each action: {3: 0.0}
-Action Histogram: {0: 0, 1: 0, 2: 3298, 3: 167}
+Action Histogram: {0: 0, 1: 0, 2: 3299, 3: 178}
 Failure Rule Counts: {}
-Training Rollout Since Last Eval: failures=10 timeouts=0 successes=0
+Training Rollout Since Last Eval: failures=7 timeouts=0 successes=1
 Training Stop-Demand Since Last Eval: stop_needed_steps=39 agent_steps=1002 required_stop_rate=0.038922155688622756
 Eval Schedule Phase: fixed
-PLPG Metrics: base_safe=0.8769001756481623 shielded_safe=0.899096927515528 gain=0.02219675186736587 intervention_rate=1.0 kl=0.026405360191942208 l1=0.09321590034132568 hazard_rate=0.048196248196248195 forced_stop_rate=1.0
+PLPG Metrics: base_safe=0.8757551620069646 shielded_safe=0.8985864934065508 gain=0.02283133139958627 intervention_rate=1.0 kl=0.026666695378755045 l1=0.09504086965883056 hazard_rate=0.05119355766465344 forced_stop_rate=1.0
+Timestep: 3006 - Elapsed Time (s): 7618.80 - Success Rate: 1.0 - Mean Reward: 1.0000000298023224 
+Failure Rate: 0.0 - Timeout Rate: 0.0 - Mean Episode Length: 60.8
+Mean Decision Succ: 0.0
+Average Decision Succ: 0.0
+Decision Succ for each action: {3: 0.0}
+Action Histogram: {0: 208, 1: 0, 2: 3232, 3: 208}
+Failure Rule Counts: {}
+Training Rollout Since Last Eval: failures=6 timeouts=0 successes=2
+Training Stop-Demand Since Last Eval: stop_needed_steps=21 agent_steps=1002 required_stop_rate=0.020958083832335328
+Eval Schedule Phase: fixed
+PLPG Metrics: base_safe=0.8731129788793623 shielded_safe=0.8963730679334778 gain=0.02326008905411551 intervention_rate=1.0 kl=0.02634449657476548 l1=0.09698051954374502 hazard_rate=0.05701754385964912 forced_stop_rate=1.0
+Timestep: 4008 - Elapsed Time (s): 10731.02 - Success Rate: 1.0 - Mean Reward: 1.0000000298023224 
+Failure Rate: 0.0 - Timeout Rate: 0.0 - Mean Episode Length: 57.8
+Mean Decision Succ: 0.0
+Average Decision Succ: 0.0
+Decision Succ for each action: {3: 0.0}
+Action Histogram: {0: 0, 1: 0, 2: 3328, 3: 140}
+Failure Rule Counts: {}
+Training Rollout Since Last Eval: failures=9 timeouts=0 successes=1
+Training Stop-Demand Since Last Eval: stop_needed_steps=34 agent_steps=1002 required_stop_rate=0.033932135728542916
+Eval Schedule Phase: fixed
+PLPG Metrics: base_safe=0.8809286803952413 shielded_safe=0.900332170717994 gain=0.01940349032275267 intervention_rate=1.0 kl=0.022565473821186035 l1=0.08732310320318364 hazard_rate=0.040369088811995385 forced_stop_rate=1.0
+Timestep: 5010 - Elapsed Time (s): 13269.12 - Success Rate: 1.0 - Mean Reward: 1.0000000298023224 
+Failure Rate: 0.0 - Timeout Rate: 0.0 - Mean Episode Length: 58.0
+Mean Decision Succ: 0.0
+Average Decision Succ: 0.0
+Decision Succ for each action: {3: 0.0}
+Action Histogram: {0: 0, 1: 0, 2: 3295, 3: 185}
+Failure Rule Counts: {}
+Training Rollout Since Last Eval: failures=7 timeouts=0 successes=2
+Training Stop-Demand Since Last Eval: stop_needed_steps=35 agent_steps=1002 required_stop_rate=0.03493013972055888
+Eval Schedule Phase: fixed
+PLPG Metrics: base_safe=0.8737558137154442 shielded_safe=0.8978436698173654 gain=0.024087856101921237 intervention_rate=1.0 kl=0.028639928953475908 l1=0.09804673963065805 hazard_rate=0.05316091954022988 forced_stop_rate=1.0

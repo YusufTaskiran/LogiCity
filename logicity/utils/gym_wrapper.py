@@ -1,12 +1,15 @@
-import gym
+import gymnasium as gym
 import torch
 import numpy as np
-from gym.spaces import Box, Dict
+from gymnasium.spaces import Box, Dict
 import torch.nn.functional as F
 from ..core.config import *
+from .observation_noise import apply_observation_noise
 
 import logging
+import random
 logger = logging.getLogger(__name__)
+_RESET_SENTINEL = object()
 
 def CPU(x):
     return x.cpu().numpy() if isinstance(x, torch.Tensor) else x
@@ -59,12 +62,15 @@ class GymCityWrapper(gym.core.Env):
         self.progress_reward_scale = env.rl_agent.get("progress_reward_scale", 0.0)
         self.time_penalty = env.rl_agent.get("time_penalty", 0.0)
         self.reset_prefilter = env.rl_agent.get("reset_prefilter", None)
+        self.observation_noise = env.rl_agent.get("observation_noise", None) or {}
         self.type2label = {v: k for k, v in LABEL_MAP.items()}
         self.scale = [25, 7, 3.5, 8.3]
         self.mini_scale = [0, 0, -1, 0]
         self.t = 0
         self.current_episode_reward = 0
         self.current_episode_length = 0
+        self.last_planner_actions = {}
+        self.last_agent_positions = {}
 
     def full_action2index(self, action):
         # see agents/car.py
@@ -79,9 +85,13 @@ class GymCityWrapper(gym.core.Env):
     
     def _flatten_obs(self, obs_dict):
         if self.cat_length:
-            return np.concatenate([obs_dict["World_state"][0], [self.normed_path_length]], axis=0, dtype=np.float32)
+            logic_obs = self._apply_observation_noise(obs_dict["World_state"][0])
+            return np.concatenate([logic_obs, [self.normed_path_length]], axis=0, dtype=np.float32)
         else:
-            return obs_dict["World_state"][0]
+            return self._apply_observation_noise(obs_dict["World_state"][0])
+
+    def _apply_observation_noise(self, obs_array):
+        return apply_observation_noise(obs_array, self.observation_noise, self.pred_grounding_index)
                 
     def _get_reward(self, obs_dict):
         ''' Get the reward for the current step.
@@ -223,21 +233,26 @@ class GymCityWrapper(gym.core.Env):
             return self.action_cost[3]
     
     
-    def reset(self, return_info=False):
-        logger.info("***Reset RL Agent in Env***")
+    def reset(self, return_info=False, seed=_RESET_SENTINEL, options=_RESET_SENTINEL):
+        if seed is not _RESET_SENTINEL and seed is not None:
+            self.seed(seed)
+        logger.debug("***Reset RL Agent in Env***")
         max_attempts = 128
         for _ in range(max_attempts):
             self.t = 0
             for env_agent in self.env.agents:
-                env_agent.init(self.env.city_grid)
-                if env_agent.layer_id == self.agent_layer_id:
+                if getattr(env_agent, "cached_init_info", None) is not None:
+                    env_agent.init(self.env.city_grid, init_info=env_agent.cached_init_info)
+                else:
+                    env_agent.init(self.env.city_grid)
+                if env_agent.layer_id == self.agent_layer_id and getattr(env_agent, "cached_init_info", None) is None:
                     env_agent.reset_concepts(self.max_priority, self.reset_dist)
             if self._passes_reset_prefilter():
                 break
         else:
             raise RuntimeError("Failed to sample a reset satisfying reset_prefilter after {} attempts.".format(max_attempts))
-        logger.info("Agent reset priority to {}/{}".format(self.agent.priority, self.max_priority))
-        logger.info("Agent reset concepts to {}".format(self.agent.concepts))
+        logger.debug("Agent reset priority to %s/%s", self.agent.priority, self.max_priority)
+        logger.debug("Agent reset concepts to %s", self.agent.concepts)
         self.path_length = len(self.agent.global_traj)*4
         self.normed_path_length = len(self.agent.global_traj)/(2*self.agent.region)
         self.env.local_planner.reset()
@@ -245,6 +260,8 @@ class GymCityWrapper(gym.core.Env):
         if return_info:
             episode = self.save_episode()
         ob_dict = self.env.update(self.agent_layer_id)
+        self.last_planner_actions = ob_dict.get("Planner_actions", {})
+        self.last_agent_positions = ob_dict.get("Agent_positions", {})
         obs = self._flatten_obs(ob_dict)
         self.current_obs = obs
         self.last_dist = -1
@@ -258,9 +275,11 @@ class GymCityWrapper(gym.core.Env):
             expert_info = {}
             expert_info["Next_grounding"] = ob_dict["Ground_dic"][0]
             expert_info["Next_sg"] = ob_dict["Expert_sg"][0]
+            expert_info["Planner_actions"] = ob_dict.get("Planner_actions", {})
+            expert_info["Agent_positions"] = ob_dict.get("Agent_positions", {})
             return self.current_obs, expert_info
         else:
-            return self.current_obs
+            return self.current_obs, {}
     
     def init(self):
         # init does not reset the agent
@@ -270,6 +289,8 @@ class GymCityWrapper(gym.core.Env):
         self.normed_path_length = len(self.agent.global_traj)/(2*self.agent.region)
         self.env.local_planner.reset()
         ob_dict = self.env.update(self.agent_layer_id)
+        self.last_planner_actions = ob_dict.get("Planner_actions", {})
+        self.last_agent_positions = ob_dict.get("Agent_positions", {})
         if self.use_expert:
             self.expert_action = self.full_action2index(ob_dict["Expert_actions"][0])
         obs = self._flatten_obs(ob_dict)
@@ -293,10 +314,14 @@ class GymCityWrapper(gym.core.Env):
             rew = self._get_reward(current_obs)
         info.update(current_obs)
         new_ob_dict = self.env.update(self.agent_layer_id)
+        self.last_planner_actions = new_ob_dict.get("Planner_actions", {})
+        self.last_agent_positions = new_ob_dict.get("Agent_positions", {})
         if self.use_expert:
             self.expert_action = self.full_action2index(new_ob_dict["Expert_actions"][0])
             info["Next_grounding"] = new_ob_dict["Ground_dic"][0]
             info["Next_sg"] = new_ob_dict["Expert_sg"][0]
+            info["Planner_actions"] = new_ob_dict.get("Planner_actions", {})
+            info["Agent_positions"] = new_ob_dict.get("Agent_positions", {})
         # ob_dict = self.env.update()
         self.current_episode_reward += rew
         self.current_episode_length += 1
@@ -304,30 +329,31 @@ class GymCityWrapper(gym.core.Env):
         self.current_obs = obs
         
         # offset the index by 3 layers 0,1,2 are static in world matrix
-        done = reached_goal
+        terminated = reached_goal
+        truncated = False
         info["is_success"] = False
 
-        if done:
+        if terminated:
             info['episode'] = {'r': self.current_episode_reward, 'l': self.current_episode_length}
             info["is_success"] = True
-            logger.info("will reset agent by success")
+            logger.debug("will reset agent by success")
             self.reset()
         
         if self.t >= self.horizon: 
-            done = True
+            truncated = True
             rew += self.overtime_cost
             info["overtime"] = True
             info['episode'] = {'r': self.current_episode_reward, 'l': self.current_episode_length}
-            logger.info("Reset agent by overtime")
+            logger.debug("Reset agent by overtime")
             self.reset()
             
         if info["Fail"][0]: 
-            done = True
-            logger.info("Reset agent by failing")
+            terminated = True
+            logger.debug("Reset agent by failing")
             info['episode'] = {'r': self.current_episode_reward, 'l': self.current_episode_length}
             self.reset()
 
-        return self.current_obs, rew, done, info
+        return self.current_obs, rew, terminated, truncated, info
     
     def render(self):
         return self.env.render()
@@ -362,7 +388,9 @@ class GymCityWrapper(gym.core.Env):
     def seed(self, seed=None):
         if seed is not None:
             try:
+                random.seed(seed)
                 np.random.seed(seed)
+                torch.manual_seed(seed)
             except:
                 TypeError("Seed must be an integer type!")
     

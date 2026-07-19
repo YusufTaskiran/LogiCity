@@ -61,6 +61,7 @@ class Z3Planner(LocalPlanner):
                 "arity": arity,
                 "method": info["method"],
                 "function": info.get("function", None),  # Optional, may be used for dynamic grounding
+                "observe": info.get("observe", True),
             }
         # Print the predicates
         predicates_info = "\n".join(["- {}: {}".format(predicate, details) for predicate, details in self.predicates.items()])

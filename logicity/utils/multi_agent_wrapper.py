@@ -1,9 +1,12 @@
+import random
+
 import numpy as np
 import torch
-from gym import spaces
+from gymnasium import spaces
 from stable_baselines3.common.vec_env import VecEnv
 
 from ..core.config import LABEL_MAP
+from .observation_noise import apply_observation_noise
 
 
 class SharedPolicyMultiAgentVecEnv(VecEnv):
@@ -12,6 +15,7 @@ class SharedPolicyMultiAgentVecEnv(VecEnv):
         self.logic_grounding_shape = self.env.logic_grounding_shape
         self.pred_grounding_index = self.env.pred_grounding_index
         self.cat_length = env.rl_agent["cat_length"] if "cat_length" in env.rl_agent else False
+        self.append_agent_id = bool(env.rl_agent.get("append_agent_id", False))
         self.agent_names = env.rl_agent["agent_names"]
         self.horizon = env.rl_agent["max_horizon"]
         self.action_mapping = env.rl_agent["action_mapping"]
@@ -22,6 +26,8 @@ class SharedPolicyMultiAgentVecEnv(VecEnv):
         self.time_penalty = env.rl_agent.get("time_penalty", 0.0)
         self.reset_dist = env.rl_agent.get("reset_dist")
         self.reset_prefilter = env.rl_agent.get("reset_prefilter", None)
+        self.observation_noise = env.rl_agent.get("observation_noise", None) or {}
+        self.continuous_eval = bool((env.rl_agent.get("continuous_eval") or {}).get("enabled", False))
         self.max_priority = env.rl_agent["max_priority"]
         self.type2label = {v: k for k, v in LABEL_MAP.items()}
 
@@ -40,7 +46,11 @@ class SharedPolicyMultiAgentVecEnv(VecEnv):
             self.rl_agents.append(matched)
             self.rl_layer_ids.append(matched.layer_id)
 
-        obs_dim = self.logic_grounding_shape + 1 if self.cat_length else self.logic_grounding_shape
+        obs_dim = self.logic_grounding_shape
+        if self.cat_length:
+            obs_dim += 1
+        if self.append_agent_id:
+            obs_dim += 1
         observation_space = spaces.Box(low=0.0, high=1.0, shape=(obs_dim,), dtype=np.float32)
         action_space = spaces.Discrete(env.rl_agent["action_space"])
         super().__init__(len(self.rl_agents), observation_space, action_space)
@@ -53,11 +63,32 @@ class SharedPolicyMultiAgentVecEnv(VecEnv):
         self._agent_episode_lengths = np.zeros(self.num_envs, dtype=np.int32)
         self._global_t = 0
 
-    def _flatten_obs(self, obs_array, path_length, region):
+    def full_action2index(self, action):
+        if action[0] == 1:
+            return 0
+        elif action[4] == 1:
+            return 1
+        elif action[8] == 1:
+            return 2
+        else:
+            return 3
+
+    def _flatten_obs(self, obs_array, path_length, region, agent_batch_index):
+        obs_array = self._apply_observation_noise(obs_array)
+        features = [obs_array]
         if self.cat_length:
             normed_path_length = path_length / (2 * region)
-            return np.concatenate([obs_array, [normed_path_length]], axis=0, dtype=np.float32)
-        return obs_array
+            features.append(np.asarray([normed_path_length], dtype=np.float32))
+        if self.append_agent_id:
+            denom = max(self.num_envs - 1, 1)
+            normed_agent_id = float(agent_batch_index) / float(denom)
+            features.append(np.asarray([normed_agent_id], dtype=np.float32))
+        if len(features) == 1:
+            return obs_array
+        return np.concatenate(features, axis=0, dtype=np.float32)
+
+    def _apply_observation_noise(self, obs_array):
+        return apply_observation_noise(obs_array, self.observation_noise, self.pred_grounding_index)
 
     def _trajectory_distance_remaining(self, agent):
         if agent.reach_goal:
@@ -158,9 +189,11 @@ class SharedPolicyMultiAgentVecEnv(VecEnv):
     def _build_obs_batch(self, obs_dict):
         obs_batch = []
         distances = []
-        for idx, agent in zip(self.rl_layer_ids, self.rl_agents):
+        for batch_index, (idx, agent) in enumerate(zip(self.rl_layer_ids, self.rl_agents)):
             path_length = len(agent.global_traj) * 4
-            obs_batch.append(self._flatten_obs(obs_dict["World_state"][idx], path_length, agent.region))
+            obs_batch.append(
+                self._flatten_obs(obs_dict["World_state"][idx], path_length, agent.region, batch_index)
+            )
             distances.append(self._trajectory_distance_remaining(agent))
         return np.stack(obs_batch, axis=0), np.array(distances, dtype=np.float32)
 
@@ -172,8 +205,11 @@ class SharedPolicyMultiAgentVecEnv(VecEnv):
             self._agent_episode_rewards = np.zeros(self.num_envs, dtype=np.float32)
             self._agent_episode_lengths = np.zeros(self.num_envs, dtype=np.int32)
             for env_agent in self.env.agents:
-                env_agent.init(self.env.city_grid)
-                if env_agent.layer_id in self.rl_layer_ids:
+                if getattr(env_agent, "cached_init_info", None) is not None:
+                    env_agent.init(self.env.city_grid, init_info=env_agent.cached_init_info)
+                else:
+                    env_agent.init(self.env.city_grid)
+                if env_agent.layer_id in self.rl_layer_ids and getattr(env_agent, "cached_init_info", None) is None:
                     env_agent.reset_concepts(self.max_priority, self.reset_dist)
             if self._passes_reset_prefilter():
                 break
@@ -198,21 +234,23 @@ class SharedPolicyMultiAgentVecEnv(VecEnv):
 
         actions_by_idx = {}
         for i, layer_id in enumerate(self.rl_layer_ids):
-            if layer_id in self._completed_layer_ids:
+            if (not self.continuous_eval) and layer_id in self._completed_layer_ids:
                 actions_by_idx[layer_id] = torch.tensor(self.action_mapping[3], dtype=torch.float32)
             else:
                 action_id = int(self._actions[i])
                 actions_by_idx[layer_id] = torch.tensor(self.action_mapping[action_id], dtype=torch.float32)
 
+        prev_reach_goal = {agent.layer_id: bool(agent.reach_goal) for agent in self.rl_agents}
         move_info = self.env.move_rl_agents(actions_by_idx, completed_rl_agents=self._completed_layer_ids)
         fail_agent_layer_ids = []
         rewards = np.zeros(self.num_envs, dtype=np.float32)
         agent_successes = np.zeros(self.num_envs, dtype=np.float32)
+        goal_completion_layer_ids = []
 
         for i, agent in enumerate(self.rl_agents):
             layer_id = agent.layer_id
             per_agent = move_info["PerAgent"][layer_id]
-            if layer_id in self._completed_layer_ids:
+            if (not self.continuous_eval) and layer_id in self._completed_layer_ids:
                 rewards[i] = 0.0
                 agent_successes[i] = 1.0
                 continue
@@ -229,14 +267,17 @@ class SharedPolicyMultiAgentVecEnv(VecEnv):
             self._agent_episode_lengths[i] += 1
             if per_agent["Fail"]:
                 fail_agent_layer_ids.append(layer_id)
-            if agent.reach_goal:
+            if agent.reach_goal and (not prev_reach_goal[layer_id]):
+                goal_completion_layer_ids.append(layer_id)
+            if agent.reach_goal and (not self.continuous_eval):
                 self._completed_layer_ids.add(layer_id)
                 agent_successes[i] = 1.0
             self._last_distances[i] = curr_distance
 
         joint_failure = len(fail_agent_layer_ids) > 0
-        joint_success = len(self._completed_layer_ids) == len(self.rl_layer_ids) and not joint_failure
-        timeout = self._global_t >= self.horizon and not joint_success and not joint_failure
+        joint_success = (len(self._completed_layer_ids) == len(self.rl_layer_ids) and not joint_failure) if not self.continuous_eval else False
+        # Continuous rollout still needs a hard horizon. Otherwise unresolved live goals can run indefinitely.
+        timeout = (self._global_t >= self.horizon and not joint_success and not joint_failure)
         joint_done = joint_failure or joint_success or timeout
 
         obs_dict = self.env.update_multi(self.rl_layer_ids)
@@ -244,9 +285,18 @@ class SharedPolicyMultiAgentVecEnv(VecEnv):
         self._last_obs_batch = obs_batch
         self._last_distances = distances
 
+        oracle_action_by_layer = {}
+        for layer_id, action_tensor in obs_dict.get("Expert_actions", {}).items():
+            oracle_action_by_layer[int(layer_id)] = int(self.full_action2index(action_tensor))
+
+        stop_needed_layer_ids = [
+            int(layer_id) for layer_id, action_id in oracle_action_by_layer.items() if action_id == 3
+        ]
+
         infos = []
         for i, agent in enumerate(self.rl_agents):
             layer_id = agent.layer_id
+            oracle_action = oracle_action_by_layer.get(int(layer_id), None)
             info = {
                 "joint_is_success": joint_success,
                 "joint_failure": joint_failure,
@@ -258,6 +308,11 @@ class SharedPolicyMultiAgentVecEnv(VecEnv):
                 "rl_agent_name": self.agent_names[i],
                 "num_rl_agents": self.num_envs,
                 "mean_agent_success": float(agent_successes.mean()),
+                "goal_completion_count": len(goal_completion_layer_ids),
+                "goal_completion_layer_ids": list(goal_completion_layer_ids),
+                "agent_goal_completed": bool(layer_id in goal_completion_layer_ids),
+                "oracle_action": oracle_action,
+                "stop_needed": bool(oracle_action == 3) if oracle_action is not None else False,
             }
             if layer_id in move_info["PerAgent"]:
                 info["Fail"] = [bool(move_info["PerAgent"][layer_id]["Fail"])] if not joint_done else [False]
@@ -269,6 +324,8 @@ class SharedPolicyMultiAgentVecEnv(VecEnv):
                 info["is_success"] = joint_success
                 info["overtime"] = timeout
                 info["joint_fail_agent_layer_ids"] = fail_agent_layer_ids
+                info["num_stop_needed_step"] = len(stop_needed_layer_ids)
+                info["stop_needed_layer_ids"] = stop_needed_layer_ids
             else:
                 info["is_success"] = False
                 info["overtime"] = False
@@ -323,5 +380,7 @@ class SharedPolicyMultiAgentVecEnv(VecEnv):
 
     def seed(self, seed=None):
         if seed is not None:
+            random.seed(seed)
             np.random.seed(seed)
+            torch.manual_seed(seed)
         return [seed for _ in range(self.num_envs)]

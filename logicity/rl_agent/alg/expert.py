@@ -46,7 +46,12 @@ class ExpertCollector:
                 total_steps += 1
                 cuurent_step += 1
                 action = self.env.expert_action  # Assuming this gives the expert action directly from the environment
-                new_obs, reward, done, info = self.env.step(action)
+                step_result = self.env.step(action)
+                if len(step_result) == 5:
+                    new_obs, reward, terminated, truncated, info = step_result
+                    done = terminated or truncated
+                else:
+                    new_obs, reward, done, info = step_result
                 world["Time_Obs"][cuurent_step] = info
                 next_sg = info["Next_sg"]
                 next_grounding = info["Next_grounding"]

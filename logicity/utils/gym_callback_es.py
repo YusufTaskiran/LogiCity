@@ -8,6 +8,13 @@ import logging
 import pickle as pkl
 logger = logging.getLogger(__name__)
 
+
+def _unpack_step_result(step_result):
+    if len(step_result) == 5:
+        obs, reward, terminated, truncated, info = step_result
+        return obs, reward, (terminated or truncated), info
+    return step_result
+
 def make_env(simulation_config, episode_cache=None, return_cache=False): 
     # Unpack arguments from simulation_config and pass them to CityLoader
     city, cached_observation = CityLoader.from_yaml(**simulation_config, episode_cache=episode_cache)
@@ -81,7 +88,7 @@ class EvalCheckpointCallbackES(CheckpointCallback):
                         local_decision_step[oracle_action] = 1
                         if int(action) != oracle_action:
                             local_succ_decision[oracle_action] = 0
-                    obs, reward, done, info = eval_env.step(int(action))
+                    obs, reward, done, info = _unpack_step_result(eval_env.step(int(action)))
                     if info["Fail"][0]:
                         episode_rewards += reward
                         break
@@ -202,7 +209,7 @@ class DreamerEvalCheckpointCallback(CheckpointCallback):
                         local_decision_step[oracle_action] = 1
                         if int(env_action) != oracle_action:
                             local_succ_decision[oracle_action] = 0
-                    obs, reward, done, info = eval_env.step(int(env_action))
+                    obs, reward, done, info = _unpack_step_result(eval_env.step(int(env_action)))
                     if info["Fail"][0]:
                         episode_rewards += reward
                         break
