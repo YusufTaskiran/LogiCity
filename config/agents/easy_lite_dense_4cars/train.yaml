@@ -1,0 +1,51 @@
+# Dense compact easy roster with 4 total cars for the RL-heavier redesign.
+agents:
+- class: Private_car
+  id: 1
+  size: 2
+  gplanner: A*vg
+  concepts:
+    type: Car
+    priority: 1
+
+- class: Pedestrian
+  id: 1
+  size: 1
+  gplanner: A*
+  concepts:
+    type: Pedestrian
+    priority: 0
+    old: 1.0
+
+- class: Pedestrian
+  id: 2
+  size: 1
+  gplanner: A*
+  concepts:
+    type: Pedestrian
+    priority: 0
+
+- class: Private_car
+  id: 2
+  size: 2
+  gplanner: A*vg
+  concepts:
+    type: Car
+    priority: 2
+
+- class: Private_car
+  id: 3
+  size: 2
+  gplanner: A*vg
+  concepts:
+    type: Car
+    priority: 3
+
+- class: Private_car
+  id: 4
+  size: 2
+  gplanner: A*vg
+  concepts:
+    type: Car
+    priority: 4
+

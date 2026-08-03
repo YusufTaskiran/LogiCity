@@ -38,7 +38,7 @@ class Z3PlannerExpert(Z3PlannerRL):
         for rule_dict in self.data["Rules"]["Sim"]:
             rule_name, formula = rule_dict["name"], rule_dict["formula"]
             # Check if the rule is valid
-            logger.info("*** Sim Rule ***: {} -> \n {}".format(rule_name, formula))
+            logger.debug("*** Sim Rule ***: %s -> \n %s", rule_name, formula)
 
             # Create Z3 variables based on the formula
             var_names = self._extract_variables(formula)
@@ -60,7 +60,7 @@ class Z3PlannerExpert(Z3PlannerRL):
             rule_name, formula = rule_dict["name"], rule_dict["formula"]
             self.rules["Task"][rule_name] = {}
             # Check if the rule is valid
-            logger.info("*** Task Rule ***: {} -> \n {}".format(rule_name, formula))
+            logger.debug("*** Task Rule ***: %s -> \n %s", rule_name, formula)
 
             # Create Z3 variables based on the formula
             var_names = self._extract_variables(formula)
@@ -84,7 +84,7 @@ class Z3PlannerExpert(Z3PlannerRL):
             rule_name, formula = rule_dict["name"], rule_dict["formula"]
             self.rules["Expert"][rule_name] = {}
             # Check if the rule is valid
-            logger.info("*** Expert Rule ***: {} -> \n {}".format(rule_name, formula))
+            logger.debug("*** Expert Rule ***: %s -> \n %s", rule_name, formula)
 
             # Create Z3 variables based on the formula
             var_names = self._extract_variables(formula)

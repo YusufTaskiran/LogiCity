@@ -36,9 +36,26 @@ class BasePLPGTemplate:
         agent_idx = min(max(agent_idx, 0), len(profile_values) - 1)
         return profile_values[agent_idx]
 
+    def _resolve_agent_index(self, obs_row=None, profile_length=None):
+        if obs_row is None:
+            return 0
+        obs_np = np.asarray(obs_row, dtype=np.float32).reshape(-1)
+        if obs_np.size == 0:
+            return 0
+        if profile_length is None:
+            profile_length = 1
+        profile_length = max(int(profile_length), 1)
+        normed_agent_id = float(np.clip(obs_np[-1], 0.0, 1.0))
+        if profile_length == 1:
+            return 0
+        agent_idx = int(round(normed_agent_id * float(profile_length - 1)))
+        return min(max(agent_idx, 0), profile_length - 1)
+
     def postprocess_action_scores(self, action_scores, fact_weights, obs_row=None):
         action_names = list(getattr(self, "action_names", []))
         if "stop" not in action_names or len(action_scores) <= 1:
+            return action_scores
+        if not bool(self.sensor_noise.get("enable_stop_benign_bias", False)):
             return action_scores
 
         stop_idx = action_names.index("stop")

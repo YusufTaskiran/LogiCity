@@ -22,13 +22,24 @@ def _require_tokens(formula, rule_yaml_file, tokens, mode_name):
 
 def translate_easy_rule_yaml_to_hazard_rules(rule_yaml_file, num_entities):
     formula = _load_task_formula(rule_yaml_file)
+    has_collision_only_tokens = all(
+        token in formula for token in ["CollidingClose", "Stop(entity)"]
+    )
+    has_full_easy_tokens = all(
+        token in formula
+        for token in ["IsAtInter", "IsInInter", "SameInter", "HigherPri", "CollidingClose", "IsPedestrian", "Stop(entity)"]
+    )
+    lines = []
+    if has_collision_only_tokens and not has_full_easy_tokens:
+        for i in range(1, num_entities):
+            lines.append(f"hazard :- other_{i}_colliding_close.")
+        return lines
     _require_tokens(
         formula,
         rule_yaml_file,
         ["IsAtInter", "IsInInter", "SameInter", "HigherPri", "CollidingClose", "IsPedestrian", "Stop(entity)"],
         "easy",
     )
-    lines = []
     for i in range(1, num_entities):
         lines.append(f"hazard :- ego_is_at_inter, other_{i}_same_inter, other_{i}_is_in_inter.")
         lines.append(f"hazard :- ego_is_at_inter, other_{i}_same_inter, other_{i}_is_at_inter, other_{i}_higher_pri.")

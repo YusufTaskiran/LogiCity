@@ -1,3 +1,4 @@
 from .circuit_shield import ProbLogCircuitShield
+from .centralized_joint_shield import CentralizedJointTrafficShield
 from .easy_shield import EasySafePathPLPGShield
 from .templates import build_template

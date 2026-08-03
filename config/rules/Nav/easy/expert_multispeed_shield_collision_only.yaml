@@ -1,0 +1,56 @@
+Rules:
+  Sim:
+    - name: Stop
+      formula: |
+        Stop(entity) == Exists(
+          [dummyEntity],
+          CollidingClose(entity, dummyEntity)
+        )
+      description: Shield only intervenes for imminent collision situations.
+  Task:
+    - name: Collision Close
+      description: Shield enforces only imminent-collision avoidance.
+      dead: true
+      reward: -10
+      formula: |
+        Implies(
+          Exists(
+            [dummyEntity],
+            CollidingClose(entity, dummyEntity)
+          ),
+          Stop(entity)
+        )
+  Expert:
+    - name: Stop
+      description: should stop only for imminent collision situations.
+      formula: |
+        Stop(entity) == Exists(
+          [dummyEntity],
+          CollidingClose(entity, dummyEntity)
+        )
+    - name: Slow
+      description: Approach intersections cautiously when no full stop is required.
+      formula: |
+        Slow(entity) == And(
+          Not(Stop(entity)),
+          IsAtInter(entity)
+        )
+    - name: Fast
+      description: Cruise fast only when far from the intersection.
+      formula: |
+        Fast(entity) == And(
+          Not(Stop(entity)),
+          Not(Slow(entity)),
+          Not(IsAtInter(entity)),
+          Not(IsInInter(entity))
+        )
+    - name: Normal
+      description: Normal action is the default residual action.
+      formula: |
+        Normal(entity) == Not(
+          Or(
+            Stop(entity),
+            Slow(entity),
+            Fast(entity)
+          )
+        )

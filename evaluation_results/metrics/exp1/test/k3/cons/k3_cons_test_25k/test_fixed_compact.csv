@@ -1,0 +1,2 @@
+num_rl_agents,tsr,timeout_rate,non_timeout_failure_rate,mean_reward,mean_episode_length_per_car,mean_steps_per_completed_car,mean_policy_to_expert_step_ratio,mean_excess_steps_vs_expert,traffic_violation_count,action_slow_count,action_fast_count,action_normal_count,action_stop_count,agent_car_1_mean_reward,agent_car_2_mean_reward,agent_car_3_mean_reward
+3,0.42,0.42,0.16,1.4537334998697042,37.86,70.11111111111111,1.4942223050353203,37.18,11,0,0,6539,10498,2.288199950526655,0.7919998743012547,1.280999948605895

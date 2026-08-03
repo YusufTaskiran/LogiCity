@@ -128,7 +128,13 @@ class Agent:
         if torch.all(global_action_dist==0):
             global_action_dist[-1] = 1.0
             if torch.all(del_pos==0):
-                self.global_traj.pop(next_pos)
+                if isinstance(self.global_traj, torch.Tensor):
+                    if self.global_traj.ndim > 1 and self.global_traj.shape[0] > 1:
+                        keep_mask = torch.ones(self.global_traj.shape[0], dtype=torch.bool, device=self.global_traj.device)
+                        keep_mask[int(next_pos)] = False
+                        self.global_traj = self.global_traj[keep_mask]
+                else:
+                    self.global_traj.pop(next_pos)
         return global_action_dist
     
     def init_from_dict(self, init_info):

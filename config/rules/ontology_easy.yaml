@@ -44,6 +44,13 @@ Predicates:
       function: logicity.utils.pred_converter.z3.IsInInter
       description: Checks if agent x in the intersection.
       semantic: false
+  - IsParked:
+      arity: 1
+      method: IsParked(Entity)
+      function: logicity.utils.pred_converter.z3.IsParked
+      description: Checks if a car is parked at spawn or parked at goal.
+      semantic: false
+      observe: false
   - SameInter:
       arity: 2
       method: SameInter(Entity, Entity)
@@ -62,6 +69,12 @@ Predicates:
       method: CollidingClose(Entity, Entity)
       function: logicity.utils.pred_converter.z3.CollidingClose
       description: Checks if agent x is about to collide with agent y.
+      semantic: false
+  - Collision:
+      arity: 2
+      method: Collision(Entity, Entity)
+      function: logicity.utils.pred_converter.z3.Collision
+      description: Checks if agent x is in a realized collision state with agent y.
       semantic: false
   - Stop:
       arity: 1

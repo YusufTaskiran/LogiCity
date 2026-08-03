@@ -17,13 +17,30 @@ logger = logging.getLogger(__name__)
 
 # used for grounding
 class PesudoAgent:
-    def __init__(self, type, layer_id, concepts, moving_direction):
+    def __init__(
+        self,
+        type,
+        layer_id,
+        concepts,
+        moving_direction,
+        global_traj=None,
+        pos=None,
+        start=None,
+        goal=None,
+        reach_goal=False,
+    ):
         self.type = type
         self.layer_id = layer_id
         self.type = concepts["type"]
         self.priority = concepts["priority"]
         self.concepts = concepts
         self.moving_direction = moving_direction
+        self.last_move_dir = moving_direction
+        self.global_traj = global_traj
+        self.pos = pos
+        self.start = start
+        self.goal = goal
+        self.reach_goal = reach_goal
 
 class Z3Planner(LocalPlanner):
     def __init__(self, yaml_path):        
@@ -37,7 +54,7 @@ class Z3Planner(LocalPlanner):
             self.entity_types.append(entity_type)
         # Print the entity types
         entity_types_info = "\n".join(["- {}".format(entity) for entity in self.entity_types])
-        logger.info("Number of Entity Types: {}\nEntity Types:\n{}".format(len(self.entity_types), entity_types_info))
+        logger.debug("Number of Entity Types: %s\nEntity Types:\n%s", len(self.entity_types), entity_types_info)
 
     def _create_predicates(self):
         self.predicates = {}
@@ -65,7 +82,7 @@ class Z3Planner(LocalPlanner):
             }
         # Print the predicates
         predicates_info = "\n".join(["- {}: {}".format(predicate, details) for predicate, details in self.predicates.items()])
-        logger.info("Number of Predicates: {}\nPredicates:\n{}".format(len(self.predicates), predicates_info))
+        logger.debug("Number of Predicates: %s\nPredicates:\n%s", len(self.predicates), predicates_info)
 
     def _create_rules(self):
         self.rules = {}

@@ -70,6 +70,17 @@ def _entity_groups(pred_grounding_index: Dict[str, Tuple[int, int]]) -> Optional
     return groups
 
 
+def _entity_presence(base_binary: np.ndarray, groups: Dict[int, Dict[str, Set[int]]]) -> Dict[int, bool]:
+    presence: Dict[int, bool] = {}
+    for entity_id, entity_group in groups.items():
+        type_indices = sorted(entity_group["type"])
+        if not type_indices:
+            presence[entity_id] = False
+            continue
+        presence[entity_id] = bool(np.any(base_binary[type_indices] > 0.5))
+    return presence
+
+
 def apply_observation_noise(
     obs_array: np.ndarray,
     observation_noise: Optional[Dict],
@@ -131,6 +142,8 @@ def apply_observation_noise(
     )
     ego_false_negative = float(observation_noise.get("ego_false_negative", max(0.0, epsilon * 0.1)))
     ego_false_positive = float(observation_noise.get("ego_false_positive", 0.0))
+    crowding_relation_noise_gain = float(observation_noise.get("crowding_relation_noise_gain", 0.75))
+    crowding_entity_dropout_gain = float(observation_noise.get("crowding_entity_dropout_gain", 0.50))
 
     def to_confidence(values: np.ndarray, false_negative: float, false_positive: float) -> np.ndarray:
         ones = values > 0.5
@@ -145,6 +158,17 @@ def apply_observation_noise(
         draws = np.random.rand(*confidence.shape)
         return (draws < confidence).astype(np.float32)
 
+    presence = _entity_presence(base_binary, groups)
+    present_non_ego_count = sum(1 for entity_id, is_present in presence.items() if entity_id != 0 and is_present)
+    max_non_ego_count = max(len(groups) - 1, 1)
+    # No crowding bonus when only one non-ego entity is present. Increase
+    # uncertainty smoothly as more non-ego agents populate the observation.
+    crowding_ratio = 0.0
+    if present_non_ego_count > 1:
+        crowding_ratio = (present_non_ego_count - 1) / max(max_non_ego_count - 1, 1)
+    relation_noise_scale = 1.0 + crowding_relation_noise_gain * crowding_ratio
+    dropout_scale = 1.0 + crowding_entity_dropout_gain * crowding_ratio
+
     for entity_id, entity_group in groups.items():
         type_indices = sorted(entity_group["type"])
         relation_indices = sorted(entity_group["relation"])
@@ -158,9 +182,12 @@ def apply_observation_noise(
                 noisy[relation_indices] = maybe_sample(confidence)
             continue
 
-        occluded = np.random.rand() < entity_dropout
-        rel_fn = occluded_false_negative_relation if occluded else false_negative_relation
-        rel_fp = occluded_false_positive_relation if occluded else false_positive_relation
+        entity_dropout_eff = float(np.clip(entity_dropout * dropout_scale, 0.0, 1.0))
+        occluded = np.random.rand() < entity_dropout_eff
+        rel_fn_base = occluded_false_negative_relation if occluded else false_negative_relation
+        rel_fp_base = occluded_false_positive_relation if occluded else false_positive_relation
+        rel_fn = float(np.clip(rel_fn_base * relation_noise_scale, 0.0, 1.0))
+        rel_fp = float(np.clip(rel_fp_base * relation_noise_scale, 0.0, 1.0))
 
         if type_indices:
             confidence = to_confidence(base_binary[type_indices], false_negative_type, false_positive_type)

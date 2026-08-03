@@ -18,6 +18,13 @@ def CUDA(x):
     return x.cuda() if isinstance(x, torch.Tensor) else x
 
 class GymCityWrapper(gym.core.Env):
+    COLLISION_ACTION_PENALTY_SCALE = {
+        0: 1.0,
+        1: 1.8,
+        2: 2.8,
+        3: 1.0,
+    }
+
     def __init__(self, env):
         '''The Gym Wrapper of the CityEnv in single-agent mode.
         :param City env: the CityEnv instance
@@ -63,6 +70,7 @@ class GymCityWrapper(gym.core.Env):
         self.time_penalty = env.rl_agent.get("time_penalty", 0.0)
         self.reset_prefilter = env.rl_agent.get("reset_prefilter", None)
         self.observation_noise = env.rl_agent.get("observation_noise", None) or {}
+        self.success_on_all_cars = bool(env.rl_agent.get("success_on_all_cars", False))
         self.type2label = {v: k for k, v in LABEL_MAP.items()}
         self.scale = [25, 7, 3.5, 8.3]
         self.mini_scale = [0, 0, -1, 0]
@@ -119,9 +127,24 @@ class GymCityWrapper(gym.core.Env):
             return float(torch.abs(deltas).sum().item())
         return float(torch.abs(self.agent.goal - pos).sum().item())
 
-    def _get_spf_reward(self, obs_dict, prev_distance, curr_distance, reached_goal):
+    def _all_cars_reached_goal(self):
+        for agent in self.env.agents:
+            if str(agent.type).lower() == "car" and not bool(agent.reach_goal):
+                return False
+        return True
+
+    def _scale_collision_failure_reward(self, reward_value, fail_rule_names, action_id):
+        if action_id is None or reward_value >= 0.0:
+            return reward_value
+        fail_rules = set(fail_rule_names or [])
+        if "Collision" not in fail_rules:
+            return reward_value
+        return float(reward_value) * self.COLLISION_ACTION_PENALTY_SCALE.get(int(action_id), 1.0)
+
+    def _get_spf_reward(self, obs_dict, prev_distance, curr_distance, reached_goal, action_id=None):
         if obs_dict["Fail"][0]:
-            return obs_dict["Reward"][0]
+            fail_rule_names = obs_dict.get("FailRuleNames", [[]])[0]
+            return self._scale_collision_failure_reward(obs_dict["Reward"][0], fail_rule_names, action_id)
         progress = prev_distance - curr_distance
         reward = self.progress_reward_scale * progress + self.time_penalty
         if reached_goal:
@@ -309,7 +332,7 @@ class GymCityWrapper(gym.core.Env):
         curr_distance = self._trajectory_distance_remaining()
         reached_goal = self.agent.reach_goal
         if self.reward_scheme == "safe_path_following":
-            rew = self._get_spf_reward(current_obs, prev_distance, curr_distance, reached_goal)
+            rew = self._get_spf_reward(current_obs, prev_distance, curr_distance, reached_goal, action_id=action)
         else:
             rew = self._get_reward(current_obs)
         info.update(current_obs)
@@ -329,7 +352,7 @@ class GymCityWrapper(gym.core.Env):
         self.current_obs = obs
         
         # offset the index by 3 layers 0,1,2 are static in world matrix
-        terminated = reached_goal
+        terminated = self._all_cars_reached_goal() if self.success_on_all_cars else reached_goal
         truncated = False
         info["is_success"] = False
 

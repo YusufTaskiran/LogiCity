@@ -36,6 +36,9 @@ def main():
     parser.add_argument("--scale_factor", type=float, default=1.0, help="Upscale rendered frames by this factor before GIF assembly.")
     parser.add_argument("--crop_size", type=int, default=None, help="Optional top-left square crop size. Defaults to full frame.")
     parser.add_argument("--max_step", type=int, default=None, help="Optional maximum timestep to render into the GIF.")
+    parser.add_argument("--hide_step_label", action="store_true", help="Do not draw the timestep label on rendered frames.")
+    parser.add_argument("--hide_start_goal_markers", action="store_true", help="Do not draw ego start/goal markers on rendered frames.")
+    parser.add_argument("--hide_agent_debug_overlay", action="store_true", help="Do not draw the RL/ego debug cell overlay.")
     args = parser.parse_args()
 
     render_pkl_to_frames(
@@ -45,6 +48,9 @@ def main():
         scale_factor=args.scale_factor,
         crop_size=args.crop_size,
         max_step=args.max_step,
+        show_step_label=not args.hide_step_label,
+        show_start_goal_markers=not args.hide_start_goal_markers,
+        show_agent_debug_overlay=not args.hide_agent_debug_overlay,
     )
 
     output_gif = args.output_gif

@@ -110,10 +110,27 @@ def _append_plpg_stats(plpg_info, stats):
     stats["intervention_count"] += float(np.asarray(plpg_info["intervened"], dtype=np.float64).sum())
     stats["kl_sum"] += float(np.asarray(plpg_info["kl_base_to_shielded"], dtype=np.float64).sum())
     stats["l1_sum"] += float(np.asarray(plpg_info["l1_shift_base_to_shielded"], dtype=np.float64).sum())
-    stats["hazard_count"] += float(np.asarray(plpg_info["hazard"], dtype=np.float64).sum())
+    hazard_values = np.asarray(plpg_info["hazard"], dtype=np.float64)
+    stats["hazard_count"] += float(hazard_values.sum())
+    stats["hazard_event_count"] += float((hazard_values > 0.5).sum())
     stats["forced_stop_count"] += float(np.asarray(plpg_info["forced_stop"], dtype=np.float64).sum())
     base_safe = np.asarray(plpg_info["base_policy_safe_prob"])
     stats["plpg_step_count"] += int(base_safe.shape[0]) if base_safe.ndim > 0 else 1
+
+
+def _oracle_action_key(oracle_action):
+    if oracle_action is None:
+        return None
+    if isinstance(oracle_action, np.ndarray):
+        flat = oracle_action.reshape(-1)
+        if flat.size != 1:
+            return None
+        return int(flat[0])
+    if isinstance(oracle_action, (list, tuple)):
+        if len(oracle_action) != 1:
+            return None
+        return int(oracle_action[0])
+    return int(oracle_action)
 
 
 def _evaluate_separate_policy_models(models, simulation_config, episode_data_path, eval_actions, logger, model_labels=None):
@@ -153,6 +170,7 @@ def _evaluate_separate_policy_models(models, simulation_config, episode_data_pat
         "kl_sum": 0.0,
         "l1_sum": 0.0,
         "hazard_count": 0.0,
+        "hazard_event_count": 0.0,
         "forced_stop_count": 0.0,
         "plpg_step_count": 0,
     }
@@ -164,7 +182,13 @@ def _evaluate_separate_policy_models(models, simulation_config, episode_data_pat
         done = False
         total_reward = 0.0
         step_count = 0
-        max_steps = eval_env.horizon
+        label_info = episode_cache.get("label_info") or {}
+        if "oracle_step" in label_info:
+            max_steps = int(np.ceil(float(label_info["oracle_step"]) * 2.0))
+        else:
+            max_steps = eval_env.horizon
+        if hasattr(eval_env, "horizon"):
+            eval_env.horizon = max_steps
         final_infos = None
         local_decision_step = {action_id: 0 for action_id in eval_actions.values()}
         local_succ_decision = {action_id: 1 for action_id in eval_actions.values()}
@@ -172,6 +196,7 @@ def _evaluate_separate_policy_models(models, simulation_config, episode_data_pat
         while (not done) and (step_count < max_steps):
             actions = []
             oracle_action = eval_env.expert_action if hasattr(eval_env, "expert_action") else None
+            oracle_action_key = _oracle_action_key(oracle_action)
             for agent_idx, model in enumerate(models):
                 action, _, plpg_info = model.predict_with_plpg_info(obs[agent_idx], deterministic=True)
                 action_int = int(np.atleast_1d(action)[0])
@@ -186,10 +211,10 @@ def _evaluate_separate_policy_models(models, simulation_config, episode_data_pat
                     per_model_forced_stops[label] += float(np.asarray(plpg_info["forced_stop"], dtype=np.float64).sum())
                     base_safe = np.asarray(plpg_info["base_policy_safe_prob"])
                     per_model_plpg_steps[label] += int(base_safe.shape[0]) if base_safe.ndim > 0 else 1
-            if oracle_action in local_decision_step:
-                local_decision_step[oracle_action] = 1
-                if actions[0] != oracle_action:
-                    local_succ_decision[oracle_action] = 0
+            if oracle_action_key in local_decision_step:
+                local_decision_step[oracle_action_key] = 1
+                if actions[0] != oracle_action_key:
+                    local_succ_decision[oracle_action_key] = 0
             obs, reward, dones, infos = eval_env.step(np.asarray(actions, dtype=np.int64))
             total_reward += float(np.sum(reward))
             step_count += 1
@@ -268,7 +293,7 @@ def _evaluate_separate_policy_models(models, simulation_config, episode_data_pat
         "mean_policy_kl_base_to_shielded": (plpg_stats["kl_sum"] / plpg_step_count) if plpg_step_count > 0 else 0.0,
         "mean_l1_shift_base_to_shielded": (plpg_stats["l1_sum"] / plpg_step_count) if plpg_step_count > 0 else 0.0,
         "hazard_step_rate": (plpg_stats["hazard_count"] / plpg_step_count) if plpg_step_count > 0 else 0.0,
-        "shield_forced_stop_rate": (plpg_stats["forced_stop_count"] / max(plpg_stats["hazard_count"], 1.0)) if plpg_step_count > 0 else 0.0,
+        "shield_forced_stop_rate": (plpg_stats["forced_stop_count"] / max(plpg_stats["hazard_event_count"], 1.0)) if plpg_step_count > 0 else 0.0,
         "base_action_hist": plpg_stats["base_action_hist"],
         "shielded_action_hist": plpg_stats["shielded_action_hist"],
         "mean_safe_prob_action": {
@@ -546,6 +571,7 @@ def train_separate_policy_multi_agent(
     next_save = save_freq
     eval_index = 0
     best_joint_tsr = -np.inf
+    rollout_iter = 0
 
     for model in models:
         model.num_timesteps = 0
@@ -559,10 +585,13 @@ def train_separate_policy_multi_agent(
     )
 
     while num_timesteps < total_timesteps:
+        rollout_iter += 1
         for model in models:
             model.rollout_buffer.reset()
 
         rollout_joint_steps = min(n_steps, max((total_timesteps - num_timesteps + num_agents - 1) // num_agents, 1))
+        chunk_reward_sum = 0.0
+        chunk_done_count = 0
 
         for _ in range(rollout_joint_steps):
             action_list = []
@@ -586,6 +615,8 @@ def train_separate_policy_multi_agent(
 
             next_obs_batch, rewards, dones, infos = train_env.step(np.asarray(action_list, dtype=np.int64))
             joint_done = bool(dones[0])
+            chunk_reward_sum += float(np.mean(rewards))
+            chunk_done_count += int(joint_done)
 
             for agent_idx, model in enumerate(models):
                 obs_i, actions, values, log_probs = step_cache[agent_idx]
@@ -607,6 +638,17 @@ def train_separate_policy_multi_agent(
             for model in models:
                 model.num_timesteps = num_timesteps
                 model._current_progress_remaining = max(0.0, 1.0 - (num_timesteps / float(total_timesteps)))
+
+        logger.info(
+            "Separate-policy rollout %d complete: timesteps=%d/%d (%.1f%%), joint_steps=%d, mean_reward=%.4f, episodes_finished=%d",
+            rollout_iter,
+            num_timesteps,
+            total_timesteps,
+            100.0 * num_timesteps / float(total_timesteps),
+            rollout_joint_steps,
+            chunk_reward_sum / max(rollout_joint_steps, 1),
+            chunk_done_count,
+        )
 
         with th.no_grad():
             for agent_idx, model in enumerate(models):
@@ -703,6 +745,13 @@ def train_separate_policy_multi_agent(
             for action_id, value in metrics["decision_succ_by_action"].items():
                 action_name = ACTION_ID_TO_NAME.get(action_id, str(action_id))
                 row[f"decision_succ_action_{action_name}"] = value
+            for label, value in metrics["per_model_success_rates"].items():
+                row[f"model_{label}_tsr"] = value
+                row[f"model_{label}_intervention_rate"] = metrics["per_model_intervention_rate"].get(label, 0.0)
+                row[f"model_{label}_hazard_rate"] = metrics["per_model_hazard_rate"].get(label, 0.0)
+                row[f"model_{label}_forced_stop_rate"] = metrics["per_model_forced_stop_rate"].get(label, 0.0)
+                for action_id, action_name in ACTION_ID_TO_NAME.items():
+                    row[f"model_{label}_action_{action_name}_count"] = metrics["per_model_action_hist"][label].get(action_id, 0)
             for key, value in metrics["fail_rl_agent_counts"].items():
                 row[key] = value
             for rule_name in failure_rule_names:

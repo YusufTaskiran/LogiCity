@@ -13,6 +13,7 @@ from ...utils.find import find_agent
 from ...utils.sample import split_into_subsets
 from .z3 import Z3Planner
 from .z3 import PesudoAgent
+from ...utils.pred_converter.z3 import CarStepsToAtInter
 
 logger = logging.getLogger(__name__)
 
@@ -74,7 +75,7 @@ class Z3PlannerRL(Z3Planner):
         for rule_dict in self.data["Rules"]["Sim"]:
             rule_name, formula = rule_dict["name"], rule_dict["formula"]
             # Check if the rule is valid
-            logger.info("*** Sim Rule ***: {} -> \n {}".format(rule_name, formula))
+            logger.debug("*** Sim Rule ***: %s -> \n %s", rule_name, formula)
 
             # Create Z3 variables based on the formula
             var_names = self._extract_variables(formula)
@@ -97,7 +98,7 @@ class Z3PlannerRL(Z3Planner):
             rule_name, formula = rule_dict["name"], rule_dict["formula"]
             self.rules["Task"][rule_name] = {}
             # Check if the rule is valid
-            logger.info("*** Task Rule ***: {} -> \n {}".format(rule_name, formula))
+            logger.debug("*** Task Rule ***: %s -> \n %s", rule_name, formula)
 
             # Create Z3 variables based on the formula
             var_names = self._extract_variables(formula)
@@ -234,6 +235,14 @@ class Z3PlannerRL(Z3Planner):
                 other_agent_layer_id = int(non_zero_layer_indices[layer_id])
                 other_agent = agents[layerid2listid[other_agent_layer_id]]
                 assert other_agent.type == agent_type
+                local_pos = other_agent.pos.clone() - torch.tensor([x_start, y_start], dtype=other_agent.pos.dtype)
+                local_start = other_agent.start.clone() - torch.tensor([x_start, y_start], dtype=other_agent.start.dtype)
+                local_goal = other_agent.goal.clone() - torch.tensor([x_start, y_start], dtype=other_agent.goal.dtype)
+                local_traj = None
+                if getattr(other_agent, "global_traj", None) is not None:
+                    local_traj = other_agent.global_traj.clone() - torch.tensor(
+                        [x_start, y_start], dtype=other_agent.global_traj.dtype
+                    )
                 is_ego_entity = other_agent_layer_id == agent.layer_id
                 if rl_budget is not None and len(partial_agent) >= rl_budget:
                     if not is_ego_entity:
@@ -245,9 +254,29 @@ class Z3PlannerRL(Z3Planner):
                         continue
                     partial_agent.pop(removable_key)
                 if is_ego_entity:
-                    partial_agent["ego_{}".format(layer_id)] = PesudoAgent(agent_type, layer_id, other_agent.concepts, other_agent.last_move_dir)
+                    partial_agent["ego_{}".format(layer_id)] = PesudoAgent(
+                        agent_type,
+                        layer_id,
+                        other_agent.concepts,
+                        other_agent.last_move_dir,
+                        global_traj=local_traj,
+                        pos=local_pos,
+                        start=local_start,
+                        goal=local_goal,
+                        reach_goal=bool(other_agent.reach_goal),
+                    )
                 else:
-                    partial_agent[str(layer_id)] = PesudoAgent(agent_type, layer_id, other_agent.concepts, other_agent.last_move_dir)
+                    partial_agent[str(layer_id)] = PesudoAgent(
+                        agent_type,
+                        layer_id,
+                        other_agent.concepts,
+                        other_agent.last_move_dir,
+                        global_traj=local_traj,
+                        pos=local_pos,
+                        start=local_start,
+                        goal=local_goal,
+                        reach_goal=bool(other_agent.reach_goal),
+                    )
             if rl_flag[ego_name]:
                 # RL agent needs fixed number of entities
                 ph_concepts = {
@@ -256,8 +285,7 @@ class Z3PlannerRL(Z3Planner):
                 }
                 while len(partial_agent) < self.fov_entities["Entity"]:
                     layer_id += 1
-                    place_holder_agent = PesudoAgent("PH", layer_id, ph_concepts, \
-                                                      None)
+                    place_holder_agent = PesudoAgent("PH", layer_id, ph_concepts, None)
                     partial_agent["PH_{}".format(layer_id)] = place_holder_agent
                         # Additional place holder for rl agent
                     # partial_world_squeezed = torch.cat([partial_world_squeezed, partial_world_squeezed[-1].unsqueeze(0)], dim=0)
@@ -319,7 +347,12 @@ def logic_grounding_shape(
                 for _ in entities[eval_pred.domain(1).name()]:
                     n += 1
             pred_grounding_index[pred_name] = (n_start, n)
-    logger.info("Given Predicates {}, the FOV entities {}, The logic grounding shape is: {}".format(local_predicates, fov_entities, n))
+    logger.debug(
+        "Given Predicates %s, the FOV entities %s, The logic grounding shape is: %s",
+        local_predicates,
+        fov_entities,
+        n,
+    )
     return n, pred_grounding_index
 
 def solve_sub_problem(ego_name, 
@@ -434,6 +467,25 @@ def solve_sub_problem(ego_name,
             return agents_actions
     else:
         ego_entity_name = local_entities["Entity"][0].decl().name()
+        def _ego_at_inter_observed_value(entity_name, binary_value):
+            if entity_name != ego_entity_name:
+                return float(binary_value)
+            steps_to_at = CarStepsToAtInter(
+                partial_world,
+                partial_intersections,
+                partial_agents,
+                entity_name,
+                max_lookahead=3,
+            )
+            if steps_to_at == 0:
+                return 1.0
+            if steps_to_at == 1:
+                return 0.80
+            if steps_to_at == 2:
+                return 0.45
+            if steps_to_at == 3:
+                return 0.15
+            return float(binary_value)
         same_inter_method = predicate_runtime["SameInter"]["method"]
         for pred_name, pred_info in local_predicates.items():
             k = 0
@@ -451,6 +503,9 @@ def solve_sub_problem(ego_name,
                 for entity in local_entities[eval_pred.domain(0).name()]:
                     entity_name = entity.decl().name()
                     value = method(partial_world, partial_intersections, partial_agents, entity_name)
+                    observed_value = float(value)
+                    if pred_name == "IsAtInter":
+                        observed_value = _ego_at_inter_observed_value(entity_name, value)
                     if pred_name in ("IsAtInter", "IsInInter") and entity_name != ego_entity_name:
                         value = int(
                             bool(value)
@@ -467,12 +522,12 @@ def solve_sub_problem(ego_name,
                     if value:
                         grounding_dic["{}_{}".format(pred_name, k)] = 1
                         if observe_pred:
-                            grounding.append(1)
+                            grounding.append(observed_value)
                         k += 1
                     else:
                         grounding_dic["{}_{}".format(pred_name, k)] = 0
                         if observe_pred:
-                            grounding.append(0)
+                            grounding.append(observed_value)
                         k += 1
             elif arity == 2:
                 # Binary predicate grounding
@@ -600,7 +655,10 @@ def eval_action(rl_action,
     
     # 6. solve for reward
     obs = np.array(grounding, dtype=np.float32)
-    assert np.all(obs == last_obs), print(obs, last_obs)
+    obs_matches = np.allclose(obs, last_obs)
+    if not obs_matches:
+        binary_mask = np.logical_or(np.isclose(last_obs, 0.0), np.isclose(last_obs, 1.0))
+        assert np.allclose(obs[binary_mask], last_obs[binary_mask]), print(obs, last_obs)
     fail = False
     reward = 0
     violated_rules = []

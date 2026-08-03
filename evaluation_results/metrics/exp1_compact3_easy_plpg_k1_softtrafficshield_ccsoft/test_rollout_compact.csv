@@ -1,0 +1,2 @@
+num_rl_agents,micro_rollout_tsr,timeout_rate,non_timeout_failure_rate,traffic_violation_count,mean_steps_per_resolved_goal_attempt,successful_goals_per_1k_steps,mean_l1_shift_base_to_shielded
+1,1.0,0.0,0.0,0,38.8,25.77319587628866,0.08065460310461595

@@ -35,7 +35,9 @@ class ProbLogCircuitShield:
         for action_name, action_prob in zip(self.action_names, action_probs):
             weights[atom_ids[f"act({action_name})"]] = float(action_prob)
         for fact_name, fact_value in fact_weights.items():
-            weights[atom_ids[fact_name]] = float(fact_value)
+            atom_id = atom_ids.get(fact_name)
+            if atom_id is not None:
+                weights[atom_id] = float(fact_value)
         result = self._compiled["circuit"].evaluate(weights=weights)
         for query_name, query_value in result.items():
             if str(query_name) == "safe":

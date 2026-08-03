@@ -1,0 +1,162 @@
+Rules:
+  Sim:
+    - name: Stop
+      formula: |
+        Stop(entity) == And(
+          Not(IsParked(entity)),
+          Exists(
+            [dummyEntity],
+            And(
+              Not(IsParked(dummyEntity)),
+              Or(
+                And(
+                  IsCar(entity),
+                  IsPedestrian(dummyEntity),
+                  SameInter(entity, dummyEntity),
+                  Or(
+                    And(IsAtInter(entity), IsAtInter(dummyEntity)),
+                    And(IsAtInter(entity), IsInInter(dummyEntity)),
+                    And(IsInInter(entity), IsAtInter(dummyEntity)),
+                    And(IsInInter(entity), IsInInter(dummyEntity))
+                  )
+                ),
+                And(
+                  IsAtInter(entity),
+                  IsInInter(dummyEntity),
+                  SameInter(entity, dummyEntity)
+                ),
+                And(
+                  IsAtInter(entity),
+                  IsAtInter(dummyEntity),
+                  SameInter(entity, dummyEntity),
+                  HigherPri(dummyEntity, entity)
+                ),
+                And(
+                  IsCar(entity),
+                  IsCar(dummyEntity),
+                  SameInter(entity, dummyEntity),
+                  IsInInter(entity),
+                  IsInInter(dummyEntity)
+                ),
+                CollidingClose(entity, dummyEntity)
+              )
+            )
+          )
+        )
+      description: Soft traffic shield for yielding, simultaneous intersection occupancy, and collision-close cues, excluding terminal collision.
+  Task:
+    - name: Soft Traffic Interaction
+      description: Soft traffic interaction rule for shield scoring only, including collision-close but excluding realized collision.
+      dead: false
+      reward: -2
+      formula: |
+        Implies(
+          And(
+            Not(IsParked(entity)),
+            Exists(
+              [dummyEntity],
+              And(
+                Not(IsParked(dummyEntity)),
+                Or(
+                  And(
+                    IsCar(entity),
+                    IsPedestrian(dummyEntity),
+                    SameInter(entity, dummyEntity),
+                    Or(
+                      And(IsAtInter(entity), IsAtInter(dummyEntity)),
+                      And(IsAtInter(entity), IsInInter(dummyEntity)),
+                      And(IsInInter(entity), IsAtInter(dummyEntity)),
+                      And(IsInInter(entity), IsInInter(dummyEntity))
+                    )
+                  ),
+                  And(
+                    IsAtInter(entity),
+                    IsInInter(dummyEntity),
+                    SameInter(entity, dummyEntity)
+                  ),
+                  And(
+                    IsAtInter(entity),
+                    IsAtInter(dummyEntity),
+                    SameInter(entity, dummyEntity),
+                    HigherPri(dummyEntity, entity)
+                  ),
+                  And(
+                    IsCar(entity),
+                    IsCar(dummyEntity),
+                    SameInter(entity, dummyEntity),
+                    IsInInter(entity),
+                    IsInInter(dummyEntity)
+                  ),
+                  CollidingClose(entity, dummyEntity)
+                )
+              )
+            )
+          ),
+          Stop(entity)
+        )
+    - name: Simultaneous Intersection Entry
+      description: Non-terminal rule violation when two cars occupy the same intersection at once.
+      dead: false
+      reward: -2
+      formula: |
+        Or(
+          IsParked(entity),
+          Not(
+            Exists(
+              [dummyEntity],
+              And(
+                Not(IsParked(dummyEntity)),
+                IsCar(entity),
+                IsCar(dummyEntity),
+                SameInter(entity, dummyEntity),
+                IsInInter(entity),
+                IsInInter(dummyEntity)
+              )
+            )
+          )
+        )
+  Expert:
+    - name: Stop
+      description: should yield for soft traffic conflicts.
+      formula: |
+        Stop(entity) == And(
+          Not(IsParked(entity)),
+          Exists(
+            [dummyEntity],
+            And(
+              Not(IsParked(dummyEntity)),
+              Or(
+                And(
+                  IsCar(entity),
+                  IsPedestrian(dummyEntity),
+                  SameInter(entity, dummyEntity),
+                  Or(
+                    And(IsAtInter(entity), IsAtInter(dummyEntity)),
+                    And(IsAtInter(entity), IsInInter(dummyEntity)),
+                    And(IsInInter(entity), IsAtInter(dummyEntity)),
+                    And(IsInInter(entity), IsInInter(dummyEntity))
+                  )
+                ),
+                And(
+                  IsAtInter(entity),
+                  IsInInter(dummyEntity),
+                  SameInter(entity, dummyEntity)
+                ),
+                And(
+                  IsAtInter(entity),
+                  IsAtInter(dummyEntity),
+                  SameInter(entity, dummyEntity),
+                  HigherPri(dummyEntity, entity)
+                ),
+                And(
+                  IsCar(entity),
+                  IsCar(dummyEntity),
+                  SameInter(entity, dummyEntity),
+                  IsInInter(entity),
+                  IsInInter(dummyEntity)
+                ),
+                CollidingClose(entity, dummyEntity)
+              )
+            )
+          )
+        )

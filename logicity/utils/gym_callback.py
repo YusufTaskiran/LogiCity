@@ -75,6 +75,57 @@ def _build_per_agent_eval_row(per_agent_stats):
     return row
 
 
+def _build_completion_efficiency_metrics(episode_lengths, completed_rl_agents_list, num_rl_agents):
+    total_episode_steps = float(np.sum(episode_lengths)) if len(episode_lengths) > 0 else 0.0
+    total_completed_rl_agents = float(np.sum(completed_rl_agents_list)) if len(completed_rl_agents_list) > 0 else 0.0
+    num_episodes = max(len(episode_lengths), 1)
+    num_rl_agents = max(int(num_rl_agents), 1)
+    return {
+        "total_episode_steps": total_episode_steps,
+        "total_completed_rl_agents": total_completed_rl_agents,
+        "mean_episode_length_per_rl_agent": total_episode_steps / max(num_episodes * num_rl_agents, 1),
+        "mean_steps_per_completed_rl_agent": total_episode_steps / max(total_completed_rl_agents, 1.0),
+        "successful_rl_agents_per_1k_episode_steps": (total_completed_rl_agents * 1000.0) / max(total_episode_steps, 1.0),
+    }
+
+
+def _build_traffic_efficiency_metrics(episode_lengths, completed_car_counts, total_car_counts):
+    total_episode_steps = float(np.sum(episode_lengths)) if len(episode_lengths) > 0 else 0.0
+    total_completed_cars = float(np.sum(completed_car_counts)) if len(completed_car_counts) > 0 else 0.0
+    total_possible_cars = float(np.sum(total_car_counts)) if len(total_car_counts) > 0 else 0.0
+    return {
+        "total_episode_steps": total_episode_steps,
+        "total_completed_cars": total_completed_cars,
+        "total_possible_cars": total_possible_cars,
+        "mean_episode_length_per_car": total_episode_steps / max(total_possible_cars, 1.0),
+        "mean_steps_per_completed_car": total_episode_steps / max(total_completed_cars, 1.0),
+        "successful_cars_per_1k_episode_steps": (total_completed_cars * 1000.0) / max(total_episode_steps, 1.0),
+    }
+
+
+def _build_expert_reference_efficiency(episode_lengths, oracle_steps):
+    valid_pairs = [
+        (float(policy_steps), float(expert_steps))
+        for policy_steps, expert_steps in zip(episode_lengths, oracle_steps)
+        if expert_steps is not None and float(expert_steps) > 0.0
+    ]
+    if not valid_pairs:
+        return {
+            "num_expert_reference_episodes": 0,
+            "mean_expert_reference_step_count": 0.0,
+            "mean_policy_to_expert_step_ratio": 0.0,
+            "mean_excess_steps_vs_expert": 0.0,
+        }
+    policy_steps = np.asarray([pair[0] for pair in valid_pairs], dtype=np.float64)
+    expert_steps = np.asarray([pair[1] for pair in valid_pairs], dtype=np.float64)
+    return {
+        "num_expert_reference_episodes": int(len(valid_pairs)),
+        "mean_expert_reference_step_count": float(np.mean(expert_steps)),
+        "mean_policy_to_expert_step_ratio": float(np.mean(policy_steps / expert_steps)),
+        "mean_excess_steps_vs_expert": float(np.mean(policy_steps - expert_steps)),
+    }
+
+
 def _extract_easy_debug_facts(obs, pred_grounding_index):
     if pred_grounding_index is None:
         return []
@@ -198,6 +249,13 @@ def _load_task_rule_names(rule_yaml_file):
         data = yaml.safe_load(handle) or {}
     return [rule["name"] for rule in data.get("Rules", {}).get("Task", []) if "name" in rule]
 
+
+def _accumulate_fail_rule_counts_from_info(step_info, fail_rule_counts):
+    infos = step_info if isinstance(step_info, list) else [step_info]
+    for info in infos:
+        for rule_name in info.get("FailRuleNames", [[]])[0]:
+            fail_rule_counts[rule_name] = fail_rule_counts.get(rule_name, 0) + 1
+
 def _eval_csv_fieldnames(row_dict, failure_rule_names):
     base_fieldnames = [
         "exp_name",
@@ -230,6 +288,15 @@ def _eval_csv_fieldnames(row_dict, failure_rule_names):
         "mean_completed_rl_fraction",
         "mean_completed_rl_agents_before_failure",
         "mean_completed_rl_agents_before_timeout",
+        "mean_episode_length_per_rl_agent",
+        "mean_steps_per_completed_rl_agent",
+        "successful_rl_agents_per_1k_episode_steps",
+        "mean_episode_length_per_car",
+        "mean_steps_per_completed_car",
+        "successful_cars_per_1k_episode_steps",
+        "mean_expert_reference_step_count",
+        "mean_policy_to_expert_step_ratio",
+        "mean_excess_steps_vs_expert",
         "action_slow_count",
         "action_normal_count",
         "action_fast_count",
@@ -275,6 +342,8 @@ def _eval_csv_fieldnames(row_dict, failure_rule_names):
         "macro_rollout_tsr",
         "macro_rollout_failure_rate",
         "mean_steps_per_resolved_goal_attempt",
+        "successful_goals_per_1k_steps",
+        "resolved_goal_attempts_per_1k_steps",
     ]
     dynamic_fields = sorted(
         [
@@ -298,6 +367,46 @@ def append_eval_csv_row(csv_path, row_dict, failure_rule_names):
         if not file_exists:
             writer.writeheader()
         writer.writerow(row_dict)
+
+
+def append_compact_csv_row(csv_path, row_dict, fieldnames):
+    file_exists = os.path.isfile(csv_path)
+    with open(csv_path, "a", newline="") as csvfile:
+        writer = csv.DictWriter(csvfile, fieldnames=fieldnames)
+        if not file_exists:
+            writer.writeheader()
+        writer.writerow(row_dict)
+
+
+def build_compact_eval_row(row_dict):
+    compact_fields = [
+        "eval_index",
+        "timestep",
+        "num_rl_agents",
+        "tsr",
+        "timeout_rate",
+        "non_timeout_failure_rate",
+        "mean_reward",
+        "mean_episode_length_per_car",
+        "mean_steps_per_completed_car",
+        "mean_policy_to_expert_step_ratio",
+        "mean_excess_steps_vs_expert",
+        "traffic_violation_count",
+        "rollout_traffic_violations_since_last_eval",
+        "rollout_failures_since_last_eval",
+        "rollout_timeouts_since_last_eval",
+        "rollout_successes_since_last_eval",
+        "action_slow_count",
+        "action_fast_count",
+        "action_normal_count",
+        "action_stop_count",
+    ]
+    per_agent_reward_fields = sorted(
+        key for key in row_dict.keys()
+        if key.startswith("agent_") and key.endswith("_mean_reward")
+    )
+    compact_fields.extend(per_agent_reward_fields)
+    return {field: row_dict.get(field, "") for field in compact_fields}, compact_fields
 
 
 def _resolve_results_dir(results_root, exp_name, fallback_root):
@@ -336,13 +445,15 @@ class EvalCheckpointCallback(CheckpointCallback):
             self.episode_data = pkl.load(f)
         self.eval_actions = eval_actions
         self.results_dir = _resolve_results_dir(results_root, self.exp_name, self.save_path)
-        self.eval_csv_path = os.path.join(self.results_dir, "{}_eval_metrics.csv".format(self.exp_name))
+        self.eval_csv_path = os.path.join(self.results_dir, "training.csv")
+        self.eval_compact_csv_path = os.path.join(self.results_dir, "training_compact.csv")
         self._last_eval_timestep = 0
         self._last_save_timestep = 0
         self.failure_rule_names = _load_task_rule_names(self.simulation_config["rule_yaml_file"])
         self._rollout_failures_since_last_eval = 0
         self._rollout_timeouts_since_last_eval = 0
         self._rollout_successes_since_last_eval = 0
+        self._rollout_traffic_violations_since_last_eval = 0
         self._rollout_stop_needed_steps_since_last_eval = 0
         self._rollout_agent_steps_since_last_eval = 0
         self._eval_index = 0
@@ -366,6 +477,7 @@ class EvalCheckpointCallback(CheckpointCallback):
                     self._rollout_agent_steps_since_last_eval += 1
                 if info.get("stop_needed", False):
                     self._rollout_stop_needed_steps_since_last_eval += 1
+                self._rollout_traffic_violations_since_last_eval += len(info.get("FailRuleNames", [[]])[0])
                 joint_failure = info.get("joint_failure", None)
                 if joint_failure is not None:
                     if info_idx == 0:
@@ -431,8 +543,11 @@ class EvalCheckpointCallback(CheckpointCallback):
             fail_rl_agent_counts = {}
             mean_agent_tsr_list = []
             completed_rl_agents_list = []
+            completed_car_counts = []
+            total_car_counts = []
             completed_rl_agents_before_failure = []
             completed_rl_agents_before_timeout = []
+            oracle_steps = []
             per_agent_eval_stats = {}
             num_rl_agents_value = 1
             safe_prob_sums = np.zeros(4, dtype=np.float64)
@@ -442,6 +557,7 @@ class EvalCheckpointCallback(CheckpointCallback):
             kl_sum = 0.0
             l1_sum = 0.0
             hazard_count = 0.0
+            hazard_event_count = 0.0
             forced_stop_count = 0.0
             plpg_step_count = 0
             for action, id in self.eval_actions.items():
@@ -452,6 +568,7 @@ class EvalCheckpointCallback(CheckpointCallback):
                 episode_cache = self.episode_data[ts]
                 if "label_info" in episode_cache:
                     logger.info("Episode label: {}".format(episode_cache["label_info"]))
+                oracle_steps.append((episode_cache.get("label_info") or {}).get("oracle_step"))
                 eval_env = make_env(self.simulation_config, episode_cache, False)
                 is_multi_agent = hasattr(eval_env, "rl_agents")
                 debug_enabled = bool(self.validation_debug.get("enabled", False))
@@ -459,10 +576,9 @@ class EvalCheckpointCallback(CheckpointCallback):
                 debug_max_steps = int(self.validation_debug.get("max_steps", 25))
                 debug_this_episode = debug_enabled and int(ts) == debug_episode
                 debug_pred_grounding_index = getattr(eval_env, "pred_grounding_index", None) if debug_this_episode else None
-                if is_multi_agent:
-                    max_steps = eval_env.horizon
-                else:
-                    max_steps = episode_cache["label_info"]["oracle_step"] * 2
+                max_steps = int(np.ceil(float(episode_cache["label_info"]["oracle_step"]) * 2.0))
+                if is_multi_agent and hasattr(eval_env, "horizon"):
+                    eval_env.horizon = max_steps
                 obs = eval_env.init()
                 episode_rewards = 0
                 step = 0
@@ -475,6 +591,8 @@ class EvalCheckpointCallback(CheckpointCallback):
                 while (not done) and (step < max_steps):
                     oracle_action = eval_env.expert_action if hasattr(eval_env, "expert_action") else None
                     plpg_info = None
+                    if hasattr(self.model, "set_plpg_joint_context") and hasattr(eval_env, "last_joint_shield_context"):
+                        self.model.set_plpg_joint_context(eval_env.last_joint_shield_context)
                     if hasattr(self.model, "predict_with_plpg_info"):
                         action, _states, plpg_info = self.model.predict_with_plpg_info(obs, deterministic=True)
                     else:
@@ -495,7 +613,9 @@ class EvalCheckpointCallback(CheckpointCallback):
                         intervention_count += float(np.asarray(plpg_info["intervened"], dtype=np.float64).sum())
                         kl_sum += float(np.asarray(plpg_info["kl_base_to_shielded"], dtype=np.float64).sum())
                         l1_sum += float(np.asarray(plpg_info["l1_shift_base_to_shielded"], dtype=np.float64).sum())
-                        hazard_count += float(np.asarray(plpg_info["hazard"], dtype=np.float64).sum())
+                        hazard_values = np.asarray(plpg_info["hazard"], dtype=np.float64)
+                        hazard_count += float(hazard_values.sum())
+                        hazard_event_count += float((hazard_values > 0.5).sum())
                         forced_stop_count += float(np.asarray(plpg_info["forced_stop"], dtype=np.float64).sum())
                         plpg_step_count += int(np.asarray(plpg_info["base_policy_safe_prob"]).shape[0]) if np.asarray(plpg_info["base_policy_safe_prob"]).ndim > 0 else 1
                         if debug_this_episode and step < debug_max_steps:
@@ -522,13 +642,33 @@ class EvalCheckpointCallback(CheckpointCallback):
                                     _format_prob_vector(shielded_probs[agent_idx]),
                                     facts,
                                 )
+                            joint_debug = plpg_info.get("joint_debug") if isinstance(plpg_info, dict) else None
+                            if joint_debug:
+                                top_joint_actions = joint_debug.get("top_joint_actions", [])
+                                best_joint = top_joint_actions[0] if len(top_joint_actions) > 0 else {}
+                                logger.info(
+                                    "VAL_DEBUG_CENTRAL episode=%s step=%s joint_hazard=%.3f best_joint=%s base_safe=%.3f shielded_safe=%.3f pair_features=%s",
+                                    ts,
+                                    step,
+                                    float(joint_debug.get("joint_hazard_scalar", 0.0)),
+                                    best_joint,
+                                    float(joint_debug.get("base_policy_safe_prob_scalar", 0.0)),
+                                    float(joint_debug.get("shielded_policy_safe_prob_scalar", 0.0)),
+                                    joint_debug.get("pair_features", {}),
+                                )
                     chosen_action_cmp = int(action_array[0])
-                    if oracle_action is not None and oracle_action in local_decision_step.keys():
-                        local_decision_step[oracle_action] = 1
-                        if chosen_action_cmp != oracle_action:
-                            local_succ_decision[oracle_action] = 0
+                    oracle_action_key = None
+                    if oracle_action is not None:
+                        oracle_action_arr = np.atleast_1d(oracle_action)
+                        if oracle_action_arr.size > 0:
+                            oracle_action_key = int(oracle_action_arr[0])
+                    if oracle_action_key is not None and oracle_action_key in local_decision_step.keys():
+                        local_decision_step[oracle_action_key] = 1
+                        if chosen_action_cmp != oracle_action_key:
+                            local_succ_decision[oracle_action_key] = 0
                     env_action = action if is_multi_agent else int(action)
                     obs, reward, done, info = _unpack_step_result(eval_env.step(env_action))
+                    _accumulate_fail_rule_counts_from_info(info, fail_rule_counts)
                     if is_multi_agent:
                         done = bool(np.any(done))
                     if is_multi_agent:
@@ -549,6 +689,8 @@ class EvalCheckpointCallback(CheckpointCallback):
                     joint_info = info[0]
                     completed_rl_agents = int(round(float(joint_info.get("mean_agent_success", 0.0)) * int(joint_info.get("num_rl_agents", num_rl_agents_value))))
                     completed_rl_agents_list.append(completed_rl_agents)
+                    completed_car_counts.append(int(joint_info.get("num_completed_cars", completed_rl_agents)))
+                    total_car_counts.append(int(joint_info.get("num_total_cars", num_rl_agents_value)))
                     _update_per_agent_episode_stats(
                         per_agent_eval_stats,
                         info,
@@ -583,10 +725,7 @@ class EvalCheckpointCallback(CheckpointCallback):
                     success.append(0)
                     failures.append(1 if info["Fail"][0] else 0)
                     timeouts.append(1 if info.get("overtime", False) else 0)
-                    for rule_name in info.get("FailRuleNames", [[]])[0]:
-                        fail_rule_counts[rule_name] = fail_rule_counts.get(rule_name, 0) + 1
                 if step >= max_steps:
-                    episode_rewards -= 3
                     timeouts[-1] = 1
                 episode_lengths.append(step)
                 for acc, id in self.eval_actions.items():
@@ -613,6 +752,20 @@ class EvalCheckpointCallback(CheckpointCallback):
             mean_completed_rl_fraction = (mean_completed_rl_agents / max(num_rl_agents_value, 1)) if num_rl_agents_value > 0 else 0.0
             mean_completed_rl_agents_before_failure = float(np.mean(completed_rl_agents_before_failure)) if len(completed_rl_agents_before_failure) > 0 else 0.0
             mean_completed_rl_agents_before_timeout = float(np.mean(completed_rl_agents_before_timeout)) if len(completed_rl_agents_before_timeout) > 0 else 0.0
+            completion_efficiency = _build_completion_efficiency_metrics(
+                episode_lengths,
+                completed_rl_agents_list,
+                num_rl_agents_value,
+            )
+            traffic_efficiency = _build_traffic_efficiency_metrics(
+                episode_lengths,
+                completed_car_counts,
+                total_car_counts,
+            )
+            expert_reference_efficiency = _build_expert_reference_efficiency(
+                episode_lengths,
+                oracle_steps,
+            )
             episodes_all_k_success = int(np.sum(success))
             episodes_joint_failure = int(np.sum(failures))
             episodes_joint_timeout = int(np.sum(timeouts))
@@ -620,16 +773,38 @@ class EvalCheckpointCallback(CheckpointCallback):
                 f"Timestep: {current_timestep} - Elapsed Time (s): {elapsed_time_sec:.2f} - Success Rate: {sr} - Mean Reward: {mean_reward} \n"
             )
             logger.info("Failure Rate: {} - Timeout Rate: {} - Mean Episode Length: {}".format(failure_rate, timeout_rate, mean_length))
+            logger.info(
+                "Normalized Eval Efficiency: steps_per_completed_rl_agent={} | episode_len_per_rl_agent={} | successful_rl_agents_per_1k_episode_steps={}".format(
+                    completion_efficiency["mean_steps_per_completed_rl_agent"],
+                    completion_efficiency["mean_episode_length_per_rl_agent"],
+                    completion_efficiency["successful_rl_agents_per_1k_episode_steps"],
+                )
+            )
+            logger.info(
+                "Traffic Eval Efficiency: steps_per_completed_car={} | episode_len_per_car={} | successful_cars_per_1k_episode_steps={}".format(
+                    traffic_efficiency["mean_steps_per_completed_car"],
+                    traffic_efficiency["mean_episode_length_per_car"],
+                    traffic_efficiency["successful_cars_per_1k_episode_steps"],
+                )
+            )
+            logger.info(
+                "Expert-Reference Efficiency: ratio={} | excess_steps={} | mean_expert_steps={}".format(
+                    expert_reference_efficiency["mean_policy_to_expert_step_ratio"],
+                    expert_reference_efficiency["mean_excess_steps_vs_expert"],
+                    expert_reference_efficiency["mean_expert_reference_step_count"],
+                )
+            )
             logger.info("Mean Decision Succ: {}".format(mSuccD))
             logger.info("Average Decision Succ: {}".format(aSuccD))
             logger.info("Decision Succ for each action: {}".format(SuccDAct))
             logger.info("Action Histogram: {}".format(action_hist))
             logger.info("Failure Rule Counts: {}".format(fail_rule_counts))
             logger.info(
-                "Training Rollout Since Last Eval: failures={} timeouts={} successes={}".format(
+                "Training Rollout Since Last Eval: failures={} timeouts={} successes={} traffic_violations={}".format(
                     self._rollout_failures_since_last_eval,
                     self._rollout_timeouts_since_last_eval,
                     self._rollout_successes_since_last_eval,
+                    self._rollout_traffic_violations_since_last_eval,
                 )
             )
             logger.info(
@@ -651,26 +826,48 @@ class EvalCheckpointCallback(CheckpointCallback):
                         kl_sum / plpg_step_count,
                         l1_sum / plpg_step_count,
                         hazard_count / plpg_step_count,
-                        forced_stop_count / max(hazard_count, 1.0),
+                        forced_stop_count / max(hazard_event_count, 1.0),
                     )
                 )
 
             # Log the mean reward
-            with open(os.path.join(self.save_path, "{}_eval_rewards.txt".format(self.exp_name)), "a") as file:
+            with open(os.path.join(self.save_path, "training_rewards.txt"), "a") as file:
                 file.write(
                     f"Timestep: {current_timestep} - Elapsed Time (s): {elapsed_time_sec:.2f} - Success Rate: {sr} - Mean Reward: {mean_reward} \n"
                 )
                 file.write("Failure Rate: {} - Timeout Rate: {} - Mean Episode Length: {}\n".format(failure_rate, timeout_rate, mean_length))
+                file.write(
+                    "Normalized Eval Efficiency: steps_per_completed_rl_agent={} | episode_len_per_rl_agent={} | successful_rl_agents_per_1k_episode_steps={}\n".format(
+                        completion_efficiency["mean_steps_per_completed_rl_agent"],
+                        completion_efficiency["mean_episode_length_per_rl_agent"],
+                        completion_efficiency["successful_rl_agents_per_1k_episode_steps"],
+                    )
+                )
+                file.write(
+                    "Traffic Eval Efficiency: steps_per_completed_car={} | episode_len_per_car={} | successful_cars_per_1k_episode_steps={}\n".format(
+                        traffic_efficiency["mean_steps_per_completed_car"],
+                        traffic_efficiency["mean_episode_length_per_car"],
+                        traffic_efficiency["successful_cars_per_1k_episode_steps"],
+                    )
+                )
+                file.write(
+                    "Expert-Reference Efficiency: ratio={} | excess_steps={} | mean_expert_steps={}\n".format(
+                        expert_reference_efficiency["mean_policy_to_expert_step_ratio"],
+                        expert_reference_efficiency["mean_excess_steps_vs_expert"],
+                        expert_reference_efficiency["mean_expert_reference_step_count"],
+                    )
+                )
                 file.write("Mean Decision Succ: {}\n".format(mSuccD))
                 file.write("Average Decision Succ: {}\n".format(aSuccD))
                 file.write("Decision Succ for each action: {}\n".format(SuccDAct))
                 file.write("Action Histogram: {}\n".format(action_hist))
                 file.write("Failure Rule Counts: {}\n".format(fail_rule_counts))
                 file.write(
-                    "Training Rollout Since Last Eval: failures={} timeouts={} successes={}\n".format(
+                    "Training Rollout Since Last Eval: failures={} timeouts={} successes={} traffic_violations={}\n".format(
                         self._rollout_failures_since_last_eval,
                         self._rollout_timeouts_since_last_eval,
                         self._rollout_successes_since_last_eval,
+                        self._rollout_traffic_violations_since_last_eval,
                     )
                 )
                 file.write(
@@ -692,7 +889,7 @@ class EvalCheckpointCallback(CheckpointCallback):
                             kl_sum / plpg_step_count,
                             l1_sum / plpg_step_count,
                             hazard_count / plpg_step_count,
-                            forced_stop_count / max(hazard_count, 1.0),
+                            forced_stop_count / max(hazard_event_count, 1.0),
                         )
                     )
 
@@ -724,6 +921,18 @@ class EvalCheckpointCallback(CheckpointCallback):
                 "mean_completed_rl_fraction": mean_completed_rl_fraction,
                 "mean_completed_rl_agents_before_failure": mean_completed_rl_agents_before_failure,
                 "mean_completed_rl_agents_before_timeout": mean_completed_rl_agents_before_timeout,
+                "mean_episode_length_per_rl_agent": completion_efficiency["mean_episode_length_per_rl_agent"],
+                "mean_steps_per_completed_rl_agent": completion_efficiency["mean_steps_per_completed_rl_agent"],
+                "successful_rl_agents_per_1k_episode_steps": completion_efficiency["successful_rl_agents_per_1k_episode_steps"],
+                "mean_episode_length_per_car": traffic_efficiency["mean_episode_length_per_car"],
+                "mean_steps_per_completed_car": traffic_efficiency["mean_steps_per_completed_car"],
+                "successful_cars_per_1k_episode_steps": traffic_efficiency["successful_cars_per_1k_episode_steps"],
+                "mean_expert_reference_step_count": expert_reference_efficiency["mean_expert_reference_step_count"],
+                "mean_policy_to_expert_step_ratio": expert_reference_efficiency["mean_policy_to_expert_step_ratio"],
+                "mean_excess_steps_vs_expert": expert_reference_efficiency["mean_excess_steps_vs_expert"],
+                "traffic_violation_count": int(sum(fail_rule_counts.values())),
+                "rollout_traffic_violations_since_last_eval": self._rollout_traffic_violations_since_last_eval,
+                "non_timeout_failure_rate": failure_rate,
                 "mean_decision_succ": mSuccD,
                 "rollout_failures_since_last_eval": self._rollout_failures_since_last_eval,
                 "rollout_timeouts_since_last_eval": self._rollout_timeouts_since_last_eval,
@@ -740,7 +949,7 @@ class EvalCheckpointCallback(CheckpointCallback):
                 "mean_policy_kl_base_to_shielded": (kl_sum / plpg_step_count) if plpg_step_count > 0 else 0.0,
                 "mean_l1_shift_base_to_shielded": (l1_sum / plpg_step_count) if plpg_step_count > 0 else 0.0,
                 "hazard_step_rate": (hazard_count / plpg_step_count) if plpg_step_count > 0 else 0.0,
-                "shield_forced_stop_rate": (forced_stop_count / max(hazard_count, 1.0)) if plpg_step_count > 0 else 0.0,
+                "shield_forced_stop_rate": (forced_stop_count / max(hazard_event_count, 1.0)) if plpg_step_count > 0 else 0.0,
             }
             for action_id, action_name in ACTION_ID_TO_NAME.items():
                 csv_row[f"action_{action_name}_count"] = action_hist.get(action_id, 0)
@@ -758,6 +967,8 @@ class EvalCheckpointCallback(CheckpointCallback):
             for rule_name in self.failure_rule_names:
                 csv_row["fail_rule_{}".format(_sanitize_rule_name(rule_name))] = fail_rule_counts.get(rule_name, 0)
             self._append_eval_csv_row(csv_row)
+            compact_row, compact_fields = build_compact_eval_row(csv_row)
+            append_compact_csv_row(self.eval_compact_csv_path, compact_row, compact_fields)
             self._adaptive_eval_schedule.on_eval_result(current_timestep, sr)
             self._adaptive_save_schedule.on_eval_result(current_timestep, sr)
             should_stop_early = self._early_stop.on_eval_result(sr)
@@ -766,6 +977,7 @@ class EvalCheckpointCallback(CheckpointCallback):
             self._rollout_failures_since_last_eval = 0
             self._rollout_timeouts_since_last_eval = 0
             self._rollout_successes_since_last_eval = 0
+            self._rollout_traffic_violations_since_last_eval = 0
             self._rollout_stop_needed_steps_since_last_eval = 0
             self._rollout_agent_steps_since_last_eval = 0
 
@@ -800,7 +1012,7 @@ class DreamerEvalCheckpointCallback(CheckpointCallback):
             self.episode_data = pkl.load(f)
         self.eval_actions = eval_actions
         self.results_dir = _resolve_results_dir(results_root, self.exp_name, self.save_path)
-        self.eval_csv_path = os.path.join(self.results_dir, "{}_eval_metrics.csv".format(self.exp_name))
+        self.eval_csv_path = os.path.join(self.results_dir, "training.csv")
         self._last_eval_timestep = 0
         self._last_save_timestep = 0
         self.failure_rule_names = _load_task_rule_names(self.simulation_config["rule_yaml_file"])
@@ -896,10 +1108,9 @@ class DreamerEvalCheckpointCallback(CheckpointCallback):
                     logger.info("Episode label: {}".format(episode_cache["label_info"]))
                 eval_env = make_env(self.simulation_config, episode_cache, False)
                 is_multi_agent = hasattr(eval_env, "rl_agents")
-                if is_multi_agent:
-                    max_steps = eval_env.horizon
-                else:
-                    max_steps = episode_cache["label_info"]["oracle_step"] * 2
+                max_steps = int(np.ceil(float(episode_cache["label_info"]["oracle_step"]) * 2.0))
+                if is_multi_agent and hasattr(eval_env, "horizon"):
+                    eval_env.horizon = max_steps
                 obs = eval_env.init()
                 episode_rewards = 0
                 step = 0
@@ -986,7 +1197,6 @@ class DreamerEvalCheckpointCallback(CheckpointCallback):
                     for rule_name in info.get("FailRuleNames", [[]])[0]:
                         fail_rule_counts[rule_name] = fail_rule_counts.get(rule_name, 0) + 1
                 if step >= max_steps:
-                    episode_rewards -= 3
                     timeouts[-1] = 1
                 episode_lengths.append(step)
                 for acc, id in self.eval_actions.items():
@@ -1035,7 +1245,7 @@ class DreamerEvalCheckpointCallback(CheckpointCallback):
             logger.info("Eval Schedule Phase: {}".format(self._adaptive_eval_schedule.describe_phase()))
 
             # Log the mean reward
-            with open(os.path.join(self.save_path, "{}_eval_rewards.txt".format(self.exp_name)), "a") as file:
+            with open(os.path.join(self.save_path, "training_rewards.txt"), "a") as file:
                 file.write(
                     f"Timestep: {current_timestep} - Elapsed Time (s): {elapsed_time_sec:.2f} - Success Rate: {sr} - Mean Reward: {mean_reward} \n"
                 )

@@ -1,0 +1,30 @@
+\chapter{Introduction}
+\label{cha:intro}
+
+Autonomous driving is a safety-critical sequential decision problem and a natural application of reinforcement learning (RL) \cite{kiran2021deepreinforcementlearningautonomous,isele2019safereinforcementlearningautonomous}. In multi-agent traffic, however, the consequences of one vehicle's decision depend on the behavior of nearby vehicles and pedestrians. Safe RL therefore needs to balance progress with traffic safety rather than optimize either in isolation.
+\\
+\\
+This thesis studies Probabilistic Logic Shielding (PLS) in LogiCity, a logic-driven urban navigation environment with symbolic traffic predicates and rule-based safety conditions \cite{li2025logicityadvancingneurosymbolicai,yang2023safereinforcementlearningprobabilistic}. The implemented shield converts local symbolic traffic observations into graded action-safety scores and reweights the RL policy before action selection. This is well suited to relations such as intersection occupancy, priority, and collision proximity, for which a purely geometric or binary safety treatment is often insufficient.
+\\
+\\
+The practical objective is \emph{safe task completion}: a vehicle must respect traffic rules while still reaching its destination within the episode horizon. This distinction is central in multi-agent traffic, where a shield may reduce unsafe failures but create excessive yielding and timeouts, or fail to resolve a shared intersection despite avoiding a collision.
+Against this background, the main question of this thesis is:
+
+\begin{quote}
+\textbf{How does probabilistic logic shielding affect safe task completion and coordination in multi-agent LogiCity Safe Path Following?}
+\end{quote}
+
+\noindent We study this question through four research questions:
+
+\begin{enumerate}
+    \item How does PLS compare with unshielded RL as the number of simultaneously active RL-controlled cars increases?
+    \item How do different decentralized shield styles change the trade-off between failure and timeout in multi-agent traffic interaction?
+    \item Can centralized shielding resolve coordination failures that remain difficult under decentralized per-agent shielding?
+    \item How does the choice between shared-policy and separate-policy multi-agent training affect performance and behavior under PLS?
+\end{enumerate}
+
+\noindent The experiments use a decentralized shared-policy baseline: multiple RL-controlled cars act simultaneously from local symbolic observations while sharing policy parameters. They compare unshielded RL with PLS as the number of controllable cars increases, evaluate conservative and aggressive decentralized shield variants, examine targeted centralized coordination in deadlock-prone interactions, and compare shared- and separate-policy training. Trajectory success rate is the primary outcome, interpreted alongside failure, timeout, intervention, and action-distribution measures.
+\\
+\\
+We make three main contributions. First, we extend the study of probabilistic logic shielding to a multi-agent LogiCity SPF setting through a decentralized shield that combines local symbolic traffic observations with probabilistic action reweighting. Second, we evaluate PLS through safe task completion, distinguishing successful progress from unsafe failure and overly conservative timeout. Third, we systematically examine how PLS behaves under increasing multi-agent interaction and under key design choices in shielding, coordination, and policy organization.
+

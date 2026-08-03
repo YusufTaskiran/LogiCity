@@ -100,8 +100,6 @@ class EvalCheckpointCallbackES(CheckpointCallback):
                 else:
                     logger.info("Episode {} failed.".format(ts))
                     success.append(0)
-                if step >= max_steps:
-                    episode_rewards -= 3
                 for acc, id in self.eval_actions.items():
                     if local_decision_step[id] == 0:
                         local_succ_decision[id] = 0
@@ -221,8 +219,6 @@ class DreamerEvalCheckpointCallback(CheckpointCallback):
                 else:
                     logger.info("Episode {} failed.".format(ts))
                     success.append(0)
-                if step >= max_steps:
-                    episode_rewards -= 3
                 for acc, id in self.eval_actions.items():
                     if local_decision_step[id] == 0:
                         local_succ_decision[id] = 0

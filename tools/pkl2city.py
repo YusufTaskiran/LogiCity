@@ -9,8 +9,76 @@ from scipy.ndimage import label
 from logicity.core.config import *
 import argparse
 
+
+def _to_numpy_world(world):
+    if hasattr(world, "detach"):
+        return world.detach().cpu().numpy()
+    if hasattr(world, "cpu"):
+        return world.cpu().numpy()
+    return np.asarray(world)
+
+
+def _normalize_agent_concepts(concepts):
+    if isinstance(concepts, dict):
+        return concepts
+    if isinstance(concepts, list):
+        return {str(concept): 1.0 for concept in concepts}
+    return {}
+
+
+def _normalize_agents_from_trace(agent_list):
+    agents = {}
+    if not isinstance(agent_list, list):
+        return agents
+
+    for item in agent_list:
+        if not isinstance(item, dict):
+            continue
+        name = item.get("name")
+        if not name:
+            continue
+        agents[name] = {
+            "layer_id": item.get("layer_id"),
+            "concepts": _normalize_agent_concepts(item.get("concepts", {})),
+            "is_rl_agent": name.startswith("Car_"),
+            "goal": item.get("goal"),
+            "start": item.get("start"),
+            "reach_goal": item.get("reach_goal", False),
+            "priority": item.get("priority"),
+        }
+    return agents
+
+
+def _load_rollout_like_data(pkl_path):
+    with open(pkl_path, "rb") as f:
+        data = pkl.load(f)
+
+    # Legacy cached-world rollout format.
+    if isinstance(data, dict) and "Time_Obs" in data and "Static Info" in data:
+        obs = data["Time_Obs"]
+        agents = data["Static Info"]["Agents"]
+        return obs, agents
+
+    # Debug trace format saved from main.py.
+    if isinstance(data, dict) and "steps" in data:
+        steps = data.get("steps", [])
+        if not steps:
+            raise RuntimeError("Debug trace contains no steps.")
+
+        obs = {}
+        first_step = steps[0]
+        obs[int(first_step["step"])] = {"World": _to_numpy_world(first_step["pre_world"])}
+        for step_data in steps:
+            obs[int(step_data["step"]) + 1] = {"World": _to_numpy_world(step_data["post_world"])}
+
+        agents = _normalize_agents_from_trace(first_step.get("pre_agents", []))
+        return obs, agents
+
+    raise RuntimeError("Unsupported PKL format for visualization: {}".format(type(data)))
+
 IMAGE_BASE_PATH = "./imgs"
 SCALE = 8
+CAR_RENDER_LENGTH_SCALE = 0.85
 
 PATH_DICT = {
     "Car": [os.path.join(IMAGE_BASE_PATH, "car{}.png").format(i) for i in range(1, 2)],
@@ -67,7 +135,7 @@ def resize_with_aspect_ratio(image, base_size):
     
     return resized_img
 
-def gridmap2img_static(gridmap, icon_dict, ego_id):
+def gridmap2img_static(gridmap, icon_dict, ego_id, show_start_goal_markers=True):
     # step 1: get the size of the gridmap, create a blank image with size*SCALE
     height, width = gridmap.shape[1], gridmap.shape[2]
     img = np.ones((height*SCALE, width*SCALE, 3), np.uint8) * 255  # assuming white background
@@ -144,17 +212,36 @@ def gridmap2img_static(gridmap, icon_dict, ego_id):
             icon_mask = np.sum(icon > 1, axis=2) > 0
             img[bottom-icon.shape[0]:bottom, left:left+icon.shape[1]][icon_mask] = icon[icon_mask]
 
-    # add ego agent start and goal
-    if ego_id > 0:
+    # add ego agent start and goal from the explicit layer encodings
+    if show_start_goal_markers and ego_id > 0:
         ego_map = gridmap[ego_id]
-        goal_pos = np.where(ego_map == ego_map.max())
-        goal_x, goal_y = goal_pos[0][0]*SCALE, goal_pos[1][0]*SCALE
-        int_mask = ego_map == ego_map.astype(np.int64)
-        filtered_mask = int_mask * (ego_map != 0)
-        start_pos = np.where(filtered_mask)
-        start_x, start_y = start_pos[0][0]*SCALE, start_pos[1][0]*SCALE
-        cv2.drawMarker(img, (goal_y, goal_x), (255, 0, 0), markerType=cv2.MARKER_STAR, markerSize=30, thickness=5)
-        cv2.drawMarker(img, (start_y, start_x), (0, 0, 255), markerType=cv2.MARKER_STAR, markerSize=30, thickness=5)
+        ego_type_value = int(np.floor(np.max(ego_map)))
+        goal_mask = np.isclose(ego_map, ego_type_value + AGENT_GOAL_PLUS)
+        start_mask = np.isclose(ego_map, ego_type_value + AGENT_START_PLUS)
+
+        if goal_mask.any():
+            goal_pos = np.argwhere(goal_mask)[0]
+            goal_x, goal_y = goal_pos[0] * SCALE, goal_pos[1] * SCALE
+            cv2.drawMarker(
+                img,
+                (goal_y, goal_x),
+                (255, 0, 0),
+                markerType=cv2.MARKER_STAR,
+                markerSize=30,
+                thickness=5,
+            )
+
+        if start_mask.any():
+            start_pos = np.argwhere(start_mask)[0]
+            start_x, start_y = start_pos[0] * SCALE, start_pos[1] * SCALE
+            cv2.drawMarker(
+                img,
+                (start_y, start_x),
+                (0, 0, 255),
+                markerType=cv2.MARKER_STAR,
+                markerSize=30,
+                thickness=5,
+            )
 
     return img
 
@@ -188,6 +275,25 @@ def rotate_image(image, angle):
         return image.rotate(angle, expand=True)
     else:
         return image.transpose(Image.FLIP_LEFT_RIGHT)
+
+
+def shorten_car_along_heading(image, direction, length_scale=CAR_RENDER_LENGTH_SCALE):
+    """Shorten only the car's long axis while preserving its width."""
+    if length_scale >= 0.999:
+        return image
+
+    width, height = image.size
+    if direction in ("up", "down"):
+        new_height = max(1, int(round(height * length_scale)))
+        if new_height == height:
+            return image
+        return image.resize((width, new_height), Image.Resampling.LANCZOS)
+    if direction in ("left", "right"):
+        new_width = max(1, int(round(width * length_scale)))
+        if new_width == width:
+            return image
+        return image.resize((new_width, height), Image.Resampling.LANCZOS)
+    return image
 
 def create_custom_mask(image, threshold=0.1):
     if image.mode == 'RGBA':
@@ -258,45 +364,24 @@ def paste_car_on_map(map_image, car_image, position, direction, type, position_l
 
     # Rotate the car image based on the direction
     rotated_car = rotate_image(car_image, rotation_angles[direction])
+    if type == "Car":
+        rotated_car = shorten_car_along_heading(rotated_car, direction)
 
     mask = create_custom_mask(rotated_car)
 
-    # Calculate new position after rotation to adjust the car's head position
+    # Anchor sprites by the simulator state cell center. This keeps the visual
+    # icon aligned with the actual occupancy/debug cell instead of making the
+    # state look shifted toward the front bumper.
     if type == "Car":
-        if direction == 'up':
-            # head position
-            if street_type == "v" or street_type is None:
-                head_position = ((l+r)//2, t)
-                new_position = (head_position[0] - rotated_car.width//2, head_position[1])
-            else:
-                head_position = ((l+r)//2, b)
-                new_position = (head_position[0] - rotated_car.width//2, head_position[1] - rotated_car.height)
-        elif direction == 'right':
-            if street_type == "h" or street_type is None:
-                head_position = (r, (t+b)//2)
-                new_position = (head_position[0] - rotated_car.width, head_position[1] - rotated_car.height//2)
-            else:
-                head_position = (l, (t+b)//2)
-                new_position = (head_position[0], head_position[1] - rotated_car.height//2)
-        elif direction == 'down':
-            if street_type == "v" or street_type is None:
-                head_position = ((l+r)//2, b)
-                new_position = (head_position[0] - rotated_car.width//2, head_position[1] - rotated_car.height)
-            else:
-                head_position = ((l+r)//2, t)
-                new_position = (head_position[0] - rotated_car.width//2, head_position[1])
-        elif direction == 'left':
-            if street_type == "h" or street_type is None:
-                head_position = (l, (t+b)//2)
-                new_position = (head_position[0], head_position[1] - rotated_car.height//2)
-            else:
-                head_position = (r, (t+b)//2)
-                new_position = (head_position[0] - rotated_car.width, head_position[1] - rotated_car.height//2)
-        elif direction == 'none':
+        if direction == 'none':
             if position_last is not None:
                 new_position = tuple(position_last)
             else:
-                new_position = (l, t)
+                center_position = ((l+r)//2, (t+b)//2)
+                new_position = (center_position[0] - rotated_car.width//2, center_position[1] - rotated_car.height//2)
+        else:
+            center_position = ((l+r)//2, (t+b)//2)
+            new_position = (center_position[0] - rotated_car.width//2, center_position[1] - rotated_car.height//2)
     elif type == "Pedestrian":
         if direction == "none":
             if position_last is not None:
@@ -313,7 +398,27 @@ def paste_car_on_map(map_image, car_image, position, direction, type, position_l
 
     return rotated_car, map_image, list(new_position)
 
-def gridmap2img_agents(gridmap, gridmap_, icon_dict, static_map, ego_id, last_icons=None, agents=None):
+
+def draw_debug_cell(map_image, position, outline=(0, 255, 255), width=2):
+    """Draw the exact simulator grid cell/bbox used for the agent state."""
+    draw = ImageDraw.Draw(map_image)
+    l, t, r, b = position
+    draw.rectangle([l, t, max(l, r - 1), max(t, b - 1)], outline=outline, width=width)
+    cx = (l + r) // 2
+    cy = (t + b) // 2
+    draw.line([(cx - 3, cy), (cx + 3, cy)], fill=outline, width=width)
+    draw.line([(cx, cy - 3), (cx, cy + 3)], fill=outline, width=width)
+
+def gridmap2img_agents(
+    gridmap,
+    gridmap_,
+    icon_dict,
+    static_map,
+    ego_id,
+    last_icons=None,
+    agents=None,
+    show_agent_debug_overlay=True,
+):
     current_map = static_map.copy()
     current_map = Image.fromarray(current_map)
     resized_world = np.repeat(np.repeat(gridmap, SCALE, axis=1), SCALE, axis=2)
@@ -339,65 +444,32 @@ def gridmap2img_agents(gridmap, gridmap_, icon_dict, static_map, ego_id, last_ic
         agent_metadata = _get_agent_metadata(agents, agent_type, layer_id)
         if agent_metadata is not None:
             concepts = agent_metadata.get("concepts", {})
-            is_rl_agent = bool(agent_metadata.get("is_rl_agent", False))
-            is_ambulance = False
-            is_police = False
             is_young = False
-            is_bus = False
-            is_tiro = False
-            is_reckless = False
             is_old = False
-            if "tiro" in concepts.keys():
-                if concepts["tiro"] == 1.0:
-                    is_tiro = True
-            if "bus" in concepts.keys():
-                if concepts["bus"] == 1.0:
-                    is_bus = True
-            if "ambulance" in concepts.keys():
-                if concepts["ambulance"] == 1.0:
-                    is_ambulance = True
             if "old" in concepts.keys():
                 if concepts["old"] == 1.0:
                     is_old = True
             if "young" in concepts.keys():
                 if concepts["young"] == 1.0:
                     is_young = True
-            if "police" in concepts.keys():
-                if concepts["police"] == 1.0:
-                    is_police = True
-            if "reckless" in concepts.keys():
-                if concepts["reckless"] == 1.0:
-                    is_reckless = True
-            if is_ambulance:
-                icon = icon_dict["Ambulance"]
-            elif is_bus:
-                icon = icon_dict["Bus"]
-            elif agent_type == "Car" and is_rl_agent:
-                icon = icon_dict["Tiro"]
-            elif agent_type == "Car" and layer_id == ego_id:
-                icon = icon_dict["Tiro"]
-            elif is_tiro:
-                icon = icon_dict["Tiro"]
+            if agent_type == "Car":
+                icon_list = icon_dict[agent_type].copy()
+                icon_id = i % len(icon_list)
+                icon = icon_list[icon_id]
             elif is_old:
                 icon = icon_dict["Pedestrian_old"]
             elif is_young:
                 icon = icon_dict["Pedestrian_young"]
-            elif is_police:
-                icon = icon_dict["Police"]
-            elif is_reckless:
-                icon = icon_dict["Reckless"]
             else:
                 if agent_type == "Pedestrian":
                     icon_list = icon_dict[agent_type].copy()
                     icon_id = i%len(icon_list)
                     icon = icon_list[icon_id]
-                if agent_type == "Car":
-                    icon_list = icon_dict[agent_type].copy()
-                    icon_id = i%len(icon_list)
-                    icon = icon_list[icon_id]
         else:
-            if agent_type == "Car" and layer_id == ego_id:
-                icon = icon_dict["Tiro"]
+            if agent_type == "Car":
+                icon_list = icon_dict[agent_type].copy()
+                icon_id = i % len(icon_list)
+                icon = icon_list[icon_id]
             else:
                 icon_list = icon_dict[agent_type]
                 icon_id = i%len(icon_list)
@@ -447,12 +519,31 @@ def gridmap2img_agents(gridmap, gridmap_, icon_dict, static_map, ego_id, last_ic
             icon_dict_local["icon"]["{}_{}".format(agent_type, i)].append(current_icon)
             icon_dict_local["pos"]["{}_{}".format(agent_type, i)] = last_position
 
+        # The sprite is intentionally larger than a single grid cell, which can
+        # make the true simulator location look misleading near intersections.
+        # Overlay the exact ego state cell so debugging matches the trace.
+        if show_agent_debug_overlay and (
+            layer_id == ego_id or (agent_metadata is not None and bool(agent_metadata.get("is_rl_agent", False)))
+        ):
+            draw_debug_cell(current_map, pos)
+
     if last_icons is not None:
         return current_map, last_icons
     else:
         return current_map, icon_dict_local
 
-def main(pkl_path, ego_id, output_folder, scale_factor=1, crop_size=None, max_step=None, target_step=None, show_step_label=True):
+def main(
+    pkl_path,
+    ego_id,
+    output_folder,
+    scale_factor=1,
+    crop_size=None,
+    max_step=None,
+    target_step=None,
+    show_step_label=True,
+    show_start_goal_markers=True,
+    show_agent_debug_overlay=True,
+):
     icon_dict = {}
     os.path.exists(output_folder) or os.makedirs(output_folder)
     for key in PATH_DICT.keys():
@@ -465,10 +556,7 @@ def main(pkl_path, ego_id, output_folder, scale_factor=1, crop_size=None, max_st
             resized_img = resize_with_aspect_ratio(raw_img, ICON_SIZE_DICT[key])
             icon_dict[key] = resized_img
 
-    with open(pkl_path, "rb") as f:
-        data = pkl.load(f)
-        obs = data["Time_Obs"]
-        agents = data["Static Info"]["Agents"]
+    obs, agents = _load_rollout_like_data(pkl_path)
 
     time_steps = list(obs.keys())
     time_steps.sort()
@@ -483,7 +571,12 @@ def main(pkl_path, ego_id, output_folder, scale_factor=1, crop_size=None, max_st
         if next_step not in obs:
             raise RuntimeError("Need target_step+1={} to render target_step={}.".format(next_step, target_step))
         time_steps = [target_step, next_step]
-    static_map = gridmap2img_static(obs[time_steps[0]]["World"].numpy(), icon_dict, ego_id)
+    static_map = gridmap2img_static(
+        _to_numpy_world(obs[time_steps[0]]["World"]),
+        icon_dict,
+        ego_id,
+        show_start_goal_markers=show_start_goal_markers,
+    )
     static_map_img = Image.fromarray(static_map)
     # static_map_img.save("{}/static_layout.png".format(output_folder))
     last_icons = None
@@ -500,9 +593,18 @@ def main(pkl_path, ego_id, output_folder, scale_factor=1, crop_size=None, max_st
         else:
             key = item
             next_key = key + 1
-        grid = obs[key]["World"].numpy()
-        grid_ = obs[next_key]["World"].numpy()
-        img, last_icons = gridmap2img_agents(grid, grid_, icon_dict, static_map, ego_id, last_icons, agents)
+        grid = _to_numpy_world(obs[key]["World"])
+        grid_ = _to_numpy_world(obs[next_key]["World"])
+        img, last_icons = gridmap2img_agents(
+            grid,
+            grid_,
+            icon_dict,
+            static_map,
+            ego_id,
+            last_icons,
+            agents,
+            show_agent_debug_overlay=show_agent_debug_overlay,
+        )
         if show_step_label:
             text = "#{}".format(key)
             position = (10, 10)
@@ -540,6 +642,8 @@ if __name__ == "__main__":
     parser.add_argument("--max_step", type=int, default=None, help="Optional maximum timestep to render.")
     parser.add_argument("--target_step", type=int, default=None, help="Optional single timestep to render.")
     parser.add_argument("--hide_step_label", action="store_true", help="Do not draw the timestep label on rendered frames.")
+    parser.add_argument("--hide_start_goal_markers", action="store_true", help="Do not draw ego start/goal markers on rendered frames.")
+    parser.add_argument("--hide_agent_debug_overlay", action="store_true", help="Do not draw the RL/ego debug cell overlay.")
     
     args = parser.parse_args()
 
@@ -553,4 +657,6 @@ if __name__ == "__main__":
         max_step=args.max_step,
         target_step=args.target_step,
         show_step_label=not args.hide_step_label,
+        show_start_goal_markers=not args.hide_start_goal_markers,
+        show_agent_debug_overlay=not args.hide_agent_debug_overlay,
     )

@@ -1,6 +1,9 @@
 from .easy import EasyPLPGTemplate
 from .easy_appropriate import EasyAppropriatePLPGTemplate
 from .easy_fine import EasyFinePLPGTemplate
+from .easy_soft_traffic import EasySoftTrafficPLPGTemplate
+from .easy_soft_traffic_hybrid import EasySoftTrafficHybridPLPGTemplate
+from .easy_soft_traffic_relaxed import EasySoftTrafficRelaxedPLPGTemplate
 from .hard import HardPLPGTemplate
 from .hard_fine import HardFinePLPGTemplate
 from .medium import MediumPLPGTemplate
@@ -9,6 +12,9 @@ from .medium_fine import MediumFinePLPGTemplate
 
 TEMPLATE_REGISTRY = {
     "easy": EasyPLPGTemplate,
+    "easy_soft_traffic": EasySoftTrafficPLPGTemplate,
+    "easy_soft_traffic_hybrid": EasySoftTrafficHybridPLPGTemplate,
+    "easy_soft_traffic_relaxed": EasySoftTrafficRelaxedPLPGTemplate,
     "easy_appropriate": EasyAppropriatePLPGTemplate,
     "easy_fine": EasyFinePLPGTemplate,
     "medium": MediumPLPGTemplate,

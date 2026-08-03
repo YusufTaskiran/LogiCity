@@ -1,4 +1,6 @@
+import copy
 import random
+from types import SimpleNamespace
 
 import numpy as np
 import torch
@@ -10,6 +12,13 @@ from .observation_noise import apply_observation_noise
 
 
 class SharedPolicyMultiAgentVecEnv(VecEnv):
+    COLLISION_ACTION_PENALTY_SCALE = {
+        0: 1.0,
+        1: 1.8,
+        2: 2.8,
+        3: 1.0,
+    }
+
     def __init__(self, env):
         self.env = env
         self.logic_grounding_shape = self.env.logic_grounding_shape
@@ -57,11 +66,16 @@ class SharedPolicyMultiAgentVecEnv(VecEnv):
 
         self._actions = None
         self._completed_layer_ids = set()
+        self._completed_car_layer_ids = set()
+        self._car_agents = [agent for agent in self.env.agents if str(agent.type).lower() == "car"]
+        self._car_layer_ids = [agent.layer_id for agent in self._car_agents]
         self._last_obs_batch = None
         self._last_distances = None
         self._agent_episode_rewards = np.zeros(self.num_envs, dtype=np.float32)
         self._agent_episode_lengths = np.zeros(self.num_envs, dtype=np.int32)
         self._global_t = 0
+        self._continuous_goal_window_t = 0
+        self.last_joint_shield_context = None
 
     def full_action2index(self, action):
         if action[0] == 1:
@@ -104,9 +118,17 @@ class SharedPolicyMultiAgentVecEnv(VecEnv):
             return float(torch.abs(deltas).sum().item())
         return float(torch.abs(agent.goal - pos).sum().item())
 
-    def _get_spf_reward(self, fail, sat_reward, prev_distance, curr_distance, reached_goal):
+    def _scale_collision_failure_reward(self, reward_value, fail_rule_names, action_id):
+        if action_id is None or reward_value >= 0.0:
+            return reward_value
+        fail_rules = set(fail_rule_names or [])
+        if "Collision" not in fail_rules:
+            return reward_value
+        return float(reward_value) * self.COLLISION_ACTION_PENALTY_SCALE.get(int(action_id), 1.0)
+
+    def _get_spf_reward(self, fail, sat_reward, prev_distance, curr_distance, reached_goal, fail_rule_names=None, action_id=None):
         if fail:
-            return sat_reward
+            return self._scale_collision_failure_reward(sat_reward, fail_rule_names, action_id)
         progress = prev_distance - curr_distance
         reward = self.progress_reward_scale * progress + self.time_penalty
         if reached_goal:
@@ -195,6 +217,29 @@ class SharedPolicyMultiAgentVecEnv(VecEnv):
                 self._flatten_obs(obs_dict["World_state"][idx], path_length, agent.region, batch_index)
             )
             distances.append(self._trajectory_distance_remaining(agent))
+        global_agents = {}
+        for agent in self.env.agents:
+            global_agents[str(int(agent.layer_id))] = {
+                "type": str(agent.type),
+                "layer_id": int(agent.layer_id),
+                "id": int(agent.id),
+                "priority": int(agent.priority),
+                "concepts": list(agent.concepts),
+                "pos": agent.pos.clone(),
+                "start": agent.start.clone(),
+                "goal": agent.goal.clone(),
+                "global_traj": agent.global_traj.clone() if getattr(agent, "global_traj", None) is not None else None,
+                "reach_goal": bool(agent.reach_goal),
+                "moving_direction": getattr(agent, "moving_direction", None),
+                "last_move_dir": getattr(agent, "last_move_dir", None),
+            }
+        self.last_joint_shield_context = {
+            "rl_layer_ids": [int(layer_id) for layer_id in self.rl_layer_ids],
+            "scene_graph_by_layer": copy.deepcopy(obs_dict.get("Expert_sg", {})),
+            "global_world": self.env.city_grid.clone(),
+            "global_intersection_matrix": self.env.intersection_matrix.clone(),
+            "global_agents": global_agents,
+        }
         return np.stack(obs_batch, axis=0), np.array(distances, dtype=np.float32)
 
     def reset(self):
@@ -202,8 +247,10 @@ class SharedPolicyMultiAgentVecEnv(VecEnv):
         for _ in range(max_attempts):
             self._global_t = 0
             self._completed_layer_ids = set()
+            self._completed_car_layer_ids = set()
             self._agent_episode_rewards = np.zeros(self.num_envs, dtype=np.float32)
             self._agent_episode_lengths = np.zeros(self.num_envs, dtype=np.int32)
+            self._continuous_goal_window_t = 0
             for env_agent in self.env.agents:
                 if getattr(env_agent, "cached_init_info", None) is not None:
                     env_agent.init(self.env.city_grid, init_info=env_agent.cached_init_info)
@@ -219,6 +266,14 @@ class SharedPolicyMultiAgentVecEnv(VecEnv):
         self.env.local_planner.reset()
         self._redraw_all_agent_layers()
         obs_dict = self.env.update_multi(self.rl_layer_ids)
+        oracle_actions = []
+        for layer_id in self.rl_layer_ids:
+            action_tensor = obs_dict.get("Expert_actions", {}).get(layer_id)
+            if action_tensor is None:
+                oracle_actions.append(3)
+            else:
+                oracle_actions.append(int(self.full_action2index(action_tensor)))
+        self.expert_action = np.asarray(oracle_actions, dtype=np.int64)
         self._last_obs_batch, self._last_distances = self._build_obs_batch(obs_dict)
         return self._last_obs_batch
 
@@ -231,6 +286,8 @@ class SharedPolicyMultiAgentVecEnv(VecEnv):
     def step_wait(self):
         assert self._actions is not None
         self._global_t += 1
+        if self.continuous_eval:
+            self._continuous_goal_window_t += 1
 
         actions_by_idx = {}
         for i, layer_id in enumerate(self.rl_layer_ids):
@@ -241,11 +298,13 @@ class SharedPolicyMultiAgentVecEnv(VecEnv):
                 actions_by_idx[layer_id] = torch.tensor(self.action_mapping[action_id], dtype=torch.float32)
 
         prev_reach_goal = {agent.layer_id: bool(agent.reach_goal) for agent in self.rl_agents}
+        prev_car_reach_goal = {agent.layer_id: bool(agent.reach_goal) for agent in self._car_agents}
         move_info = self.env.move_rl_agents(actions_by_idx, completed_rl_agents=self._completed_layer_ids)
         fail_agent_layer_ids = []
         rewards = np.zeros(self.num_envs, dtype=np.float32)
         agent_successes = np.zeros(self.num_envs, dtype=np.float32)
         goal_completion_layer_ids = []
+        reactivated_car_layer_ids = []
 
         for i, agent in enumerate(self.rl_agents):
             layer_id = agent.layer_id
@@ -261,6 +320,8 @@ class SharedPolicyMultiAgentVecEnv(VecEnv):
                 float(self._last_distances[i]),
                 curr_distance,
                 bool(agent.reach_goal),
+                fail_rule_names=per_agent.get("FailRuleNames", []),
+                action_id=int(self._actions[i]),
             )
             rewards[i] = reward
             self._agent_episode_rewards[i] += reward
@@ -274,11 +335,32 @@ class SharedPolicyMultiAgentVecEnv(VecEnv):
                 agent_successes[i] = 1.0
             self._last_distances[i] = curr_distance
 
+        car_goal_completion_layer_ids = []
+        for agent in self._car_agents:
+            layer_id = agent.layer_id
+            if agent.reach_goal and (not prev_car_reach_goal[layer_id]):
+                car_goal_completion_layer_ids.append(layer_id)
+            if prev_car_reach_goal[layer_id] and (not agent.reach_goal):
+                reactivated_car_layer_ids.append(layer_id)
+            if agent.reach_goal and (not self.continuous_eval):
+                self._completed_car_layer_ids.add(layer_id)
+
+        if self.continuous_eval and len(reactivated_car_layer_ids) > 0:
+            self._continuous_goal_window_t = 0
+
         joint_failure = len(fail_agent_layer_ids) > 0
-        joint_success = (len(self._completed_layer_ids) == len(self.rl_layer_ids) and not joint_failure) if not self.continuous_eval else False
+        rl_joint_success = (
+            (len(self._completed_layer_ids) == len(self.rl_layer_ids) and not joint_failure)
+            if not self.continuous_eval else False
+        )
+        traffic_joint_success = (
+            (len(self._completed_car_layer_ids) == len(self._car_layer_ids) and not joint_failure)
+            if not self.continuous_eval else False
+        )
         # Continuous rollout still needs a hard horizon. Otherwise unresolved live goals can run indefinitely.
-        timeout = (self._global_t >= self.horizon and not joint_success and not joint_failure)
-        joint_done = joint_failure or joint_success or timeout
+        timeout_counter = self._continuous_goal_window_t if self.continuous_eval else self._global_t
+        timeout = (timeout_counter >= self.horizon and not traffic_joint_success and not joint_failure)
+        joint_done = joint_failure or traffic_joint_success or timeout
 
         obs_dict = self.env.update_multi(self.rl_layer_ids)
         obs_batch, distances = self._build_obs_batch(obs_dict)
@@ -288,6 +370,10 @@ class SharedPolicyMultiAgentVecEnv(VecEnv):
         oracle_action_by_layer = {}
         for layer_id, action_tensor in obs_dict.get("Expert_actions", {}).items():
             oracle_action_by_layer[int(layer_id)] = int(self.full_action2index(action_tensor))
+        self.expert_action = np.asarray(
+            [oracle_action_by_layer.get(int(layer_id), 3) for layer_id in self.rl_layer_ids],
+            dtype=np.int64,
+        )
 
         stop_needed_layer_ids = [
             int(layer_id) for layer_id, action_id in oracle_action_by_layer.items() if action_id == 3
@@ -298,7 +384,9 @@ class SharedPolicyMultiAgentVecEnv(VecEnv):
             layer_id = agent.layer_id
             oracle_action = oracle_action_by_layer.get(int(layer_id), None)
             info = {
-                "joint_is_success": joint_success,
+                "joint_is_success": traffic_joint_success,
+                "rl_joint_is_success": rl_joint_success,
+                "traffic_joint_is_success": traffic_joint_success,
                 "joint_failure": joint_failure,
                 "joint_timeout": timeout,
                 "joint_done": joint_done,
@@ -307,9 +395,14 @@ class SharedPolicyMultiAgentVecEnv(VecEnv):
                 "rl_agent_layer_id": layer_id,
                 "rl_agent_name": self.agent_names[i],
                 "num_rl_agents": self.num_envs,
+                "num_total_cars": len(self._car_layer_ids),
+                "num_completed_cars": len(self._completed_car_layer_ids),
+                "traffic_completion_fraction": float(len(self._completed_car_layer_ids)) / float(max(len(self._car_layer_ids), 1)),
                 "mean_agent_success": float(agent_successes.mean()),
                 "goal_completion_count": len(goal_completion_layer_ids),
                 "goal_completion_layer_ids": list(goal_completion_layer_ids),
+                "car_goal_completion_count": len(car_goal_completion_layer_ids),
+                "car_goal_completion_layer_ids": list(car_goal_completion_layer_ids),
                 "agent_goal_completed": bool(layer_id in goal_completion_layer_ids),
                 "oracle_action": oracle_action,
                 "stop_needed": bool(oracle_action == 3) if oracle_action is not None else False,
@@ -321,7 +414,7 @@ class SharedPolicyMultiAgentVecEnv(VecEnv):
                 info["Fail"] = [False]
                 info["FailRuleNames"] = [[]]
             if i == 0:
-                info["is_success"] = joint_success
+                info["is_success"] = traffic_joint_success
                 info["overtime"] = timeout
                 info["joint_fail_agent_layer_ids"] = fail_agent_layer_ids
                 info["num_stop_needed_step"] = len(stop_needed_layer_ids)

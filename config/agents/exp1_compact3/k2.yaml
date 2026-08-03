@@ -1,0 +1,49 @@
+# Experiment 1 compact benchmark roster: K=2.
+agents:
+- class: Private_car
+  id: 1
+  size: 2
+  gplanner: A*vg
+  concepts:
+    type: Car
+    priority: 1
+
+- class: Pedestrian
+  id: 1
+  size: 1
+  gplanner: A*
+  concepts:
+    type: Pedestrian
+    priority: 0
+    old: 1.0
+
+- class: Pedestrian
+  id: 2
+  size: 1
+  gplanner: A*
+  concepts:
+    type: Pedestrian
+    priority: 0
+
+- class: Private_car
+  id: 2
+  size: 2
+  gplanner: A*vg
+  concepts:
+    type: Car
+    priority: 2
+
+sampling_config:
+  car:
+    spawn_goal_constraint_mode: "inner_cross_only"
+    goal_constraint_mode: "cross_center_intersection"
+    strict_center_crossing: true
+    intersection_bbox_pad: 7
+    max_goal_candidates_to_check: 0
+  pedestrian:
+    goal_constraint_mode: "cross_center_intersection"
+    constrained_ids: [1, 2]
+    intersection_bbox_pad: 7
+    min_goal_manhattan_distance: 6
+    start_distance_offset_by_id: {1: 0, 2: 5}
+    start_distance_tolerance: 2

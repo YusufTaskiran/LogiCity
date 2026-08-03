@@ -1,0 +1,222 @@
+Rules:
+  Sim: # how the determinist agents move
+    - name: Stop
+      formula: |
+        Stop(entity) == And(
+          Not(IsParked(entity)),
+          Exists(
+            [dummyEntity], 
+            And(
+              Not(IsParked(dummyEntity)),
+              Or(
+                And(
+                  IsCar(entity),
+                  IsPedestrian(dummyEntity),
+                  SameInter(entity, dummyEntity),
+                  Or(
+                    And(IsAtInter(entity), IsAtInter(dummyEntity)),
+                    And(IsAtInter(entity), IsInInter(dummyEntity)),
+                    And(IsInInter(entity), IsAtInter(dummyEntity)),
+                    And(IsInInter(entity), IsInInter(dummyEntity))
+                  )
+                ),
+                And(
+                  IsAtInter(entity), 
+                  IsInInter(dummyEntity), 
+                  SameInter(entity, dummyEntity),
+                ),
+                And(
+                  IsAtInter(entity), 
+                  IsAtInter(dummyEntity), 
+                  SameInter(entity, dummyEntity),
+                  HigherPri(dummyEntity, entity),
+                ),
+                And(
+                  IsCar(entity),
+                  IsCar(dummyEntity),
+                  SameInter(entity, dummyEntity),
+                  IsInInter(entity),
+                  IsInInter(dummyEntity)
+                ),
+                CollidingClose(entity, dummyEntity)
+              )
+            )
+          )
+        )
+      description: Stop for same-intersection conflicts and crossing pedestrians.
+  Task: # how the reward/score is calculated
+    - name: Collision
+      description: Terminal realized collision state.
+      dead: true
+      reward: -10
+      formula: |
+        Or(
+          IsParked(entity),
+          Not(
+            Exists(
+              [dummyEntity], 
+              And(
+                Not(IsParked(dummyEntity)),
+                Collision(entity, dummyEntity)
+              )
+            )
+          )
+        )
+    - name: Collision Close
+      description: Non-terminal penalty for ignoring an imminent collision cue.
+      dead: false
+      reward: -3
+      formula: |
+        Implies(
+          And(
+            Not(IsParked(entity)),
+            Exists(
+              [dummyEntity],
+              And(
+                Not(IsParked(dummyEntity)),
+                CollidingClose(entity, dummyEntity)
+              )
+            )
+          ),
+          Stop(entity)
+        )
+    - name: Intersection Right-of-Way
+      description: Non-terminal penalty for traffic-rule violations away from realized collision.
+      dead: false
+      reward: -2
+      formula: |
+        Implies(
+          And(
+            Not(IsParked(entity)),
+            Exists(
+              [dummyEntity], 
+              And(
+                Not(IsParked(dummyEntity)),
+                Or(
+                  And(
+                    IsCar(entity),
+                    IsPedestrian(dummyEntity),
+                    SameInter(entity, dummyEntity),
+                    Or(
+                      And(IsAtInter(entity), IsAtInter(dummyEntity)),
+                      And(IsAtInter(entity), IsInInter(dummyEntity)),
+                      And(IsInInter(entity), IsAtInter(dummyEntity)),
+                      And(IsInInter(entity), IsInInter(dummyEntity))
+                    )
+                  ),
+                  And(
+                    IsAtInter(entity), 
+                    IsInInter(dummyEntity), 
+                    SameInter(entity, dummyEntity),
+                  ),
+                  And(
+                    IsAtInter(entity), 
+                    IsAtInter(dummyEntity), 
+                    SameInter(entity, dummyEntity),
+                    HigherPri(dummyEntity, entity),
+                  ),
+                  And(
+                    IsCar(entity),
+                    IsCar(dummyEntity),
+                    SameInter(entity, dummyEntity),
+                    IsInInter(entity),
+                    IsInInter(dummyEntity)
+                  )
+                )
+              )
+            )
+          ),
+          Stop(entity)
+        )
+    - name: Simultaneous Intersection Entry
+      description: Non-terminal rule violation when two cars occupy the same intersection at once.
+      dead: false
+      reward: -2
+      formula: |
+        Or(
+          IsParked(entity),
+          Not(
+            Exists(
+              [dummyEntity],
+              And(
+                Not(IsParked(dummyEntity)),
+                IsCar(entity),
+                IsCar(dummyEntity),
+                SameInter(entity, dummyEntity),
+                IsInInter(entity),
+                IsInInter(dummyEntity)
+              )
+            )
+          )
+        )
+  Expert: # how the expert agents should move
+    - name: Stop
+      description: should not disobey rules.
+      formula: |
+        Stop(entity) == And(
+          Not(IsParked(entity)),
+          Exists(
+            [dummyEntity], 
+            And(
+              Not(IsParked(dummyEntity)),
+              Or(
+                And(
+                  IsCar(entity),
+                  IsPedestrian(dummyEntity),
+                  SameInter(entity, dummyEntity),
+                  Or(
+                    And(IsAtInter(entity), IsAtInter(dummyEntity)),
+                    And(IsAtInter(entity), IsInInter(dummyEntity)),
+                    And(IsInInter(entity), IsAtInter(dummyEntity)),
+                    And(IsInInter(entity), IsInInter(dummyEntity))
+                  )
+                ),
+                And(
+                  IsAtInter(entity), 
+                  IsInInter(dummyEntity), 
+                  SameInter(entity, dummyEntity),
+                ),
+                And(
+                  IsAtInter(entity), 
+                  IsAtInter(dummyEntity), 
+                  SameInter(entity, dummyEntity),
+                  HigherPri(dummyEntity, entity),
+                ),
+                And(
+                  IsCar(entity),
+                  IsCar(dummyEntity),
+                  SameInter(entity, dummyEntity),
+                  IsInInter(entity),
+                  IsInInter(dummyEntity)
+                ),
+                CollidingClose(entity, dummyEntity)
+              )
+            )
+          )
+        )
+    - name: Slow
+      description: Approach intersections cautiously when no full stop is required.
+      formula: |
+        Slow(entity) == And(
+          Not(Stop(entity)),
+          IsAtInter(entity)
+        )
+    - name: Fast
+      description: Cruise fast only when far from the intersection.
+      formula: |
+        Fast(entity) == And(
+          Not(Stop(entity)),
+          Not(Slow(entity)),
+          Not(IsAtInter(entity)),
+          Not(IsInInter(entity))
+        )
+    - name: Normal
+      description: Normal action is the default residual action.
+      formula: |
+        Normal(entity) == Not(
+          Or(
+            Stop(entity),
+            Slow(entity),
+            Fast(entity)
+          )
+        )

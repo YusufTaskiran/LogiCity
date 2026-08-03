@@ -18,6 +18,7 @@ from logicity.utils.pred_converter import z3 as z3_predicates
 # RL
 from logicity.rl_agent.alg import *
 from logicity.utils.gym_wrapper import GymCityWrapper
+from logicity.utils.multi_agent_wrapper import SharedPolicyMultiAgentVecEnv
 from stable_baselines3.common.vec_env import SubprocVecEnv
 from logicity.utils.gym_callback import EvalCheckpointCallback
 
@@ -46,14 +47,94 @@ def dynamic_import(module_name, class_name):
     module = importlib.import_module(module_name)
     return getattr(module, class_name)
 
-def make_env(simulation_config, return_cache=False): 
+def make_env(simulation_config, return_cache=False, episode_cache=None): 
     # Unpack arguments from simulation_config and pass them to CityLoader
-    city, cached_observation = CityLoader.from_yaml(**simulation_config)
-    env = GymCityWrapper(city)
+    city, cached_observation = CityLoader.from_yaml(**simulation_config, episode_cache=episode_cache)
+    if simulation_config.get("rl_agent", {}).get("agent_names"):
+        env = SharedPolicyMultiAgentVecEnv(city)
+    else:
+        env = GymCityWrapper(city)
     if return_cache: 
         return env, cached_observation
     else:
         return env
+
+
+def _rollout_distance_remaining(eval_env):
+    if hasattr(eval_env, "rl_agents") and hasattr(eval_env, "_trajectory_distance_remaining"):
+        return float(sum(eval_env._trajectory_distance_remaining(agent) for agent in eval_env.rl_agents))
+    if hasattr(eval_env, "_trajectory_distance_remaining"):
+        return float(eval_env._trajectory_distance_remaining())
+    return None
+
+
+def _reward_to_scalar(reward):
+    if isinstance(reward, np.ndarray):
+        return float(np.mean(reward))
+    if isinstance(reward, (list, tuple)):
+        return float(np.mean(np.asarray(reward, dtype=np.float32)))
+    return float(reward)
+
+
+def _done_to_bool(done_value):
+    if isinstance(done_value, np.ndarray):
+        return bool(np.any(done_value))
+    if isinstance(done_value, (list, tuple)):
+        return bool(np.any(np.asarray(done_value)))
+    if torch.is_tensor(done_value):
+        return bool(done_value.any().item())
+    return bool(done_value)
+
+
+def _reset_env_with_episode(eval_env):
+    if hasattr(eval_env, "save_episode") and eval_env.__class__.__name__ == "SharedPolicyMultiAgentVecEnv":
+        obs = eval_env.reset()
+        return obs, eval_env.save_episode()
+    return eval_env.reset(True)
+
+
+def _ego_only_generation_config(simulation_config):
+    rl_agent_cfg = dict(simulation_config.get("rl_agent", {}))
+    agent_names = rl_agent_cfg.pop("agent_names", None)
+    if agent_names:
+        rl_agent_cfg["agent_name"] = agent_names[0]
+    rl_agent_cfg.pop("multi_agent_training_scheme", None)
+    rl_agent_cfg["success_on_all_cars"] = True
+    sim_cfg = dict(simulation_config)
+    agent_sampling_cfg = dict(simulation_config.get("agent_sampling", {}) or {})
+    car_sampling_cfg = dict(agent_sampling_cfg.get("car", {}) or {})
+    car_sampling_cfg["stop_on_goal"] = True
+    agent_sampling_cfg["car"] = car_sampling_cfg
+    sim_cfg["agent_sampling"] = agent_sampling_cfg
+    sim_cfg["rl_agent"] = rl_agent_cfg
+    return sim_cfg
+
+
+def _episode_success_flag(info, is_multi_agent):
+    if is_multi_agent:
+        joint_info = info[0]
+        return bool(joint_info.get("joint_is_success", False))
+    return bool(info.get("success", info.get("is_success", False)))
+
+
+def _unsuccessful_rollout_info(info):
+    details = {}
+    if isinstance(info, dict):
+        fail_rules = info.get("FailRuleNames", [])
+        if fail_rules:
+            details["fail_rule_names"] = fail_rules
+        if info.get("overtime", False):
+            details["overtime"] = True
+        planner_actions = info.get("Planner_actions", {})
+        if planner_actions:
+            details["planner_actions"] = planner_actions
+        agent_positions = info.get("Agent_positions", {})
+        if agent_positions:
+            details["agent_positions"] = agent_positions
+        fail_flag = info.get("Fail", [])
+        if fail_flag:
+            details["fail"] = fail_flag
+    return details
     
 def make_envs(simulation_config, rank):
     """
@@ -144,17 +225,23 @@ def _passes_episode_prefilter(eval_env, episode_generation):
     require_ped_overlap = episode_generation.get("require_pedestrian_temporal_overlap", False)
     max_ped_eta_gap = episode_generation.get("max_pedestrian_intersection_eta_gap", None)
     require_conflicting_approach = episode_generation.get("require_conflicting_approach", False)
+    conflicting_entity_types = episode_generation.get("conflicting_approach_entity_types", None)
+    if conflicting_entity_types is not None:
+        conflicting_entity_types = set(str(entity_type) for entity_type in conflicting_entity_types)
 
     mask = _get_center_intersection_mask(eval_env, selector=selector)
     if mask is None:
         return False, {"reason": "no_intersection_mask"}
 
-    ego_layer_id = eval_env.agent_layer_id
-    ego_crosses = False
+    if hasattr(eval_env, "rl_layer_ids"):
+        ego_layer_ids = set(eval_env.rl_layer_ids)
+    else:
+        ego_layer_ids = {eval_env.agent_layer_id}
+    ego_crosses = 0
     other_crosses = 0
     total_crosses = 0
-    ego_eta = None
-    ego_direction = None
+    ego_etas = []
+    ego_directions = []
     other_car_etas = []
     pedestrian_etas = []
     conflicting_approach = False
@@ -164,17 +251,28 @@ def _passes_episode_prefilter(eval_env, episode_generation):
         direction = _traj_direction_at_index(agent, eta) if crosses else None
         if crosses:
             total_crosses += 1
-        if agent.layer_id == ego_layer_id:
-            ego_crosses = crosses
-            ego_eta = eta
-            ego_direction = direction
+        if agent.layer_id in ego_layer_ids:
+            if crosses:
+                ego_crosses += 1
+                ego_etas.append(eta)
+                if direction is not None:
+                    ego_directions.append(direction)
         elif crosses:
             other_crosses += 1
             if agent.type == "Car":
                 other_car_etas.append(eta)
             elif agent.type == "Pedestrian":
                 pedestrian_etas.append(eta)
-            if require_conflicting_approach and ego_direction is not None and direction is not None and direction != ego_direction:
+            if (
+                require_conflicting_approach
+                and len(ego_directions) > 0
+                and direction is not None
+                and direction not in ego_directions
+                and (
+                    conflicting_entity_types is None
+                    or agent.type in conflicting_entity_types
+                )
+            ):
                 conflicting_approach = True
         if require_all and not crosses:
             return False, {
@@ -184,7 +282,8 @@ def _passes_episode_prefilter(eval_env, episode_generation):
                 "total_crosses": total_crosses,
             }
 
-    if require_ego and not ego_crosses:
+    required_ego_crosses = len(ego_layer_ids) if hasattr(eval_env, "rl_layer_ids") else 1
+    if require_ego and ego_crosses < required_ego_crosses:
         return False, {
             "reason": "ego_misses_intersection",
             "ego_crosses": ego_crosses,
@@ -198,6 +297,9 @@ def _passes_episode_prefilter(eval_env, episode_generation):
             "other_crosses": other_crosses,
             "total_crosses": total_crosses,
         }
+
+    ego_eta = min(ego_etas) if ego_etas else None
+    ego_direction = ego_directions[0] if ego_directions else None
 
     close_other_count = 0
     if ego_eta is not None and max_other_eta_gap is not None:
@@ -258,6 +360,53 @@ def _format_discard_reason(reason, info=None):
         return str(reason)
     details = ", ".join("{}={}".format(k, v) for k, v in sorted(info.items()))
     return "{} ({})".format(reason, details)
+
+
+def _passes_post_rollout_filter(stop_count, episode_generation):
+    min_stop_count = int(episode_generation.get("min_stop_count", 0) or 0)
+    if stop_count < min_stop_count:
+        return False, {
+            "reason": "stop_count_too_low",
+            "stop_count": stop_count,
+            "min_stop_count": min_stop_count,
+        }
+    return True, {
+        "stop_count": stop_count,
+        "min_stop_count": min_stop_count,
+    }
+
+
+def _passes_opening_rollout_filter(opening_stop_count, opening_progress, opening_steps, episode_generation):
+    max_opening_stop_count = episode_generation.get("max_opening_stop_count", None)
+    min_opening_progress = episode_generation.get("min_opening_progress", None)
+    check_steps = int(episode_generation.get("opening_check_steps", 0) or 0)
+    if check_steps <= 0:
+        return True, {
+            "opening_stop_count": opening_stop_count,
+            "opening_progress": opening_progress,
+            "opening_steps": opening_steps,
+        }
+    if max_opening_stop_count is not None and opening_stop_count > int(max_opening_stop_count):
+        return False, {
+            "reason": "opening_stop_count_too_high",
+            "opening_stop_count": opening_stop_count,
+            "max_opening_stop_count": int(max_opening_stop_count),
+            "opening_progress": opening_progress,
+            "opening_steps": opening_steps,
+        }
+    if min_opening_progress is not None and float(opening_progress) < float(min_opening_progress):
+        return False, {
+            "reason": "opening_progress_too_low",
+            "opening_stop_count": opening_stop_count,
+            "opening_progress": opening_progress,
+            "min_opening_progress": float(min_opening_progress),
+            "opening_steps": opening_steps,
+        }
+    return True, {
+        "opening_stop_count": opening_stop_count,
+        "opening_progress": opening_progress,
+        "opening_steps": opening_steps,
+    }
 
 
 def _log_step_trace(logger_fn, step_idx, planner_actions, agent_positions):
@@ -455,23 +604,23 @@ def _generate_success_only_batch(worker_id, config_path, seed, target_episodes, 
 
     while len(episodes) < target_episodes:
         attempts += 1
-        eval_env, cached_observation = make_env(simulation_config, True)
-        model = algorithm_class(eval_env)
-        o, tem_episode = eval_env.reset(True)
+        prefilter_simulation_config = _ego_only_generation_config(simulation_config)
+        prefilter_env, _ = make_env(prefilter_simulation_config, True)
+        _, tem_episode = prefilter_env.reset(True)
         if trace_steps > 0:
             _log_step_trace(
                 lambda msg: print("[worker {}] {}".format(worker_id, msg), flush=True),
                 0,
-                getattr(eval_env, "last_planner_actions", {}) if hasattr(eval_env, "last_planner_actions") else {},
-                getattr(eval_env, "last_agent_positions", {}) if hasattr(eval_env, "last_agent_positions") else {},
+                getattr(prefilter_env, "last_planner_actions", {}) if hasattr(prefilter_env, "last_planner_actions") else {},
+                getattr(prefilter_env, "last_agent_positions", {}) if hasattr(prefilter_env, "last_agent_positions") else {},
             )
             if trace_predicates:
                 _log_predicate_trace(
                     lambda msg: print("[worker {}] {}".format(worker_id, msg), flush=True),
                     0,
-                    eval_env,
+                    prefilter_env,
                 )
-        prefilter_ok, prefilter_info = _passes_episode_prefilter(eval_env, episode_generation)
+        prefilter_ok, prefilter_info = _passes_episode_prefilter(prefilter_env, episode_generation)
         if not prefilter_ok:
             print(
                 "[worker {}] discarded attempt {} before rollout: {}".format(
@@ -482,23 +631,36 @@ def _generate_success_only_batch(worker_id, config_path, seed, target_episodes, 
                 flush=True,
             )
             continue
+        eval_env, cached_observation = make_env(prefilter_simulation_config, True, episode_cache=tem_episode)
+        model = algorithm_class(eval_env)
+        o, tem_episode = _reset_env_with_episode(eval_env)
         rew = 0
         step = 0
         done = False
         stop_count = 0
+        opening_check_steps = int(episode_generation.get("opening_check_steps", 0) or 0)
+        opening_stop_count = 0
+        opening_start_distance = None
+        opening_end_distance = None
+        opening_start_distance = _rollout_distance_remaining(eval_env) if opening_check_steps > 0 else None
+        is_multi_agent = False
         capture_world = len(worlds) < vis_count
 
         while not done:
             step += 1
             action, _ = model.predict(o, deterministic=True)
-            if int(action) == 3:
+            action_array = np.atleast_1d(action)
+            if np.any(action_array == 3):
                 stop_count += 1
+                if step <= opening_check_steps:
+                    opening_stop_count += 1
             step_result = eval_env.step(action)
             if len(step_result) == 5:
                 o, r, terminated, truncated, info = step_result
-                done = terminated or truncated
+                done = _done_to_bool(terminated) or _done_to_bool(truncated)
             else:
                 o, r, done, info = step_result
+                done = _done_to_bool(done)
             if step <= trace_steps:
                 _log_step_trace(
                     lambda msg: print("[worker {}] {}".format(worker_id, msg), flush=True),
@@ -514,10 +676,13 @@ def _generate_success_only_batch(worker_id, config_path, seed, target_episodes, 
                     )
             if capture_world:
                 cached_observation["Time_Obs"][step] = info
-            rew += r
+            rew += _reward_to_scalar(r)
+            if opening_check_steps > 0 and step == opening_check_steps:
+                opening_end_distance = _rollout_distance_remaining(eval_env)
 
-        success_flag = bool(info.get("success", info.get("is_success", False)))
+        success_flag = _episode_success_flag(info, is_multi_agent)
         if not success_flag:
+            failure_details = _unsuccessful_rollout_info(info)
             print(
                 "[worker {}] discarded attempt {} after rollout: {}".format(
                     worker_id,
@@ -529,8 +694,42 @@ def _generate_success_only_batch(worker_id, config_path, seed, target_episodes, 
                             "reward": rew,
                             "success": success_flag,
                             "has_stop": stop_count > 0,
+                            **failure_details,
                         },
                     ),
+                ),
+                flush=True,
+            )
+            continue
+        opening_progress = 0.0
+        if opening_start_distance is not None:
+            if opening_end_distance is None:
+                opening_end_distance = _rollout_distance_remaining(eval_env)
+            if opening_end_distance is not None:
+                opening_progress = float(opening_start_distance - opening_end_distance)
+        opening_ok, opening_info = _passes_opening_rollout_filter(
+            opening_stop_count,
+            opening_progress,
+            min(step, opening_check_steps) if opening_check_steps > 0 else 0,
+            episode_generation,
+        )
+        if not opening_ok:
+            print(
+                "[worker {}] discarded attempt {} after rollout: {}".format(
+                    worker_id,
+                    attempts,
+                    _format_discard_reason(opening_info.get("reason", "opening_rollout_filter_failed"), opening_info),
+                ),
+                flush=True,
+            )
+            continue
+        post_ok, post_info = _passes_post_rollout_filter(stop_count, episode_generation)
+        if not post_ok:
+            print(
+                "[worker {}] discarded attempt {} after rollout: {}".format(
+                    worker_id,
+                    attempts,
+                    _format_discard_reason(post_info.get("reason", "post_rollout_filter_failed"), post_info),
                 ),
                 flush=True,
             )
@@ -542,6 +741,7 @@ def _generate_success_only_batch(worker_id, config_path, seed, target_episodes, 
             "has_stop": stop_count > 0,
         }
         tem_episode["label_info"].update(prefilter_info)
+        tem_episode["label_info"].update(opening_info)
         episodes.append(tem_episode)
         rewards.append(rew)
         if stop_count > 0:
@@ -630,10 +830,10 @@ def main(args, logger):
     config = load_config(args.config)
     # simulation config
     simulation_config = config["simulation"]
-    logger.info("Simulation config: {}".format(simulation_config))
+    logger.debug("Simulation config: {}".format(simulation_config))
     # RL config
     rl_config = config['stable_baselines']
-    logger.info("RL config: {}".format(rl_config))
+    logger.debug("RL config: {}".format(rl_config))
     episode_generation = config.get("episode_generation", {})
     generation_mode = episode_generation.get("mode", "legacy_balanced")
     trace_steps = int(episode_generation.get("trace_first_n_steps", 0) or 0)
@@ -760,20 +960,20 @@ def main(args, logger):
                 for speed in num_desired[concept]:
                     logger.info("{} | {} | {} | {}".format(concept, speed, num_counter[concept][speed], num_desired[concept][speed]))
         logger.info("Trying to creat episode {} ...".format(key))
-        eval_env, cached_observation = make_env(simulation_config, True)
+        prefilter_simulation_config = _ego_only_generation_config(simulation_config)
+        prefilter_env, _ = make_env(prefilter_simulation_config, True)
+        _, tem_episodes = prefilter_env.reset(True)
         assert rl_config["algorithm"] == "ExpertCollector"
-        model = algorithm_class(eval_env)
-        o, tem_episodes = eval_env.reset(True)
         if trace_steps > 0:
             _log_step_trace(
                 logger.info,
                 0,
-                getattr(eval_env, "last_planner_actions", {}) if hasattr(eval_env, "last_planner_actions") else {},
-                getattr(eval_env, "last_agent_positions", {}) if hasattr(eval_env, "last_agent_positions") else {},
+                getattr(prefilter_env, "last_planner_actions", {}) if hasattr(prefilter_env, "last_planner_actions") else {},
+                getattr(prefilter_env, "last_agent_positions", {}) if hasattr(prefilter_env, "last_agent_positions") else {},
             )
             if trace_predicates:
-                _log_predicate_trace(logger.info, 0, eval_env)
-        prefilter_ok, prefilter_info = _passes_episode_prefilter(eval_env, episode_generation)
+                _log_predicate_trace(logger.info, 0, prefilter_env)
+        prefilter_ok, prefilter_info = _passes_episode_prefilter(prefilter_env, episode_generation)
         if not prefilter_ok:
             logger.info(
                 "Discarded attempt {} before rollout: {}".format(
@@ -782,6 +982,9 @@ def main(args, logger):
                 )
             )
             continue
+        eval_env, cached_observation = make_env(prefilter_simulation_config, True, episode_cache=tem_episodes)
+        model = algorithm_class(eval_env)
+        o, tem_episodes = _reset_env_with_episode(eval_env)
         concept = 'normal'
         if generation_mode in ("legacy_balanced", "intersection_biased_legacy_balanced"):
             # Legacy balanced generation depends on the RL car concept label.
@@ -820,18 +1023,28 @@ def main(args, logger):
         save = generation_mode in ("success_only", "intersection_biased_success_only")
         label_action = None
         stop_count = 0
+        opening_check_steps = int(episode_generation.get("opening_check_steps", 0) or 0)
+        opening_stop_count = 0
+        opening_start_distance = None
+        opening_end_distance = None
+        opening_start_distance = _rollout_distance_remaining(eval_env) if opening_check_steps > 0 else None
+        is_multi_agent = False
         s = time.time()
         while not d:
             step += 1
             action, _ = model.predict(o, deterministic=True)
-            if int(action) == 3:
+            action_array = np.atleast_1d(action)
+            if np.any(action_array == 3):
                 stop_count += 1
+                if step <= opening_check_steps:
+                    opening_stop_count += 1
             step_result = eval_env.step(action)
             if len(step_result) == 5:
                 o, r, terminated, truncated, i = step_result
-                d = terminated or truncated
+                d = _done_to_bool(terminated) or _done_to_bool(truncated)
             else:
                 o, r, d, i = step_result
+                d = _done_to_bool(d)
             if step <= trace_steps:
                 _log_step_trace(
                     logger.info,
@@ -849,9 +1062,12 @@ def main(args, logger):
                     if using_dict[action] < checking_dict[action]:
                         label_action = action
                         save = True
-            rew += r
-        success_flag = bool(i.get("success", i.get("is_success", False)))
+            rew += _reward_to_scalar(r)
+            if opening_check_steps > 0 and step == opening_check_steps:
+                opening_end_distance = _rollout_distance_remaining(eval_env)
+        success_flag = _episode_success_flag(i, is_multi_agent)
         if not success_flag:
+            failure_details = _unsuccessful_rollout_info(i)
             logger.info(
                 "Discarded attempt {} after rollout: {}".format(
                     attempts,
@@ -862,8 +1078,38 @@ def main(args, logger):
                             "reward": rew,
                             "success": success_flag,
                             "has_stop": stop_count > 0,
+                            **failure_details,
                         },
                     ),
+                )
+            )
+            continue
+        opening_progress = 0.0
+        if opening_start_distance is not None:
+            if opening_end_distance is None:
+                opening_end_distance = _rollout_distance_remaining(eval_env)
+            if opening_end_distance is not None:
+                opening_progress = float(opening_start_distance - opening_end_distance)
+        opening_ok, opening_info = _passes_opening_rollout_filter(
+            opening_stop_count,
+            opening_progress,
+            min(step, opening_check_steps) if opening_check_steps > 0 else 0,
+            episode_generation,
+        )
+        if not opening_ok:
+            logger.info(
+                "Discarded attempt {} after rollout: {}".format(
+                    attempts,
+                    _format_discard_reason(opening_info.get("reason", "opening_rollout_filter_failed"), opening_info),
+                )
+            )
+            continue
+        post_ok, post_info = _passes_post_rollout_filter(stop_count, episode_generation)
+        if not post_ok:
+            logger.info(
+                "Discarded attempt {} after rollout: {}".format(
+                    attempts,
+                    _format_discard_reason(post_info.get("reason", "post_rollout_filter_failed"), post_info),
                 )
             )
             continue
@@ -891,6 +1137,7 @@ def main(args, logger):
                 'has_stop': stop_count > 0,
             }
             label_info.update(prefilter_info)
+            label_info.update(opening_info)
             if generation_mode in ("legacy_balanced", "intersection_biased_legacy_balanced"):
                 label_info['concept'] = concept
             if label_action is not None:
@@ -926,7 +1173,7 @@ if __name__ == '__main__':
     logger = setup_logger(log_dir=args.log_dir, log_name=args.exp)
     # Sim mode, will use the logic-based simulator to run a simulation (no learning)
     logger.info("Collecting {} episodes from expert...".format(args.max_episodes))
-    logger.info("Loading simulation config from {}.".format(args.config))
+    logger.debug("Loading simulation config from {}.".format(args.config))
     e = time.time()
     main(args, logger)
     logger.info("Total time spent: {}".format(time.time()-e))
