@@ -1,0 +1,452 @@
+\chapter{Methodology}
+
+\section{Problem Formulation}
+This thesis investigates probabilistic logic shielding (PLS) in multi-agent environments for safe autonomous driving, with a particular focus on \emph{safe task completion} under shared traffic rules. The central objective is not only to test whether PLS reduces unsafe behavior, but to study how shielding changes the balance between successful completion, direct failure, and timeout as multiple RL-controlled cars interact in the same traffic scene. In particular, the thesis examines how PLS behaves as multi-agent interaction pressure increases, how decentralized shield styles trade off conservatism against efficiency, whether centralized shielding can resolve coordination deadlocks that remain difficult under decentralized local shielding, and whether homogeneous multi-agent traffic control is better served by shared-policy or separate-policy training.
+
+\subsection{Safe Multi-Agent Navigation in Urban Traffic Scenarios}
+The considered task is a navigation problem in a stylized urban traffic environment implemented in LogiCity, with a particular focus on intersection scenarios. Intersections are especially suitable for this thesis because they concentrate the main coordination challenges of urban driving in a compact setting: vehicles must account for right-of-way, yielding, shared occupancy, and pedestrian interaction rather than following their routes independently.
+
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=0.50\textwidth]{figures/exp1_k2_val_ep0_frames/step_4.png}
+    \caption{Example intersection scenario used in the thesis.}
+    \label{fig:exp1_intersection_scenario}
+\end{figure}
+
+\noindent The experiments therefore use compact intersection-centered traffic scenes. Figure~\ref{fig:exp1_intersection_scenario} shows a representative example in which one or more controllable private cars act as the RL agents, while pedestrians serve as background agents. Start and goal positions are assigned so that the central intersection must be traversed, forcing interaction with both other cars and pedestrians.
+\\
+\\
+The Safe Path Following (SPF) task is defined as follows \cite{li2025logicityadvancingneurosymbolicai}: all controllable cars must reach their respective goal positions safely and successfully while avoiding collisions and obeying the specified traffic rules. In particular, cars must not collide with pedestrians or other controllable cars, and they must not violate rules related to yielding, right-of-way, or unsafe intersection occupancy. The task is therefore not merely path planning, but multi-agent traffic coordination under safety constraints.
+
+\subsection{State, Action, and Observation Spaces}
+The joint traffic environment is defined over the full simulator state, which includes the map layout, road and sidewalk structure, intersection regions, all agent positions, planned routes, goals, and traffic-relevant logical relations. This full state is used internally by the simulator and by the rule machinery, but it is not given directly to the reinforcement learning policy. Instead, each controllable car acts from a local symbolic observation centered on itself.
+
+\begin{table}[H]
+\centering
+\small
+\caption{State, action, and observation design of the task.}
+\label{tab:state-action-observation}
+\begin{tabularx}{\linewidth}{@{}p{0.2\linewidth} X@{}}
+\toprule
+\textbf{Component} & \textbf{Description} \\
+\midrule
+Environment state & Full simulator state, including map structure, agent positions, routes, goals, and logical traffic relations. Available to the simulator and rule system, but not directly to the learned policy. \\
+\addlinespace
+Action space & Discrete four-action speed control: \texttt{Slow}, \texttt{Normal}, \texttt{Fast}, and \texttt{Stop}. \\
+\addlinespace
+Observation space & Flattened grounded logical vector over a local field of view. Unary predicates contribute one value per visible entity; binary predicates contribute one value per ordered entity pair. \\
+\addlinespace
+Observation scope & One full intersection region, with at most three visible entities. \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+The RL policy acts in a discrete four-action space:
+\[
+\mathcal{A} = \{\texttt{Slow}, \texttt{Normal}, \texttt{Fast}, \texttt{Stop}\}.
+\]
+
+\begin{table}[H]
+\centering
+\small
+\caption{Discrete action space of each controllable car.}
+\label{tab:exp1-action-space}
+\begin{tabularx}{\linewidth}{@{}l X@{}}
+\toprule
+\textbf{Action} & \textbf{Effect} \\
+\midrule
+\texttt{Slow} & One-cell movement in one of the four cardinal directions. \\
+\texttt{Normal} & Two-cell movement in one of the four cardinal directions. \\
+\texttt{Fast} & Three-cell movement in one of the four cardinal directions. \\
+\texttt{Stop} & No movement. \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+\noindent Thus, the RL problem is fundamentally a speed-mode decision problem under logical safety constraints.
+\\
+\\
+We do not use visual observations. Each RL-controlled agent receives a flattened grounded logical state vector over its local field of view.
+\\
+\\
+\noindent The grounded predicates include semantic type predicates, traffic-state predicates, and relational predicates, such as whether an entity is a car or pedestrian, whether it is at or in an intersection, whether it has higher priority than the ego vehicle, and whether it is collision-close. The full predicate list is provided in Appendix~\ref{app:predicate-definitions}.
+\\
+\\
+Figure~\ref{fig:exp1_intersection_scenario} gives a simple example. If the controllable car approaching from the south is treated as the ego agent, then the two pedestrians in the central crossing area are part of its local observation, whereas the car approaching from the north is still outside its field of view. The observation is therefore intentionally local: it captures only the immediate interaction structure around the ego agent.
+\\
+\\
+For this case, a schematic local entity set is
+\[
+[\texttt{ego}, \texttt{Pedestrian\_1}, \texttt{Pedestrian\_2}].
+\]
+\noindent The approaching northern car is not yet included because it is still outside the ego field of view.
+
+\begin{table}[H]
+\centering
+\small
+\caption{Example grounded observation entries for the southern ego car.}
+\label{tab:exp1-grounded-observation-example}
+\begin{tabular}{@{}ll@{}}
+\toprule
+\textbf{Ground atom} & \textbf{Value} \\
+\midrule
+\texttt{IsCar(ego)} & 1 \\
+\texttt{IsAtInter(ego)} & 1 \\
+\texttt{IsInInter(ego)} & 0 \\
+\texttt{IsPedestrian(Pedestrian\_1)} & 1 \\
+\texttt{IsInInter(Pedestrian\_1)} & 1 \\
+\texttt{IsPedestrian(Pedestrian\_2)} & 1 \\
+\texttt{IsInInter(Pedestrian\_2)} & 1 \\
+\texttt{HigherPri(Pedestrian\_1, ego)} & 0 \\
+\texttt{HigherPri(Pedestrian\_2, ego)} & 0 \\
+\texttt{CollidingClose(Pedestrian\_1, ego)} & 0 \\
+\texttt{CollidingClose(Pedestrian\_2, ego)} & 0 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\noindent The policy does not receive these atoms symbolically. Instead, they are flattened into a fixed-order numeric vector, for example
+\[
+[1,1,0,\;1,1,\;1,1,\;0,0,\;0,0,\dots],
+\]
+\noindent where the exact ordering is determined by the implementation. The input is therefore numeric, but each dimension still retains a clear logical interpretation.
+
+\subsection{Observation Noise Model}
+The thesis also considers an uncertain symbolic observation regime. This noise is part of the environment-side observation model rather than of PLS itself: the LogiCity dynamics remain unchanged, but the symbolic information provided to the policy and shield is corrupted to mimic imperfect sensing.
+\\
+\\
+The implemented noise process is structured rather than i.i.d. It distinguishes between type and relation predicates, treats ego-related facts differently from non-ego facts, and increases corruption for crowded or occluded local observations. As a result, relational traffic predicates such as collision proximity, intersection occupancy, and priority can become more uncertain than simple type labels such as whether an entity is a car or a pedestrian.
+\\
+\\
+This matters because the most safety-relevant predicates are relational. The shield does not define this uncertainty model; it simply consumes the noisy grounded observation provided by the environment. The full specification is given in Appendix~\ref{app:observation-noise-model}.
+
+\subsection{Agents}
+The Safe Path Following task contains two classes of agents: RL agents, whose behavior is learned and evaluated in this thesis, and background agents, which remain controlled by LogiCity's rule-based expert planner.
+\\
+\\
+Background agents are not replayed along fixed trajectories. Instead, the expert planner repeatedly evaluates the current local traffic configuration and selects admissible route-following actions from logical traffic predicates \cite{li2025logicityadvancingneurosymbolicai}. They therefore react online to conditions such as intersection occupancy, relative priority, and collision-related relations.
+\\
+\\
+In all experiments, pedestrians are always background agents, while all cars are RL agents. The learning problem is therefore centered on the interacting car population, while pedestrians provide structured external traffic interaction.
+\\
+\\
+For simplicity, the thesis uses only two traffic-participant types: normal cars and pedestrians. Although LogiCity supports richer semantic roles such as ambulances, police cars, and buses \cite{li2025logicityadvancingneurosymbolicai}, these are not used here because the focus is on multi-agent autonomous navigation rather than semantic traffic heterogeneity.
+
+\subsection{Safety Objective and Efficiency Objective}
+The task combines a safety objective with an efficiency objective. Safety means avoiding both terminal and non-terminal unsafe behavior. Terminal unsafe behavior corresponds to realized collisions, which end the episode immediately, while non-terminal violations include near-collision cues, right-of-way violations, and simultaneous intersection occupancy.
+\\
+\\
+Efficiency means reaching the assigned goal positions with as little unnecessary delay as possible. In the current reward design, this is encouraged through a positive terminal goal reward and a progress-based shaping reward rather than through an explicit per-step time penalty.
+\\
+\\
+This distinction is important for interpreting the role of the shield. A conservative controller may reduce unsafe behavior but still perform poorly through repeated yielding and timeout, whereas a more aggressive controller may improve progress at the cost of more unsafe interaction. The methodology therefore treats safe completion as the desired outcome and views collisions, traffic-rule violations, and timeouts as distinct manifestations of failure or inefficiency.
+
+\iffalse
+\subsection{Difficulty Scaling Through the Number of Agents \texorpdfstring{$K$}{K}}
+To study how shielding behaves under increasing interaction complexity, the benchmark varies the number of controllable cars through the parameter $K$. In this thesis, $K$ denotes the number of private car agents that are simultaneously controlled by the shared reinforcement learning policy. The compact Experiment~1 benchmark considers three primary settings: $K=1$, $K=2$, and $K=3$. Across these settings, the map and the general traffic structure remain fixed, while the number of interacting controllable vehicles increases.
+\\
+\\
+Importantly, the increase in $K$ does not simply add more copies of the same isolated task. Each additional car introduces more possible right-of-way relations, more potential occupation conflicts at the central intersection, and more opportunities for conservative waiting behavior to propagate through the system. The pedestrian components remain present as structured sources of crossing interaction, while the vehicle roster grows from one controllable car in the $K=1$ setting, to two controllable cars in $K=2$, and three controllable cars in $K=3$. This design makes $K$ a direct measure of multi-agent interaction density within the same compact scenario family.
+\\
+\\
+The use of $K$ as the main difficulty axis is central to the experimental question of the thesis. If probabilistic shielding is too conservative, one expects increasing $K$ to produce more yielding, more stopping, and eventually more timeout-dominated behavior. If the shield is too permissive, increasing $K$ may instead expose more unsafe interactions. By scaling $K$ while keeping the general scenario structure fixed, the benchmark isolates how shield style affects the balance between safety preservation and efficient coordination under growing multi-agent complexity.
+\fi
+
+\section{Task Rules}
+\subsection{Task Rules as Logical Constraints}
+The task rules are defined as explicit logical formulas over grounded traffic predicates. In the current thesis setup, the rule system evaluates predicates such as \texttt{IsAtInter}, \texttt{IsInInter}, \texttt{HigherPri}, \texttt{CollidingClose} and \texttt{Collision}, and then determines whether the current state-action combination satisfies or violates the task requirements.
+\\
+\\
+The central modeling idea is stop-style traffic logic: whenever a rule-relevant hazard condition holds, the safe traffic action is \texttt{Stop(entity)}. Such hazard conditions include pedestrian-crossing conflicts in the same intersection, entering an intersection while another agent is already occupying it, approaching the same intersection together with another car that has higher priority, simultaneous same-intersection occupancy by two cars, and imminent collision-close situations. The task rules therefore do not describe safety in terms of geometric free space alone, but in terms of logical traffic relations that encode right-of-way, shared intersection occupancy, and conflict proximity.
+
+\begin{table}[H]
+\centering
+\small
+\caption{Core task-rule predicates in the SPF task.}
+\label{tab:task-rule-predicates}
+\begin{tabularx}{\linewidth}{@{}l X@{}}
+\toprule
+\textbf{Predicate} & \textbf{Role in the task rules} \\
+\midrule
+\texttt{IsAtInter} & Indicates that an agent is at the boundary of an intersection and is about to enter or yield at that region. \\
+\texttt{IsInInter} & Indicates that an agent is currently occupying the interior of an intersection region. \\
+% \texttt{SameInter} & Indicates that two agents are associated with the same intersection region, so that intersection-conflict rules apply between them. \\
+\texttt{HigherPri} & Encodes right-of-way asymmetry between two traffic participants. \\
+\texttt{CollidingClose} & Encodes an imminent collision cue that requires immediate stopping but does not itself represent a realized collision. \\
+\texttt{Collision} & Encodes a realized collision state and is used for terminal failure. \\
+\texttt{IsParked} & Marks inactive parked cars so that they are excluded from active conflict and failure evaluation. \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+\noindent Parked agents are excluded from rule triggering. The current implementation treats cars that are still parked at spawn or already parked after reaching their goal as inactive for both violation counting and terminal collision evaluation. This prevents task failures from being generated by inactive parked cars and keeps the task semantics focused on active traffic interaction.
+
+\subsection{Non-Terminating Traffic Rules}
+Most traffic-rule violations are modeled as non-terminating task rules. Violating such a rule produces a negative task signal but does not immediately end the episode. This design is important because it separates unsafe or undesirable traffic behavior from realized catastrophic failure.
+\\
+\\
+\begin{table}[H]
+\centering
+\small
+\caption{Non-terminating task rules.}
+\label{tab:nonterminal-task-rules}
+\begin{tabularx}{\linewidth}{@{}l X@{}}
+\toprule
+\textbf{Rule} & \textbf{Meaning} \\
+\midrule
+\textbf{Collision Close} & If an imminent collision cue is present, the ego agent is required to stop. Ignoring this cue produces a traffic-rule violation. \\
+\textbf{Intersection Right-of-Way} & If the ego agent faces a pedestrian-crossing conflict, an occupied intersection conflict, or a higher-priority same-intersection conflict, it is required to stop. Failing to stop counts as a non-terminal traffic-rule violation. \\
+\textbf{Simultaneous Intersection Entry} & If two cars occupy the same intersection at the same time, this is counted as a non-terminal rule violation even if no realized collision has yet occurred. \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+\noindent These non-terminating rules are deliberately traffic-semantic. They are meant to capture situations in which the ego car behaves unsafely or unlawfully, even when the episode has not yet reached an irreversible terminal state. This distinction is especially important for studying PLS, because a shield may reduce unsafe interaction patterns even before it prevents actual collisions.
+
+\subsection{Terminating Failure Condition}
+The only terminating task rule in the current setup is the realized \texttt{Collision} predicate. When the environment detects that an active agent is in a realized collision state with another active agent, the corresponding task rule is violated and the episode terminates with failure.
+\\
+\\
+This means that the task distinguishes clearly between \emph{traffic-rule danger cues} and \emph{realized physical failure}. Near-collision conditions, right-of-way violations, and simultaneous intersection occupancy are treated as serious but non-terminal events, whereas a realized collision is treated as the catastrophic endpoint of unsafe interaction.
+
+\begin{table}[H]
+\centering
+\small
+\caption{Episode outcomes induced by the task rules.}
+\label{tab:task-rule-outcomes}
+\begin{tabularx}{\linewidth}{@{}l X@{}}
+\toprule
+\textbf{Outcome} & \textbf{Condition} \\
+\midrule
+\textbf{Success} & All controllable cars reach their assigned goals without triggering a terminal failure. \\
+\textbf{Failure} & A realized collision occurs and activates the terminal \texttt{Collision} rule. \\
+\textbf{Timeout} & The episode horizon is exceeded before all controllable cars complete their routes. \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+\section{Probabilistic Logic Shielding}
+\subsection{Overview of the Shielding Framework}
+The shielded method used in this thesis instantiates a hybrid, probabilistic-logic shield in LogiCity, inspired by Probabilistic Logic Shielding (PLS) \cite{yang2023safereinforcementlearningprobabilistic}. ProbLog provides a fixed probabilistic action-program interface, while a traffic template computes the domain-specific safety scores from grounded symbolic observations. PLPG is the training algorithm used to optimize the shielded policy. The implemented shield therefore consists of three components: a probabilistic policy representation, a state-dependent fact set, and a traffic-safety template that maps those facts to action-level safety estimates.
+\\
+\\
+The first component is the policy representation \(\Pi_s\), encoded as an annotated disjunction inside the logic program. For a given state \(s\), the neural policy is represented as
+\[
+\Pi_s =
+\left\{
+\begin{array}{l}
+\pi_\theta(\texttt{slow}\mid s)::\texttt{act(slow)};\\
+\pi_\theta(\texttt{normal}\mid s)::\texttt{act(normal)};\\
+\pi_\theta(\texttt{fast}\mid s)::\texttt{act(fast)};\\
+\pi_\theta(\texttt{stop}\mid s)::\texttt{act(stop)}
+\end{array}
+\right\}.
+\]
+\noindent The second component is the probabilistic fact set \(H_s\), which abstracts the current traffic state into shield-relevant symbolic information. The third component is the safety template itself. In the current implementation, a minimal ProbLog program is compiled once and reused at runtime, while the detailed traffic-safety computation is carried out by the template from the grounded predicate values. Conceptually, this can still be summarized as one shield program per state \cite{yang2023safereinforcementlearningprobabilistic},
+\[
+\mathcal{T}(s)=\mathcal{BK}\cup H_s\cup \Pi_s,
+\]
+\noindent but the important practical point is that the current shield uses a hybrid realization. ProbLog is used to represent the action distribution and to provide the fixed queried action structure of the shield program. The traffic semantics themselves, however, are not obtained by fully re-grounding a large symbolic program at every step. Instead, the grounded observation is passed into the soft-traffic template, which computes the relevant hazard quantities directly from traffic predicates such as \texttt{IsAtInter}, \texttt{IsInInter}, \texttt{SameInter}, \texttt{HigherPri}, and \texttt{CollidingClose}. These hazard quantities are then converted into action-level safety scores for \texttt{slow}, \texttt{normal}, \texttt{fast}, and \texttt{stop}, and those scores are finally used for policy reweighting. In this sense, ProbLog provides the probabilistic action skeleton, while the template supplies the domain-specific traffic-safety computation.
+
+\subsection{Logical Grounding from Observations}
+The probabilistic fact set \(H_s\) is derived directly from the grounded observation vector described earlier in this chapter. In other words, the shield does not observe the full simulator state independently of the policy. Instead, it consumes the same local symbolic observation that is already available to the RL-controlled car, and converts that local observation into shield-relevant logical facts.
+\\
+\\
+In the current thesis setup, the shield abstraction is built from grounded predicates such as whether the ego car is at an intersection, whether it is already in the intersection, whether another visible entity belongs to the same intersection, whether that entity has higher priority, whether it is a pedestrian, and whether it is collision-close. These are precisely the facts required by the current traffic shield template. Each grounded fact is represented as a value in \([0,1]\), so that the shield reasons directly over the confidence-valued symbolic observation produced by the environment.
+
+\subsection{Probabilistic Action-Safety Estimates}
+For each candidate action \(a\), the traffic template computes an action-level safety score from the ego car's local grounded observation \(o^i\). We denote this score by
+\[
+q(o^i,a)\in[0,1].
+\]
+The fixed ProbLog program supplies the action-query interface, but the implemented action-dependent score is produced by the soft-traffic template after it evaluates the grounded traffic cues. Thus, \(q(o^i,a)\) is the template's local estimate of the safety of action \(a\), rather than the result of re-grounding and solving the full traffic rules in ProbLog at every decision step.
+\\
+\\
+Using these action-level safety scores, the shield also computes the safety of the base policy,
+\[
+P_{\pi_\theta}(\texttt{safe}\mid o^i)
+=
+\sum_{a\in\mathcal{A}} \pi_\theta(a\mid o^i)\, q(o^i,a).
+\]
+\noindent This quantity measures how safe the unmodified policy is under the current symbolic traffic facts and the current background knowledge. It is therefore a state-dependent safety score for the base distribution itself rather than only for any single selected action.
+\\
+\\
+An important consequence of this formulation is that rule satisfaction is treated probabilistically rather than only as a hard Boolean filter. The resulting safety scores remain soft because the shield combines confidence-valued symbolic facts with a probabilistic action distribution. As a result, the shield does not merely classify actions as admissible or inadmissible, but continuously expresses how safe each action is under the current observed traffic context.
+
+\subsection{Action Reweighting Based on Safety Estimates}
+The shielded policy is constructed by reweighting the base policy with the action-level safety scores \cite{yang2023safereinforcementlearningprobabilistic}:
+\[
+\pi_\theta^+(a\mid o^i)
+=
+\frac{\pi_\theta(a\mid o^i)\, q(o^i,a)}
+{\sum_{a'\in\mathcal{A}} \pi_\theta(a'\mid o^i)\, q(o^i,a')}
+=
+\frac{\pi_\theta(a\mid o^i)\, q(o^i,a)}
+{P_{\pi_\theta}(\texttt{safe}\mid o^i)}.
+\]
+\noindent This shielded distribution is the policy that is actually used for acting. Actions that are judged safer under the current symbolic traffic state receive relatively larger probability mass, while actions that are judged less safe are down-weighted.
+\\
+\\
+Figure~\ref{fig:pls-worked-example} illustrates this reweighting with a concrete local traffic situation. The base policy initially prefers \texttt{fast}, but its low safety score reduces its probability after reweighting; the released probability mass is redistributed among the relatively safer actions.
+
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=0.90\textwidth]{figures/working_example PLS.png}
+    \caption{Worked example of probabilistic action reweighting by the decentralized shield. The entries in each vector correspond to \texttt{slow}, \texttt{normal}, \texttt{fast}, and \texttt{stop}, respectively.}
+    \label{fig:pls-worked-example}
+\end{figure}
+
+\noindent The safety of the shielded policy is \cite{yang2023safereinforcementlearningprobabilistic}
+\[
+P_{\pi_\theta^+}(\texttt{safe}\mid o^i)
+=
+\sum_{a\in\mathcal{A}} \pi_\theta^+(a\mid o^i)\, q(o^i,a).
+\]
+\noindent Thus, the shield acts as a probabilistic action-reweighting mechanism rather than as a purely external hard action blocker. This is important in the present setting because the method is intended not only to avoid obviously unsafe actions, but also to shape behavior continuously according to how safe different actions are under the current traffic context.
+
+\subsection{PLPG Training Objective}
+The previous subsection described how the shield modifies action selection at decision time. In the present implementation, however, the shield is also part of policy learning through the PLPG objective \cite{yang2023safereinforcementlearningprobabilistic}.
+\\
+\\
+Rollout collection uses the shielded policy \(\pi_\theta^+\) rather than the raw base policy \(\pi_\theta\), so learning data is generated under shielded behavior. The PPO-style update is then also defined with respect to shielded probabilities, meaning that optimization is carried out directly in the reweighted policy space.
+\\
+\\
+In addition, the learning objective includes an explicit safety regularizer \cite{yang2023safereinforcementlearningprobabilistic}, whose exact form is given in Appendix~\ref{app:safety-regularizer}. This encourages safer action distributions under the current symbolic traffic facts and makes the shield part of the learning computation rather than a post-processing layer applied only at execution time.
+\\
+\\
+A key advantage of PLS is therefore that shielding remains compatible with gradient-based reinforcement learning: the differentiable reweighting performed by the shield is reflected directly in the policy updates \cite{yang2023safereinforcementlearningprobabilistic,minihackexp}.
+
+\subsection{Traffic Shield Template}
+The current experiments use one fixed \textbf{traffic shield template}. The semantic shield family is therefore held constant across all shielded runs; what changes later is only the strength of the safety weighting.
+\\
+\\
+The ProbLog component is deliberately small and fixed. It is compiled once and supplies the candidate-action interface used by the shield:
+\begin{lstlisting}[style=mystyle,language=Prolog,caption={Fixed ProbLog interface of the implemented shield.},label={lst:traffic-shield-skeleton}]
+% Compiled once; policy probabilities replace 0.25 at runtime.
+0.25::act(slow); 0.25::act(normal); 0.25::act(fast); 0.25::act(stop).
+
+% Fixed safety-query interface.
+safe.
+query(safe).
+query(act(slow)).
+query(act(normal)).
+query(act(fast)).
+query(act(stop)).
+\end{lstlisting}
+\noindent The displayed action probabilities are compile-time placeholders. At runtime, they are replaced by the current PPO probabilities. This listing is an interface rather than the traffic-rule engine: the unconditional \texttt{safe} atom does not itself derive traffic safety. The actual action-dependent safety scores are computed by the soft-traffic template.
+\\
+\\
+The template reads the local grounded observation and extracts intersection position, shared-intersection membership, relative priority, pedestrian presence, and collision-close cues. It combines these confidence-valued predicates into six continuous hazards: collision-close, pedestrian conflict, occupied intersection, higher-priority conflict, simultaneous intersection occupancy, and transition conflict. The largest relevant hazard and its derived traffic regime determine how strongly \texttt{slow}, \texttt{normal}, and \texttt{fast} are penalized; \texttt{stop} remains the safer option in critical traffic states. Appendix~\ref{app:soft-traffic-hazard-calculation} gives the complete implemented hazard and action-score calculation. This rule-inspired calculation is implemented procedurally rather than as a second ProbLog program.
+\\
+\\
+The complete decentralized shield flow is shown in Figure~\ref{fig:traffic-shield-flow}. Each controlled car runs this procedure separately: it starts from its own local grounded observation, derives local hazard values, converts them into action-level scores \(q(o^i,a)\), and reweights its own PPO distribution. Consequently, the shield can react to locally visible conflicts but does not jointly select the actions of multiple RL-controlled cars.
+
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=\textwidth]{figures/Decentralized PLS.png}
+    \caption{Pipeline of the implemented decentralized hybrid PLS shield for one controlled car \(i\). The same local procedure is applied independently to each RL-controlled car.}
+    \label{fig:traffic-shield-flow}
+\end{figure}
+
+\noindent The resulting safety scores are action-dependent rather than purely binary. In benign states, movement actions remain relatively safe; under increasing interaction pressure, faster intersection entry is penalized first; and in critical states, \texttt{stop} is strongly preferred. Thus, the shield is probabilistic because it reweights a probability distribution using confidence-valued traffic information, and logic-grounded because its hazards are defined over symbolic traffic predicates. ProbLog provides the fixed action-program interface, while the traffic template provides the domain-specific graded safety computation used for reweighting.
+
+\subsection{Conservative and Aggressive Shield Variants}
+The conservative and aggressive shield variants differ by safety weighting, not by logical rule content. Both variants use the same observation grounding pipeline, the same traffic-hazard structure, and the same overall reweighting mechanism. What changes is how strongly individual hazard cues reduce the safety of movement actions and how much relative safety advantage is given to \texttt{stop}.
+\\
+\\
+Both variants use the same traffic shield template. They differ only in how strongly the computed hazard signals influence the action-level safety scores. In the conservative variant, hazard cues impose stronger penalties on movement actions and give a larger relative advantage to \texttt{stop}. In the aggressive variant, the same hazard signals are scaled down through lower weighting, the safety gap among the movement actions is compressed more strongly, and the relative safety advantage of \texttt{stop} in benign states is reduced. In implementation terms, this is realized through adjusted weighting parameters such as the rule-weight map, the move-score blending strength, and the stop-margin terms. The aggressive shield therefore does not redefine what counts as hazardous; it only softens how strongly those hazards reshape the action distribution.
+
+\subsection{Decentralized and Centralized Shields}
+The thesis considers two shielding organizations. In the decentralized setting, each RL-controlled car is shielded separately from its own local symbolic observation, yielding a per-agent shielded distribution
+\[
+\pi_{\theta,i}^+(\cdot\mid o^i).
+\]
+\noindent This is consistent with decentralized execution and is modular to reuse across agents, since each car reasons only over locally visible traffic facts such as nearby pedestrians, cars, intersection occupancy, and priority cues.
+\\
+\\
+The main limitation of decentralized shielding is coordination. Because one car's shield does not directly control the decisions of the other RL-controlled cars, symmetric intersection situations can lead to simultaneous hesitation even when a coordinated one-by-one passage would be safe.
+\\
+\\
+In the centralized setting, the shield instead reasons over the RL-controlled cars jointly and produces a coordinated intervention at the multi-agent level. The motivation is not improved local hazard detection itself, but joint conflict resolution at shared intersections. Methodologically, centralized shielding preserves the same basic traffic-safety semantics as the decentralized template while extending it with coordinated passage decisions among the RL-controlled cars. This makes it the natural comparison point for testing whether direct joint coordination improves over decentralized probabilistic shielding in multi-agent autonomous driving.
+
+\section{Reinforcement Learning Setup}
+This section specifies how the multi-agent RL control problem is parameterized at the policy level. Since the thesis compares different multi-agent training organizations, the focus here is not on committing to one specific choice, but on formalizing the two training schemes considered for the LogiCity car population. In both cases, each controllable car acts from its own local grounded observation, selects one action from the common discrete action space, and receives task feedback from the shared traffic environment.
+
+\subsection{Overview of the RL Loop}
+Before distinguishing the two multi-agent training schemes, it is useful to summarize the common RL loop at a structural level. In both cases, the controllable cars act in the same shared LogiCity environment, receive local grounded observations, pass these observations through a policy-and-shield decision pipeline, execute the resulting actions simultaneously, and then collect trajectories that are used for policy optimization. The difference between the two training schemes lies not in the environment interaction itself, but in how decision modules and parameter updates are organized across the car population.
+\\
+\\
+The shared-policy and separate-policy versions of this loop are compared below. The essential difference is whether all controllable cars feed into one common policy-update pipeline or whether each car maintains its own separate policy-update path.
+
+\subsection{Shared-Policy and Separate-Policy Multi-Agent Training}
+In the shared-policy setting, all controllable cars use one common stochastic policy
+\[
+\pi_\theta(a\mid o),
+\]
+\noindent so that each car samples its action as
+\[
+a_t^i \sim \pi_\theta(\cdot \mid o_t^i),
+\qquad i\in\{1,\dots,K\}.
+\]
+\noindent The parameters \(\theta\) are therefore reused across the entire controllable car population, so all cars contribute experience to one shared update process. In the present LogiCity setting, this is natural because all controllable cars have the same action space, observation design, and task semantics.
+
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=0.98\textwidth]{figures/shared_policy_loop.png}
+    \caption{Shared-policy multi-agent RL loop.}
+    \label{fig:shared-policy-loop}
+\end{figure}
+
+\noindent In the separate-policy setting, each controllable car is assigned its own policy parameters. Instead of one shared controller, the system contains \(K\) distinct policies
+\[
+\pi_{\theta_1}(a\mid o),\;
+\pi_{\theta_2}(a\mid o),\;
+\dots,\;
+\pi_{\theta_K}(a\mid o),
+\]
+\noindent and each car acts according to its own policy,
+\[
+a_t^i \sim \pi_{\theta_i}(\cdot \mid o_t^i),
+\qquad i\in\{1,\dots,K\}.
+\]
+\noindent Here, the trajectories of car \(i\) are used to update \(\theta_i\) rather than a globally shared parameter set. This allows the car population to learn distinct control laws, but it also removes the statistical efficiency of pooled experience.
+
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=0.98\textwidth]{figures/separate_policy_loop.png}
+    \caption{Separate-policy multi-agent RL loop.}
+    \label{fig:separate-policy-loop}
+\end{figure}
+
+\noindent Methodologically, the distinction is therefore simple: shared-policy training enforces one common behavioral law across all controllable cars, whereas separate-policy training allows the car population to specialize. In the present thesis, both are evaluated under the same environment, observation design, and action space.
+
+\section{Evaluation Protocol}
+\subsection{Validation, Test, and Timeout Protocol}
+Training is carried out online through repeated environment interaction, whereas validation and testing are performed on fixed pre-generated episode sets so that all compared methods are evaluated on the same traffic scenes. Validation is used for model selection; the final reported comparisons are based on the held-out test split. Episodes can end in success, failure, or timeout. The timeout threshold is normalized by an oracle trajectory length for the same scene:
+\[
+T_{\max}=2\,T_{\text{oracle}}
+\]
+\noindent so that long and short episodes are judged relative to their own difficulty rather than under one global horizon.
+\\
+\\
+All quantitative comparisons are reported across different values of \(K\in\{1,2,3\}\), the number of RL-controlled cars in the environment. Across these settings, each scene always contains two rule-based pedestrians, while \(K\) controls only the number of RL cars.
+
+\begin{table}[H]
+\centering
+\small
+\caption{Evaluation metrics used in the thesis.}
+\label{tab:evaluation-metrics}
+\begin{tabularx}{\linewidth}{@{}l l X@{}}
+\toprule
+\textbf{Metric} & \textbf{Type} & \textbf{Role} \\
+\midrule
+Trajectory success rate (TSR) & Quantitative & Fraction of evaluated episodes in which all RL-controlled cars complete their routes successfully. Main scene-level performance metric. \\
+\addlinespace
+Failure rate & Quantitative & Fraction of episodes ending in safety failure, such as collision-related terminal events. \\
+\addlinespace
+Timeout rate & Quantitative & Fraction of episodes that do not fail explicitly but also do not finish within the oracle-scaled horizon. \\
+\addlinespace
+Action distribution & Shield-specific & Histogram over \texttt{slow}, \texttt{normal}, \texttt{fast}, and \texttt{stop}, used to characterize the behavioral effect of different shield configurations. \\
+\bottomrule
+\end{tabularx}
+\end{table}

@@ -1,0 +1,219 @@
+% `mai` is the English Master of Science in Artificial Intelligence programme.
+% `openany` prevents blank verso pages before chapters while retaining two-sided layout.
+\documentclass[master=mai,openany]{kulemt}
+\raggedbottom
+\setup{
+  title={Towards Safer Autonomous Navigation: Neurosymbolic Multi-agent RL in LogiCity Simulator},
+  author={Yusuf Taskiran},
+  promotor={Prof.\,dr.\,ir. \ Luc de Raedt \and Prof.\,dr.\,ir. Giuseppe Marra},
+  assessor={Bart Bogaerts \and Renaud Detry},
+  assistant={Ir.\ Ying Jiao \and Ir. Bahare Salmani}}
+% Remove the "%" on the next line for generating the cover page
+% \setup{coverpageonly}
+% Remove the "%" before the next "\setup" to generate only the first pages
+% (e.g., if you are a Word user).
+%\setup{frontpagesonly}
+
+% If you want to include other LaTeX packages, do it here. 
+
+% Finally the hyperref package is used for pdf files.
+% This can be commented out for printed versions.
+\usepackage[pdfusetitle,colorlinks,plainpages=false]{hyperref}
+\usepackage[table]{xcolor} % 'table'optie is handig voor cell backgrounds
+\usepackage{xltabular}    % combinatie van longtable + tabularx
+\usepackage[table]{xcolor}
+\usepackage{enumitem}
+\usepackage{xltabular,enumitem} 
+\usepackage[table]{xcolor} 
+\usepackage{pdflscape}
+\usepackage{float}
+\usepackage{subcaption}
+\usepackage{amssymb} % for \checkmark
+\usepackage{listings}
+\usepackage{xcolor}
+%%%%%%%
+% The lipsum package is used to generate random text.
+% You never need this in a real master's thesis text!
+\IfFileExists{lipsum.sty}%
+ {\usepackage{lipsum}\SetLipsumDefault{11-13}}%
+ {\newcommand{\lipsum}[1][11-13]{\par And some text: lipsum ##1.\par}}
+%%%%%%%
+\usepackage{longtable}
+%%%%%%%
+\usepackage{amsmath}
+
+\usepackage{listings}
+
+\lstdefinelanguage{ProbLog}{
+    morekeywords={query},
+    sensitive=true,
+    morecomment=[l]{\%},
+    morestring=[b]"
+}
+
+\usepackage{listings}
+\usepackage{xcolor}
+
+\definecolor{codegreen}{rgb}{0,0.6,0}
+\definecolor{codegray}{rgb}{0.5,0.5,0.5}
+\definecolor{codepurple}{rgb}{0.58,0,0.82}
+\definecolor{backcolour}{rgb}{0.95,0.95,0.92}
+
+\lstdefinestyle{mystyle}{
+    backgroundcolor=\color{backcolour},
+    commentstyle=\color{codegreen},
+    keywordstyle=\color{magenta},
+    numberstyle=\tiny\color{codegray},
+    stringstyle=\color{codepurple},
+    basicstyle=\ttfamily\footnotesize,
+    breakatwhitespace=false,
+    breaklines=true,
+    captionpos=b,
+    keepspaces=true,
+    numbers=left,
+    numbersep=5pt,
+    showspaces=false,
+    showstringspaces=false,
+    showtabs=false,
+    tabsize=2
+}
+
+\lstset{style=mystyle}
+
+\lstset{
+    basicstyle=\ttfamily\small,
+    columns=fullflexible,
+    keepspaces=true,
+    breaklines=true,
+    frame=single,
+    captionpos=b
+}
+
+\begin{document}
+
+\begin{preface}
+This is my master thesis to finish my master in Artificial Intelligence. I want to take a moment to acknowledge to thank everyone who has kept me busy.
+\\
+\\
+I would like to thank my promotors Prof.dr.ir. Luc de Raedt and Prof.dr.ir. Giuseppe Marra, my daily advisors Ir. Ying Jiao and Ir. Bahare Salmani, and the entire jury.
+\\
+\\
+I also wish to thank my parents for supporting me to finish my master and master thesis. 
+\end{preface}
+
+\tableofcontents*
+
+\begin{abstract}
+Multi-agent autonomous driving requires several vehicles to make safe, interdependent decisions while sharing road space, traffic rules, and limited local information. In such settings, improving the safety of an individual vehicle is insufficient: the system must also coordinate progress so that all vehicles can complete their routes without collisions or deadlock. This thesis investigates Probabilistic Logic Shielding (PLS) as a multi-agent reinforcement learning approach for safe task completion and coordination in the LogiCity Safe Path Following task. Each RL-controlled car receives a local, confidence-valued symbolic observation, and its probabilistic logic shield uses traffic rules to reweight a PPO policy towards safer speed-control actions. The shielded policy is used for both action selection and learning through a Probabilistic Logic Policy Gradient objective \cite{yang2023safereinforcementlearningprobabilistic}.
+\\
+\\
+The evaluation uses compact intersection-centred scenarios containing one to three simultaneously controlled RL cars and rule-based pedestrians. It assesses scene-level trajectory success rate (TSR), failure rate, and timeout rate, distinguishing safe joint completion from collisions and coordination-induced non-completion. The experiments compare unshielded PPO with decentralized PLS as the number of RL cars increases; examine conservative, aggressive, and mixed decentralized shield configurations; analyse centralized shielding on representative decentralized deadlock cases; and compare shared-policy and separate-policy training for homogeneous agents.
+\\
+\\
+Across all evaluated multi-agent configurations, conservative decentralized PLS improves TSR and reduces failures relative to unshielded PPO. However, as the number of interacting cars grows, some avoided failures become timeouts, revealing a trade-off between local caution and collective progress. A mixed two-car shield assignment achieves the strongest two-agent result, indicating that breaking behavioural symmetry can improve coordination. In selected deadlock cases, centralized shielding resolves mutual waiting by coordinating an ordered intersection passage. Shared-policy training also outperforms separate-policy training in the three-car setting. These findings show that PLS is a useful mechanism for multi-agent urban navigation, but that its value must be judged by its effect on collective safety, scene-level completion, and coordination rather than on individual failure reduction alone.
+\end{abstract}
+
+% A list of figures and tables is optional
+%\listoffigures
+%\listoftables
+% If there are only a few figures and tables, it is better to use the following:
+\listoffiguresandtables
+% The list of symbols is also optional.
+% This list must be created manually, e.g. as follows:
+\chapter{List of abbreviations and symbols}
+\section*{abbreviations}
+\begin{flushleft}
+  \renewcommand{\arraystretch}{1.1}
+  \begin{tabularx}{\textwidth}{@{}p{12mm}X@{}}
+    AD   & Autonomous Driving \\
+    AI   & Artificial Intelligence \\
+    CTDE   & Centralized Training with Decentralized Execution \\
+    DRL   & Deep Reinforcement Learning \\
+    DTDE   & Decentralized Training and Execution \\
+    FOL   & First Order Logic \\
+    FOV   & Field of View \\
+    LiDAR   & Light Detection And Ranging \\
+    MARL   & Multi Agent Reinforcement Learning \\
+    MDP   & Markov Decision Problem \\
+    MER   & Mean Episodic Reward \\
+    MAS   & Multi Agent Systems \\
+    PLPG   &  Probabilistic Logic Policy Gradient \\
+    PLS   & Probabilistic Logic Shielding \\
+    POMDP   & Partially Observable MDP \\
+    PPO  & Proximal Policy Optimization \\
+    RL   & Reinforcement Learning \\
+  \end{tabularx}
+\end{flushleft}
+\section*{Symbols}
+\begin{flushleft}
+  \renewcommand{\arraystretch}{1.1}
+  \begin{tabularx}{\textwidth}{@{}p{28mm}X@{}}
+
+    $\pi_{\theta}(a \mid o)$ 
+      & Base PPO policy probability of selecting action $a$ given observation $o$ \\
+
+    $\pi_{\theta}^{+}(a \mid o)$ 
+      & Shielded PPO policy after probabilistic safety reweighting \\
+
+    $o$ 
+      & Current symbolic observation/state \\
+
+    $a$ 
+      & Discrete action selected by the agent \\
+
+    $L_{\mathrm{policy}}$ 
+      & PPO clipped policy loss \\
+
+    $L_{\mathrm{value}}$ 
+      & PPO value-function loss \\
+
+    $L_{\mathrm{entropy}}$ 
+      & PPO entropy regularization term \\
+
+    $L_{\mathrm{safety}}$ 
+      & Safety regularization loss induced by probabilistic logic shielding \\
+
+    $\alpha$ 
+      & Safety regularization coefficient \\
+
+    $c_v$ 
+      & Weight coefficient for the value-function loss \\
+
+    $c_e$ 
+      & Weight coefficient for the entropy term \\
+
+    $\log(\cdot)$ 
+      & Natural logarithm used in the safety loss definition \\
+
+    $\sum_{a}$ 
+      & Summation over all possible actions \\
+
+    $\theta$ 
+      & Parameter vector of the PPO policy network \\
+
+    $\mid$ 
+      & Conditioning operator, read as ``given'' \\
+
+  \end{tabularx}
+\end{flushleft}
+
+% Now comes the main text
+\mainmatter
+
+\include{intro}
+\include{chapter-1}
+\include{chapter-2}
+\include{chapter-3}
+\include{conclusion}
+
+% If you have appendices:
+\appendixpage*          % if wanted
+\appendix
+\include{appendix-1}
+\backmatter
+% The bibliography comes after the appendices.
+% You can replace the standard "abbrv" bibliography style by another one.
+\bibliographystyle{abbrv}
+\bibliography{references}
+\include{CoC}
+\end{document}

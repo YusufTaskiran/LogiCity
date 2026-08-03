@@ -1,0 +1,225 @@
+\chapter{Background}
+\label{cha:2}
+
+\section{Autonomous Driving}
+
+Autonomous driving (AD) systems are commonly described as a pipeline from sensing to control: sensor, perception, scene representation, planning/decision making, and control \cite{kiran2021deepreinforcementlearningautonomous}. Raw inputs from cameras, radar, LiDAR, and related sensors are transformed into a structured view of the local environment, from which the vehicle plans and executes actions.
+\\
+\\
+Within this pipeline, decision making is especially challenging. Driving cannot be handled well by purely supervised learning because actions influence future states and interactions under uncertainty \cite{kiran2021deepreinforcementlearningautonomous}. This naturally motivates reinforcement learning (RL), where the vehicle learns a policy through sequential interaction with its environment.
+\\
+\\
+Traffic is also fundamentally interactive. The ego vehicle shares the road with other vehicles and pedestrians, so its safe and effective behavior depends not only on its own actions but also on those of others \cite{zhang2024multiagentreinforcementlearningautonomous}. As a result, many driving situations, such as merging and intersection handling, are inherently multi-agent rather than purely single-agent planning problems.
+
+\section{Multi-agent autonomous driving}
+
+Urban traffic is a natural multi-agent system: autonomous vehicles interact with other vehicles, pedestrians, cyclists, and infrastructure. The survey by Zhang et al. argues that single-agent RL can lead to self-centered or overly aggressive behavior because it optimizes only the ego reward, whereas multi-agent formulations model coordination and mutual influence more directly \cite{zhang2024multiagentreinforcementlearningautonomous}.
+\\
+\\
+Such environments are often formalized as Decentralized Partially Observable MDPs (Dec-POMDPs), where each agent has only local information and must act under uncertainty \cite{zhang2024multiagentreinforcementlearningautonomous}. Depending on the setting, interactions may be cooperative, competitive, or mixed. The same survey also highlights major training paradigms such as Centralized Training with Decentralized Execution (CTDE) and fully Decentralized Training and Execution (DTDE), both of which are relevant to traffic coordination.
+
+\section{Deep Reinforcement Learning}
+
+Autonomous driving can be modeled as sequential decision making in an MDP-like setting, where an agent repeatedly observes its environment and selects actions according to a policy. Deep reinforcement learning (DRL) combines this framework with deep neural networks, allowing policies to be learned from complex or high-dimensional inputs.
+\\
+\\
+DRL has been applied to lane keeping, lane changing, merging, and intersection handling, using methods such as DQN variants, actor--critic algorithms including DDPG, A3C, and PPO, and hybrid RL-control architectures \cite{kiran2021deepreinforcementlearningautonomous}.
+\\
+\\
+However, DRL alone is insufficient in safety-critical domains. Unsafe exploration and rare edge cases can produce unacceptable failures, so learning must be complemented by explicit safety constraints, prior knowledge, or formal guarantees \cite{isele2019safereinforcementlearningautonomous}. This motivates safe reinforcement learning.
+
+\section{Safe Reinforcement Learning}
+
+The core problem in applying RL to autonomous driving is the lack of safety guarantees. Standard RL learns through trial and error, which can lead to unsafe actions and even collisions during training or deployment. In real traffic, such behavior is unacceptable. Safe reinforcement learning (Safe RL) therefore seeks to optimize performance while respecting explicit safety constraints.
+
+\subsection{Formalization of safety in reinforcement learning}
+
+A widely used formal framework for Safe RL is the constrained Markov decision process (CMDP), where the agent maximizes expected return while keeping one or more cost functions below fixed thresholds \cite{gu2024reviewsafereinforcementlearning}. These cost functions represent safety violations and make the safety-performance trade-off explicit.
+\\
+\\
+For autonomous driving, however, CMDPs have clear limitations. Many safety requirements are instantaneous rather than average-case, while traffic also involves partial observability and non-stationary multi-agent interaction. As a result, expected-cost constraints alone rarely provide strong or interpretable safety guarantees in realistic driving settings \cite{zhang2024multiagentreinforcementlearningautonomous}.
+
+\subsection{Categories of Safe RL methods}
+
+Following the review by Gu et al. \cite{gu2024reviewsafereinforcementlearning}, Safe RL methods can be grouped by how safety is enforced:
+
+\paragraph{Reward-based and penalty-based methods.}
+These methods add penalties for unsafe behavior directly to the reward. They are simple and widely used, but provide weak guarantees and depend strongly on reward design, which remains difficult in autonomous driving \cite{kiran2021deepreinforcementlearningautonomous}.
+
+\paragraph{Constrained optimization methods.}
+These methods incorporate safety constraints explicitly, often through primal-dual or Lagrangian techniques. They have a stronger theoretical basis than reward shaping, but typically enforce safety only in expectation, so violations may still occur during exploration.
+
+\paragraph{Control-theoretic methods.}
+These methods use tools such as Lyapunov functions, model predictive control, or control barrier functions to restrict actions to a safe set. They can provide strong guarantees, but often require accurate dynamics models and become computationally expensive in multi-agent traffic.
+
+\paragraph{Formal methods--based methods.}
+These methods use logic and verification to prove that unsafe states cannot be reached. They are attractive because safety is specified explicitly rather than learned implicitly, but they struggle with continuous state spaces, high-dimensional dynamics, and multi-agent interaction.
+
+\paragraph{Gaussian Process--based methods.}
+These methods model uncertainty in dynamics or costs and act conservatively in uncertain regions. They are useful for uncertainty-aware safety, but they also face scalability limitations.
+
+\paragraph{Safety-layer and intervention-based methods.}
+These methods enforce safety at runtime by filtering or correcting actions proposed by the learned policy. Shielding is a prominent example of this family.
+
+\section{Shielding}
+
+Shielding is a Safe RL technique that adds a formally synthesized runtime safety layer around a learned agent \cite{alshiekh2017safereinforcementlearningshielding}. Safety requirements such as collision avoidance, lane keeping, or traffic-rule obedience are encoded as logical specifications, and the shield intervenes when a candidate action would violate them. Because this mechanism is external to the base policy, shielding can be combined naturally with DRL.
+
+\subsection{Single-agent shielding}
+
+In the single-agent setting, shielding can be preemptive or post-posed. Preemptive shielding restricts the available action set before the agent acts, whereas post-posed shielding replaces an unsafe chosen action only when necessary \cite{elsayedaly2021safemultiagentreinforcementlearning}. In both cases, the shield is an external logic component that enforces safety with minimal interference.
+
+\subsection{Multi-agent shielding}
+
+In multi-agent settings, unsafe outcomes arise from joint actions. ElSayed-Aly et al. distinguish centralized and factored multi-agent shielding \cite{elsayedaly2021safemultiagentreinforcementlearning}. Centralized shields monitor the full joint state and joint action, but suffer from exponential scaling in the number of agents. Factored shielding mitigates this by decomposing the problem into smaller local (decentralized) shields.
+
+\subsection{Shielding limitations}
+
+Classical shielding is typically deterministic and rejection-based: unsafe actions are blocked at runtime. In realistic autonomous driving, this is restrictive \cite{yang2023safereinforcementlearningprobabilistic}. It assumes perfect state information and binary safety, even though real observations are noisy and partial.
+\\
+\\
+Rejection-based shielding also creates a learning mismatch \cite{minihackexp}. If unsafe actions are silently replaced, the policy is updated as if its original actions had been executed, which biases learning and weakens convergence guarantees.
+
+\section{Probabilistic Logic Shields (PLS)}
+
+Probabilistic Logic Shields (PLS) \cite{jansen2019safereinforcementlearningprobabilistic} address these limitations by combining DRL policies with probabilistic logical reasoning. A neural policy proposes an action distribution, symbolic sensors extract probabilistic predicates from the same observation, and safety rules are encoded as probabilistic logic programs \cite{yang2023safereinforcementlearningprobabilistic}. Instead of rejecting actions outright, the shield reweights the policy distribution toward safer actions. This allows uncertainty, noisy sensing, and partial observability to be handled more naturally.
+\\
+\\
+A key advantage is that PLS remains differentiable and compatible with gradient-based DRL. The effect of the shield can therefore enter the policy update itself rather than remaining only an external correction layer \cite{minihackexp}.
+
+\subsection{Single-agent PLS}
+
+Empirical studies in single-agent MiniHack environments show that PLS can reduce unsafe behavior during training, speed up convergence by reducing unproductive exploration, and improve generalization under environment changes \cite{minihackexp}. These results make PLS a promising candidate beyond the single-agent setting.
+
+\subsection{Multi-agent PLS}
+
+Although PLS was introduced in the single-agent setting, Chatterji and Acar extend the idea to multi-agent reinforcement learning through Shielded Multi-Agent Reinforcement Learning (SMARL) \cite{chatterji2025thinksmartactsmarl}. In SMARL, each agent combines its base policy with symbolic sensor information in a local probabilistic logic shield, yielding a reweighted safe policy. Because multiple agents interact, zero violations at every step are no longer guaranteed as in simpler single-agent settings \cite{minihackexp}. However, Chatterji and Acar show that the joint shielded policy is at least as safe as the unshielded joint policy, and strictly safer when any local policy violates its safety constraints \cite{chatterji2025thinksmartactsmarl}.
+\\
+\\
+SMARL is evaluated on coordination games, social dilemmas, mixed-motive problems, and spatio-temporal cooperation tasks such as Stag Hunt, the Extended Public Goods Game, and Centipede \cite{chatterji2025thinksmartactsmarl}. The results suggest that multi-agent PLS can act as an equilibrium-selection mechanism, reduce violations, and strengthen cooperative behavior. The same work also studies asymmetric shielding and shows that shielding only a subset of agents can still induce safer behavior in the overall population \cite{chatterji2025thinksmartactsmarl}.
+
+\section{Urban traffic simulators}
+
+Simulation is central to autonomous driving research because it enables controlled experiments on perception, planning, and interaction. Popular simulators such as CARLA \cite{dosovitskiy2017carlaopenurbandriving}, SUMO \cite{8569938}, AirSim \cite{shah2017airsimhighfidelityvisualphysical}, and HighwayEnv \cite{highway-env} provide realistic traffic scenarios and physics, but they are less suited to flexible logical abstraction and explicit rule-based modeling.
+\\
+\\
+Some more recent tools, such as SCENIC \cite{elmaaroufi2024scenicnlgeneratingprobabilisticscenario}, introduce richer formal specification layers, but safe RL and multi-agent shielding still benefit from environments in which rules and agent configurations can be manipulated directly and systematically.
+
+\subsection{LogiCity simulator}
+
+Li et al. introduce LogiCity \cite{li2025logicityadvancingneurosymbolicai}, a simulator designed around customizable first-order logic abstractions rather than fixed scripted traffic behavior. Agents and environment entities are represented through semantic and spatial predicates, and behavior is governed by logical rules. Because these abstractions are reusable across maps and scenarios, LogiCity is well suited to studying rule-based traffic interaction and neurosymbolic safety mechanisms.
+\\
+\\
+LogiCity also uses rule-based agents for non-RL participants such as pedestrians, allowing them to adapt consistently to shared traffic constraints \cite{li2025logicityadvancingneurosymbolicai}. Together with its support for long-horizon and multi-agent traffic tasks, this makes it a suitable testbed for the thesis focus on probabilistic logic shielding in multi-agent autonomous driving.
+
+
+% \chapter{Background}
+% \label{cha:2}
+
+% \section{Autonomous Driving}
+
+% An autonomous driving (AD) system typically consists of the following layers: sensor, perception, scene representation, planning/deciding and control \cite{kiran2021deepreinforcementlearningautonomous}. It is a pipeline that converts raw sensor data into control actions. The sensor layer integrates sensors such as cameras, radar, LiDAR, etc. to capture raw data of the environment. The perception layer constructs an intermediate representation of the scene using the raw data from the sensor layer, capturing information such as road structure, traffic participants, and signals. The scene representation layer abstracts it further trough sensor-fusion methods, a current scene representation of the local environment of the vehicle is constructed and detected objects and other vehicles are mapped on that representation. Based on this contextual information, the deciding/planning layer generates feasible trajectories respecting vehicle dynamics and constraints. Finally, the controlling layer takes the necessary actions such as steering, acceleration, and braking, to realize and follow the decisions and planning made in the previous layer.
+% \\
+% \\
+% The decision-making component of AD systems is a complex challenge by itself. Most of the decision-making problems cannot be solved by only supervised learning. This is because an autonomous vehicle’s actions influence future states and involve uncertainty and sequential dynamics \cite{kiran2021deepreinforcementlearningautonomous}. Thus, driving decisions are modeled as a sequential decision process, which carries it to the field of reinforcement learning (RL). The agent learns an optimal policy through interactions with the environment. Of course, applying RL to autonomous vehicles has become a popular problem as vehicles must learn to make optimal decisions in combinatorial large spaces (traffic scenarios, road conditions, etc.) that are difficult to program explicitly.
+% \\
+% \\
+% A key challenge in autonomous driving is the dynamic and interactive nature of traffic. Besides the autonomous vehicle itself, there are other agents present (other vehicles, pedestrians, etc.). In other words, the autonomous vehicle operates in an environment shared with other agents, whose behavior affects the optimal actions of the ego vehicle. Each vehicle’s state and safety depend not only on its own actions, but also on the actions of the others, making the environment highly non-stationary and unpredictable \cite{zhang2024multiagentreinforcementlearningautonomous}. Think of an intersection scenario or during a lane merge, where an autonomous car must anticipate and react to the decisions of human-driven or other autonomous cars. Thus, unlike simple obstacle avoidance or geometric path planning, driving in traffic is fundamentally a multi-agent, strategic task, which elevates the problem to multi-agent reinforcement learning (MARL). 
+
+% \section{Multi-agent autonomous driving}
+
+% Real-world urban traffic is a multi-agent case: autonomous vehicles (AVs) interact with each other, pedestrians, cyclists etc. According to the survey on Multi-Agent Reinforcement Learning (MARL) for autonomous driving \cite{zhang2024multiagentreinforcementlearningautonomous}, traditional single-agent RL approaches can produce more self-centered or aggressive behaviors. This is because they optimize only the reward of the agent itself. Multi-agent systems (MAS) however, have to explicitly model interactions, mutual influence, and coordination requirements between agents, which aligns more with real-world traffic systems. 
+% \\
+% \\
+% Autonomous driving environments in MARL are typically formalized as Decentralized Partially Observable MDPs (Dec-POMDPs). In these environments, each agent observes only a limited field of view and interacts with uncertainty, which aligns closely with the reality. And depending on the task, the agents can have cooperative, competitive, or mixed-motivation (balance between the two) interactions. The survey \cite{zhang2024multiagentreinforcementlearningautonomous} also states the difference between different training paradigms, like Centralized Training with Decentralized Execution (CTDE) and fully Decentralized Training and Execution (DTDE). The CTDE approach allows a centralized critic to exploit global information during training and preserves decentralized operation at runtime. DTDE on the other hand, removes the central coordination entirely and is more practical for large-scale traffic systems.
+
+% \section{Deep Reinforcement Learning}
+
+% Autonomous driving is a sequential decision-making problem where the vehicle has to choose actions that influence future observations and interactions with other agents in a dynamic traffic environment. These type of problems are typically modeled using Markov Decision Processes (MDPs). The process is an agent–environment interaction loop where the vehicle is the agent that constantly observes the state of its surroundings (the environment) and selects control actions using a certain policy. Deep reinforcement learning (DRL) is a promising approach for handling decision-making tasks in autonomous driving, as DRL algorithms combine reinforcement learning with deep neural networks. Using deep neural networks enables agents to learn complex policies from high-dimensional inputs efficiently.
+% \\
+% \\
+% % Abbrevation of the methods
+% DRL can be applied to tasks such as lane keeping, lane changing, merging, intersection handling etc. In both discrete and continuous settings, methods like DQN variants, actor–critic approaches (e.g., DDPG, A3C, PPO), and hybrid DRL-plus-control architectures have been used \cite{kiran2021deepreinforcementlearningautonomous}.
+% \\
+% \\
+% However safety concerns arise on safety critical systems with DRL, because in those systems, even a single failure cannot be tolerated and learning must be assured to always satisfy the safety constraints \cite{isele2019safereinforcementlearningautonomous}. Unsafe exploration, rare edge cases etc. can hereby lead to problematic consequences. Therefore, DRL approaches are not enough on their own and must be improved with explicit safety constraints, domain knowledge, and formal guarantees. This motivates the exploration of safe reinforcement learning techniques.
+
+% \section{Safe Reinforcement Learning}
+% A core difficulty in applying RL to autonomous driving (and other safety-critical domains) is the lack of safety guarantees. Standard RL agents learn through trial-and-error. This means that they will inevitably experience (and cause) collisions or other unsafe events. The RL agent does not consider the safety of its taken actions, as long as the (final) reward is maximized. In the real world, such unsafe exploration is unacceptable. Safe reinforcement learning (Safe RL) aims to learn optimal policies while respecting safety constraints. In other words, the agent should avoid dangerous actions and states during the training and the deployment of the agent.
+
+% \subsection{Formalization of safety in reinforcement learning}
+% In Safe RL, \emph{constrained Markov decision process} (CMDP) is a widely-used formal framework. The goal of the agent is to maximize the expected return, while ensuring that one or more cost functions remain below the predefined thresholds \cite{gu2024reviewsafereinforcementlearning}. The cost functions represent the safety violations. In this way, the safety-performance trade-offs can be expressed. 
+% \\
+% \\
+% In autonomous driving however, CMDP-based formulations face important limitations. Many safety requirements are state-dependant and instant decisions (e.g., collisions must never occur). CMDPs however typically enforce constraints in expectation over trajectories. Moreover, autonomous driving is a case of partial observability and involves non-stationary multi-agent interactions, making the reliable estimation and enforcement of safety costs very difficult. As a result, CMDP-based optimization by itself rarely provides strong, interpretable safety guarantees in realistic driving scenarios \cite{zhang2024multiagentreinforcementlearningautonomous}.
+
+% \subsection{Categories of Safe RL methods}
+% Safe RL methods are typically formalized using CMDPs as mentioned earlier, and they can be categorized based on how the safety is enforced. Summarizing the methods briefly based on the review on safe RL by Gu et al, (2024) \cite{gu2024reviewsafereinforcementlearning}:
+
+% \paragraph{Reward-based and penalty-based methods.}
+% Assure safety by adding penalty terms directly to the reward function, discouraging unsafe behavior during learning. While it is simple and widely used, these approaches have weak guarantees and depend heavily on the design of the rewards. In autonomous driving, designing the reward functions for DRL agents is still an open question  \cite{kiran2021deepreinforcementlearningautonomous}.
+
+% \paragraph{Constrained optimization methods.}
+% Instead of adding the constraints directly, the safety constraints are incorporated explicitly, which is commonly done via primal-dual or Lagrangian techniques. These methods have a stronger theoretical base, but the safety is usually only enforced in expectation. This still allows violations during exploration. 
+
+% \paragraph{Control-theoretic methods.}
+% These methods use tools such as Lyapunov functions, model predictive control, or control barrier functions to restrict the agent’s actions to a safe set of actions. Control-theoretic approaches can have strong guarantees, but require often accurate dynamics and an environment model. It is computationally expensive in multi-agent traffic.
+
+% \paragraph{Formal methods–based methods.}
+% These methods ensure safety by using mathematical logic and verification techniques. This helps to prove the guarantee that unsafe states cannot be reached. Because the safety is not learned, but written as formal rules. Formal methods struggle with continuous state spaces, high-dimensional dynamics and multi-agent interactions. This scalability problem of course directly applies to multi-agent autonomous driving environments.
+
+% \paragraph{Gaussian Process–based methods.}
+% These methods address safety by modeling the uncertainty in dynamics or cost functions. The core idea is that the agent behaves conservatively and avoids that region when the agent is uncertain about the consequences of an action in that region. Also these methods suffer from the scalability problem.
+
+% \paragraph{Safety-layer and intervention-based methods.}
+% These methods enforce safety at runtime by filtering or correcting actions proposed by the learned policy. The safety enforcement is separated from the learning component, which provides strong safety guarantees. A popular example of these methods are the shielding-based approaches. 
+
+% \section{Shielding}
+
+% Shielding is a Safe RL method \cite{alshiekh2017safereinforcementlearningshielding}, which is part of the Safety-layer and intervention-based methods. Shielding adds a formally synthesized runtime safety layer around the learning agent. The key idea is to encode safety requirements such as collision avoidance, lane-keeping, or respecting to traffic rules as temporal logic specifications. Then, the logic (shield) component monitors the agent's possible actions and intervenes if the action will violate the safety rules implemented in the shield. This mechanism can be combined with deep reinforcement learning without modifying the internal RL loop structure, making shielding a suitable candidate for autonomous driving.
+
+% \subsection{Single-agent shielding}
+% In the single-agent setting, the shield can be integrated in two ways. In preemptive shielding, the shield filters the available action set before the agent chooses an action. Therefore, only safe actions are exposed to the agent. In post-posed shielding, the shield checks the action proposed by the learning agent and replaces it only if it is unsafe \cite{elsayedaly2021safemultiagentreinforcementlearning}. in both cases, the RL process does not change internally, as mentioned earlier. The shield is an external logic component that enforces minimum interference, meaning the shield only intervenes when necessary (e.g., violation of safety rules). This allows for autonomous driving to incorporate safety rules (e.g., “no collision,”, “stay within drivable lanes”) easily to the DRL training process of the autonomous vehicle. 
+
+% \subsection{Multi-agent shielding}
+
+% In multi-agent settings, unsafe outcomes arise from the joint actions of multiple agents. ElSayed-Aly et al. extend shielding to multi-agent reinforcement learning (MARL) and have mentioned two ways of multi-agent shielding \cite{elsayedaly2021safemultiagentreinforcementlearning}. First of all, centralized shields. Centralized shields observe the joint state and the joint action of all agents at each time step, blocking or modifying unsafe joint maneuvers. A disadvantage of this method is that for many agents, number of joint states and joint actions increases exponentionally, which makes the computational cost of synthesizing these shields expensive, a classic scalability problem. The second method, which solves this scalability problem, is factored shielding. This method decomposes the joint state space into local regions (e.g., road segments or intersections) and synthesizes multiple smaller shields. Each of those shields is responsible for another local region, and agents can join or leave those local shields while moving trough the environment. 
+
+% \subsection{Shielding limitations}
+
+% The shielding methods mentioned above are deterministic rejection-based shielding methods, as it blocks unsafe actions at runtime. Those shields suffer from important limitations in realistic autonomous driving settings \cite{yang2023safereinforcementlearningprobabilistic}. First of all, perfect state information and binary safety (action is safe or unsafe) is assumed. This is unrealistic due to sensor data being noisy and having partial observability in reality. As a result, rejection-based shields cannot exploit uncertainty in information and therefore cannot distinguish between actions that are certainly unsafe and those that are as good as safe.
+% \\
+% \\
+% Second, rejection-based shielding introduces a mismatch between the learning agent and the safety mechanism \cite{minihackexp}. Unsafe actions proposed by the policy are silently rejected by the shield and replaced by safe alternatives. However at the same time, the agent continues to update its policy as if actions were sampled directly from its own policy distribution. The agent receives biased feedback, because the agent is unaware of which actions were rejected. As a result of this mismatch, the convergence guarantee to an optimal policy in the RL process does not hold anymore. 
+
+% \section{Probabilistic Logic Shields (PLS)}
+
+% Probabilistic Logic Shields (PLS) \cite{jansen2019safereinforcementlearningprobabilistic} extend shielding by combining deep reinforcement learning policies with probabilistic logical reasoning. This allows the agent to enforce safety constraints and handles uncertainty as well. In PLS, the base policy is produced by a neural network as in standard DRL. Then, the same observation is passed through a set of symbolic sensors that extract probabilistic predicates about the environment like the likelihood of an obstacle being present close to the vehicle. The safety rules are defined as probabilistic logic programs \cite{yang2023safereinforcementlearningprobabilistic}, where unsafe situations are defined as rules in function of state predicates and the candidate actions. Instead of rejecting the actions, the shield renormalises the policy distribution by reweighting the policy probabilities in favor of the safe actions. By reasoning over probability distributions instead of making binary assumptions, PLS can handle noisy sensor data, uncertainty, and is easy to use with gradient DRL algorithms.
+% \\
+% \\
+% A key advantage of PLS is that shielding becomes differentiable and compatible with the gradient-based DRL algorithms. With PLS, the intervention of the shield can also be included in the gradient updates. This way, the DRL agent sees the changes made by the shield. The PLS component can be seen as the continuous correction layer \cite{minihackexp}. 
+
+% \subsection{Single-agent PLS}
+% Empirical evaluations on MiniHack (single-agent) environments \cite{minihackexp} has shown several benefits of the PLS method compared with DRL methods using no shield at all. First of all, PLS agents avoid unsafe states during the training. Second, The agent converges in much fewer steps. The reason of this is that the Shield component also eliminates unproductive exploration. Finally, the agent reaches better generalization under environment changes. These results makes PLS a promising method to also extend it to multi-agent systems. 
+
+% \subsection{Multi-agent PLS}
+% While PLS was originally developed for single agent Safe RL, Chatterji and Acar have introduced Shielded Multi-Agent Reinforcement Learning (SMARL) \cite{chatterji2025thinksmartactsmarl}. SMARL is a general framework in which each agent interacts with its own probabilistic logic shield during training and deployment. In SMARL, each agent $p_i$ computes a base policy $\pi_i(s_i^t)$ and forwards this policy. The shield combines this base policy together with the sensor data to a ProbLog program $T_i$. The shield then produces a reweighted safe policy $\pi_i^{+}(s_i^t)$ based on its safety rules. SMARL does not guarantee does not guarantee zero violations at every time step, as the minihack experiments in single-agents had shown \cite{minihackexp}, because of the fact that multiple agents are involved. However Chatterji and Acar have proven that the joint shielded policy $\vec{\pi}^{+}$ is at least as safe as the unshielded joint policy $\vec{\pi}$, and it is strictly safer whenever any agent’s base policy violates its local safety constraints \cite{chatterji2025thinksmartactsmarl}.
+% \\
+% \\
+% SMARL is tested on multi-agent simple coordination games, social dilemmas, mixed-motive and spatio-temporal cooperation tasks (e.g., Stag Hunt, Extended Public Goods Game, Centipede) \cite{chatterji2025thinksmartactsmarl}. The results have shown that first of all, PLS in multi-agent systems can function as an equilibrium-selection mechanism. Second, shielded agents performed fewer constraint violations and stronger cooperative behavior than unshielded baselines. Also, asymmetric shielding is analyzed whereby not all the agents get a shield, but a subset of them \cite{chatterji2025thinksmartactsmarl}. The experiments have shown that even when only a subset of agents is shielded, their behavior can stimulate unshielded agents toward behaving safer compared to using no shield for none of the agents. 
+
+% \section{Urban traffic simulators}
+
+% Simulation environments play a central role in the study of autonomous driving. Simulators allow controlled experimentation with perception, planning, and interaction dynamics. Popular AD simulators such as CARLA \cite{dosovitskiy2017carlaopenurbandriving}, SUMO \cite{8569938}, AirSim \cite{shah2017airsimhighfidelityvisualphysical} and HighwayEnv \cite{highway-env} provide decent rendering, realistic physics and configurable traffic scenarios. However, these environments typically rely on fixed rule sets and scenario-specific dynamics. Thus, the possibilities with those simulators are limited for explicit abstraction or flexible configuration of agents and rules. 
+% \\
+% \\
+% Some more recent tools introduce formal specification layers such as SCENIC \cite{elmaaroufi2024scenicnlgeneratingprobabilisticscenario}, which enables scenario generation using temporal-logic constraints. However also this simulator is situating near predefined traffic elements and task-specific safety conditions. Research on safe reinforcement learning and multi-agent shielding requires environments where logical rules, abstractions, and agent configurations can be worked with flexibly. This allows safety mechanisms to be evaluated not only as constraint checkers but also as part of the learning and coordination process itself.
+
+% \subsection{LogiCity simulator}
+
+% Recently, Li et al. introduced the LogiCity simulator \cite{li2025logicityadvancingneurosymbolicai}. This simulator directly adresses those limitations by modeling urban environments through customizable first-order logic (FOL) abstractions rather than fixed scripted behaviors. The agents and evironment entities are represented via semantic and spatial predicates like \emph{IsAmbulance(X)} and \emph{IsClose(X,Y)}. And to lead the agent's behavior, those predicates are combined with rules. The abstractions are independent of specific agents or maps, which allows generalization and creation of different urban scenarios by simply reusing the same logical abstractions and rules. 
+% \\
+% \\
+% For simulating the non-RL agents like pedestrians, LogiCity uses rule-based agents instead of manually scripted behavior trees. This allows the agents to automatically adapt actions to maintain consistency with the global shared constraints like yielding to emergency vehicles for example. Furthermore, the simulator supports long-horizon sequential decision-making tasks and multi-agent interaction scenarios as well.
+
+

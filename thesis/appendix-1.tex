@@ -1,0 +1,352 @@
+\chapter{The First Appendix}
+\label{app:A}
+% Appendices hold useful data which is not essential to understand the work
+% done in the master's thesis. An example is a (program) source.
+% An appendix can also have sections as well as figures and references\cite{h2g2}.
+
+\section{Predicate Definitions}
+\label{app:predicate-definitions}
+
+\begin{table}[H]
+\centering
+\small
+\caption{Predicate definitions used in the current thesis experiments.}
+\label{tab:predicate-definitions}
+\begin{tabularx}{\linewidth}{@{}p{3.8cm} X@{}}
+\toprule
+\textbf{Predicate} & \textbf{Meaning} \\
+\midrule
+
+\texttt{IsPedestrian(x)}
+& True iff entity \texttt{x} is a pedestrian. \\
+
+\texttt{IsCar(x)}
+& True iff entity \texttt{x} is a car. \\
+
+\texttt{IsAtInter(x)}
+& True iff agent \texttt{x} is at the entrance or boundary of an intersection, i.e. in the approach region before fully entering it. \\
+
+\texttt{IsInInter(x)}
+& True iff agent \texttt{x} is inside the intersection region itself. \\
+
+\texttt{IsParked(x)}
+& True iff car \texttt{x} is inactive because it is still parked at spawn or already parked after reaching its goal. This predicate is used internally to exclude parked cars from active conflict and failure evaluation. \\
+
+\texttt{SameInter(x,y)}
+& True iff agents \texttt{x} and \texttt{y} are associated with the same intersection region. This predicate is part of the observation and is used by the traffic logic to restrict conflict reasoning to the relevant intersection. \\
+
+\texttt{HigherPri(x,y)}
+& True iff \texttt{x} has higher traffic priority than \texttt{y}. In the implementation, this corresponds to \texttt{x} having a numerically smaller priority value than \texttt{y}. \\
+
+\texttt{CollidingClose(x,y)}
+& True iff agent \texttt{x} is in an imminent collision-close relation with agent \texttt{y}, meaning that continuing movement would constitute an immediate hazard cue. \\
+
+\texttt{Collision(x,y)}
+& True iff agent \texttt{x} is in a realized collision state with agent \texttt{y}. This predicate is used for terminal failure detection. \\
+
+\bottomrule
+\end{tabularx}
+\end{table}
+
+\section{Observation Noise Model}
+\label{app:observation-noise-model}
+
+This appendix specifies the observation-noise model used in the thesis. The purpose of this model is to introduce uncertainty into the \emph{environment-side symbolic observation} received by the agents, thereby mimicking imperfect sensing in autonomous driving. It is not a component of PLS itself. Instead, the environment first constructs a grounded symbolic observation, after which the observation-noise model corrupts that grounded vector before it is passed to the policy and, in shielded runs, also to the shield.
+
+\subsection{Placement in the Pipeline}
+
+Let \(o \in [0,1]^d\) denote the grounded symbolic observation vector before corruption. The observation-noise model is applied after predicate grounding and before policy evaluation. Thus, the simulator dynamics, map structure, route generation, and logical task rules remain unchanged. Only the symbolic observation channel is made uncertain.
+\\
+\\
+The observation is transformed into a confidence-valued symbolic vector. In this way, the grounded logical facts remain directly interpretable, but they are no longer perfectly certain.
+
+\subsection{Entity-Correlated Asymmetric Construction}
+
+The implementation reconstructs entity-wise groups from the predicate-grounding layout. Unary grounded entries are assigned to per-entity type or relation buckets, and binary grounded entries are assigned to both participating entities. This induces a set of grouped symbolic facts for the ego entity and for each non-ego entity in the local field of view.
+\\
+\\
+The model distinguishes between:
+\begin{itemize}
+    \item \textbf{ego facts},
+    \item \textbf{non-ego type facts},
+    \item \textbf{non-ego relation facts}.
+\end{itemize}
+
+\noindent It is asymmetric in two senses:
+\begin{itemize}
+    \item false negatives and false positives use different rates,
+    \item type predicates and relation predicates use different rates.
+\end{itemize}
+
+\subsection{Confidence Mapping}
+
+The model does not directly flip each fact into a new binary alternative. Instead, it maps each grounded fact to a confidence value.
+\\
+\\
+For a given fact \(x \in \{0,1\}\), the confidence-valued output \(\tilde{x}\) is constructed as
+\[
+\tilde{x} =
+\begin{cases}
+1 - p_{\mathrm{fn}}, & x = 1,\\
+p_{\mathrm{fp}}, & x = 0,
+\end{cases}
+\]
+where \(p_{\mathrm{fn}}\) and \(p_{\mathrm{fp}}\) depend on the fact category and, for non-ego relation facts, also on whether the corresponding entity is treated as occluded.
+\\
+\\
+Thus, true facts become high-confidence values below \(1\), and false facts become low-confidence values above \(0\). The output remains numeric and can therefore be consumed directly by both the policy and the shield.
+
+\subsection{Occlusion and Entity Dropout}
+
+For every non-ego entity, the implementation samples an occlusion event:
+\[
+z_i \sim \mathrm{Bernoulli}(p_i^{\mathrm{drop}}),
+\]
+where \(z_i = 1\) indicates that entity \(i\) is treated as occluded. The effective dropout probability is not fixed globally; it increases with local crowding. Let \(n_{\mathrm{non\text{-}ego}}\) denote the number of present non-ego entities in the current observation and let \(n_{\max}\) denote the maximum possible number of non-ego entities under the observation budget. The implementation computes a crowding ratio
+\[
+r_{\mathrm{crowd}} =
+\begin{cases}
+0, & n_{\mathrm{non\text{-}ego}} \le 1,\\
+\dfrac{n_{\mathrm{non\text{-}ego}} - 1}{\max(n_{\max} - 1, 1)}, & n_{\mathrm{non\text{-}ego}} > 1.
+\end{cases}
+\]
+Using this ratio, the effective entity-dropout probability becomes
+\[
+p_i^{\mathrm{drop}}
+
+=
+\mathrm{clip}\!\left(
+p_{\mathrm{drop}} \cdot
+\left(1 + g_{\mathrm{drop}}\, r_{\mathrm{crowd}}\right),
+0, 1
+\right),
+\]
+where \(p_{\mathrm{drop}}\) is the base entity-dropout parameter and \(g_{\mathrm{drop}}\) is the crowding-related dropout gain.
+
+\subsection{Crowding-Dependent Relation Noise}
+
+The model also increases relation uncertainty when more non-ego entities populate the observation. A crowding-dependent relation-noise scale is computed as
+\[
+\lambda_{\mathrm{rel}} = 1 + g_{\mathrm{rel}}\, r_{\mathrm{crowd}},
+\]
+where \(g_{\mathrm{rel}}\) is the crowding-related relation-noise gain.
+\\
+\\
+For non-ego relation facts, the active false-negative and false-positive rates are then
+\[
+p_{\mathrm{fn}}^{\mathrm{rel},i} =
+\mathrm{clip}\!\left(
+\bar{p}_{\mathrm{fn}}^{\mathrm{rel},i}\,\lambda_{\mathrm{rel}},
+0, 1
+\right),
+\qquad
+p_{\mathrm{fp}}^{\mathrm{rel},i} =
+\mathrm{clip}\!\left(
+\bar{p}_{\mathrm{fp}}^{\mathrm{rel},i}\,\lambda_{\mathrm{rel}},
+0, 1
+\right),
+\]
+where
+\[
+\bar{p}_{\mathrm{fn}}^{\mathrm{rel},i}
+=
+\begin{cases}
+p_{\mathrm{fn}}^{\mathrm{rel}}, & z_i = 0,\\
+p_{\mathrm{fn}}^{\mathrm{rel,occ}}, & z_i = 1,
+\end{cases}
+\qquad
+\bar{p}_{\mathrm{fp}}^{\mathrm{rel},i}
+=
+\begin{cases}
+p_{\mathrm{fp}}^{\mathrm{rel}}, & z_i = 0,\\
+p_{\mathrm{fp}}^{\mathrm{rel,occ}}, & z_i = 1.
+\end{cases}
+\]
+\noindent Hence, occluded entities receive more aggressive relation corruption, and this effect becomes even stronger in more crowded local observations.
+
+\subsection{Predicate Categories}
+
+In the experiments of this thesis, the relevant \textbf{type predicates} are
+\begin{center}
+\texttt{IsCar}, \texttt{IsPedestrian}.
+\end{center}
+
+\noindent The relevant \textbf{relation and traffic-state predicates} are the grounded traffic facts used by the cars and the shield, in particular predicates such as
+\begin{center}
+\texttt{IsAtInter}, \texttt{IsInInter}, \texttt{HigherPri}, \texttt{CollidingClose},
+\end{center}
+\noindent together with the same-intersection relation used by the traffic logic. This distinction matters because the most safety-critical facts in the thesis belong to the relation category and are therefore perturbed more strongly than simple semantic identity facts.
+
+\subsection{Parameter Values Used in the Thesis}
+
+The current thesis experiments use the parameterization shown in Table~\ref{tab:observation-noise-parameters}. These values are shared across the main experiment configurations.
+
+\begin{table}[H]
+\centering
+\small
+\caption{Observation-noise parameters used in the thesis experiments.}
+\label{tab:observation-noise-parameters}
+\begin{tabularx}{\linewidth}{@{}l c X@{}}
+\toprule
+\textbf{Parameter} & \textbf{Value} & \textbf{Role} \\
+\midrule
+\texttt{entity\_dropout} & \(0.15\) & Base occlusion/dropout probability for each non-ego entity. \\
+\texttt{false\_negative\_type} & \(0.03\) & False-negative rate for non-ego type predicates. \\
+\texttt{false\_positive\_type} & \(0.01\) & False-positive rate for non-ego type predicates. \\
+\texttt{false\_negative\_relation} & \(0.10\) & Base false-negative rate for non-occluded non-ego relation predicates. \\
+\texttt{false\_positive\_relation} & \(0.03\) & Base false-positive rate for non-occluded non-ego relation predicates. \\
+\texttt{occluded\_false\_negative\_relation} & \(0.20\) & Base false-negative rate for occluded non-ego relation predicates. \\
+\texttt{occluded\_false\_positive\_relation} & \(0.05\) & Base false-positive rate for occluded non-ego relation predicates. \\
+\texttt{crowding\_relation\_noise\_gain} & \(0.75\) & Strength of the increase in relation uncertainty under higher local crowding. \\
+\texttt{crowding\_entity\_dropout\_gain} & \(0.50\) & Strength of the increase in non-ego dropout under higher local crowding. \\
+\texttt{ego\_false\_negative} & \(0.01\) & False-negative rate for ego-related facts. \\
+\texttt{ego\_false\_positive} & \(0.00\) & False-positive rate for ego-related facts. \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+\subsection{Interpretation}
+
+The resulting observation model is designed to reflect a simple but structured intuition about autonomous driving perception. Semantic identity facts are comparatively stable, while relational traffic facts are more fragile. Ego-related facts are the most reliable. Non-ego relation facts become less reliable under occlusion, and local crowding increases both the chance that a non-ego entity is effectively dropped and the uncertainty attached to its relational facts.
+\\
+\\
+The purpose of this model is therefore not to simulate a full sensor stack, but to provide a controlled symbolic uncertainty process that is rich enough to stress-test PLS in multi-agent traffic scenarios while remaining interpretable and directly linked to the grounded logical observation space.
+
+\section{PLPG Safety Regularizer}
+\label{app:safety-regularizer}
+
+This appendix specifies the safety-regularization term used in the current PLPG implementation. The purpose of this term is to bias optimization toward policy distributions that are safer under the current symbolic traffic facts, beyond the effect already produced by return maximization alone.
+
+\subsection{Safety Quantity Used in Training}
+
+For each state \(s\), the shield first computes action-level safety scores \(q(s,a)\) for all actions \(a \in \mathcal{A}\). From these scores, two policy-level safety quantities can be formed:
+\[
+P_{\pi_\theta}(\texttt{safe}\mid s)
+=
+\sum_{a \in \mathcal{A}} \pi_\theta(a\mid s)\, q(s,a),
+\]
+\[
+P_{\pi_\theta^+}(\texttt{safe}\mid s)
+=
+\sum_{a \in \mathcal{A}} \pi_\theta^+(a\mid s)\, q(s,a).
+\]
+\noindent The first quantity measures the expected safety of the raw base policy, whereas the second measures the expected safety of the shielded policy.
+
+\subsection{Implemented Loss Term}
+
+In the current thesis implementation, the safety regularizer is applied as a negative log-safety penalty:
+\[
+\mathcal{L}_{\mathrm{safety}}
+=
+-\log\!\big(P(\texttt{safe}\mid s)\big).
+\]
+\noindent Averaged over a minibatch, this becomes
+\[
+\mathcal{L}_{\mathrm{safety}}^{\mathrm{batch}}
+=
+\frac{1}{B}\sum_{t=1}^{B}
+-\log\!\big(P(\texttt{safe}\mid s_t)\big).
+\]
+\noindent By default, the implementation uses the shielded policy safety
+\[
+P(\texttt{safe}\mid s_t)=P_{\pi_\theta^+}(\texttt{safe}\mid s_t),
+\]
+\noindent although the code also permits regularization with the base-policy safety quantity.
+
+\subsection{Combined PLPG Objective}
+
+The final training loss is the PPO objective augmented with the safety regularizer:
+\[
+\mathcal{L}
+=
+\mathcal{L}_{\mathrm{policy}}
++
+c_v\,\mathcal{L}_{\mathrm{value}}
++
+c_e\,\mathcal{L}_{\mathrm{entropy}}
++
+\alpha\,\mathcal{L}_{\mathrm{safety}},
+\]
+\noindent where \(c_v\) and \(c_e\) are the usual value-loss and entropy-loss coefficients, and \(\alpha\) controls the strength of safety regularization.
+
+\subsection{Interpretation}
+
+This regularizer does not punish only the single sampled action. Instead, it penalizes the entire action distribution when its expected safety is low. Policies that place more probability mass on actions with low action-level safety scores receive a larger loss. The use of the negative logarithm makes this effect stronger when the policy becomes highly unsafe, while only mildly penalizing policies whose safety is already high. In this way, the safety term encourages the policy to shift probability mass toward safer actions at the distribution level.
+
+\section{Implemented Soft-Traffic Hazard Calculation}
+\label{app:soft-traffic-hazard-calculation}
+
+This appendix specifies the standard decentralized \texttt{easy\_soft\_traffic} template. The calculation is performed independently for each ego car and each visible non-ego entity \(j\). All predicate values are confidences in \([0,1]\). Let \(c\), \(a\), and \(r\) be the ego confidences for \texttt{IsCar}, \texttt{IsAtInter}, and \texttt{IsInInter}. Let \(a_j,r_j,s_j,p_j,h_j,d_j\) be, respectively, the other entity's at-intersection, in-intersection, same-intersection, pedestrian, higher-priority, and collision-close confidences; \(h_j\) denotes \texttt{HigherPri(j, ego)}. Define \(\operatorname{clip}(x)=\min(\max(x,0),1)\).
+
+\subsection{Per-Entity Conflict Cues}
+
+The intersection-overlap cue is
+\[
+o_j=\max\{a\,a_j,a\,r_j,r\,a_j,r\,r_j\}.
+\]
+The template then calculates
+\[
+\begin{aligned}
+d^{\mathrm{ped}}_j &= c\,p_j\,s_j\,o_j, &
+d^{\mathrm{occ}}_j &= a\,s_j\,r_j(1-0.5p_j),\\
+d^{\mathrm{pri}}_j &= a\,a_j\,s_j\,h_j(1-p_j), &
+d^{\mathrm{sim}}_j &= c(1-p_j)s_j\,r\,r_j,\\
+d^{\mathrm{pedtr}}_j &= c\,p_j\,s_j\max\{r_j,0.70d_j,0.35a_j\}, &
+d^{\mathrm{vehtr}}_j &= c(1-p_j)s_j\max\{\max(r_j,a_j(1-p_j)),0.60d_j\}.
+\end{aligned}
+\]
+These represent pedestrian, occupied-intersection, higher-priority, simultaneous-occupancy, pedestrian-transition, and vehicle-transition cues, respectively.
+
+\subsection{Aggregated Hazards and Traffic Regimes}
+
+The most severe visible entity determines each hazard:
+\[
+\begin{aligned}
+H_{\mathrm{cc}}&=\operatorname{clip}(\max_j 0.85d_j), &
+H_{\mathrm{ped}}&=\operatorname{clip}(\max_j d^{\mathrm{ped}}_j),\\
+H_{\mathrm{occ}}&=\operatorname{clip}(\max_j d^{\mathrm{occ}}_j), &
+H_{\mathrm{pri}}&=\operatorname{clip}(\max_j d^{\mathrm{pri}}_j),\\
+H_{\mathrm{sim}}&=\operatorname{clip}(\max_j d^{\mathrm{sim}}_j), &
+H_{\mathrm{tr}}&=\operatorname{clip}(\max_j\max\{d^{\mathrm{pedtr}}_j,d^{\mathrm{vehtr}}_j\}),\\
+H&=\max\{H_{\mathrm{cc}},H_{\mathrm{ped}},H_{\mathrm{occ}},H_{\mathrm{pri}},H_{\mathrm{sim}},H_{\mathrm{tr}}\}.
+\end{aligned}
+\]
+With \(U=\max\{H_{\mathrm{ped}},H_{\mathrm{occ}},H_{\mathrm{pri}},H_{\mathrm{sim}}\}\), the four regimes are
+\[
+\begin{aligned}
+F &= \operatorname{clip}(1-\max\{U,H_{\mathrm{tr}},H_{\mathrm{cc}}\}),\\
+C &= \operatorname{clip}\!\left(\max\{U,H_{\mathrm{tr}}\}\operatorname{clip}\!\left(\frac{H_{\mathrm{tr}}-0.12}{0.35}\right)\right),\\
+E &= \operatorname{clip}\!\left(\max\{a,0.75r\}\max\{U,H_{\mathrm{tr}}\}\operatorname{clip}\!\left(\frac{H_{\mathrm{tr}}-0.28}{0.30}\right)\right),\\
+K &= \operatorname{clip}\!\left(\max\left\{H_{\mathrm{cc}},H_{\mathrm{sim}},0.9a\max\{H_{\mathrm{ped}},H_{\mathrm{pri}},H_{\mathrm{occ}}\},\operatorname{clip}\!\left(\frac{H_{\mathrm{tr}}-0.52}{0.20}\right)\right\}\right).
+\end{aligned}
+\]
+Here \(F,C,E,K\) denote free flow, caution, conflict edge, and critical traffic.
+
+\subsection{Action-Level Safety Scores}
+
+The movement-action base risks are
+\[
+\begin{aligned}
+B_{\mathrm{slow}}&=\max\{0.28H_{\mathrm{cc}},0.12H_{\mathrm{pri}},0.16H_{\mathrm{occ}},0.24H_{\mathrm{ped}},0.52H_{\mathrm{sim}},0.34H_{\mathrm{tr}}\},\\
+B_{\mathrm{normal}}&=\max\{0.72H_{\mathrm{cc}},0.42H_{\mathrm{pri}},0.52H_{\mathrm{occ}},0.64H_{\mathrm{ped}},0.86H_{\mathrm{sim}},0.82H_{\mathrm{tr}}\},\\
+B_{\mathrm{fast}}&=\max\{0.96H_{\mathrm{cc}},0.88H_{\mathrm{pri}},0.94H_{\mathrm{occ}},0.98H_{\mathrm{ped}},H_{\mathrm{sim}},H_{\mathrm{tr}}\}.
+\end{aligned}
+\]
+Regime shaping yields
+\[
+\begin{aligned}
+R_{\mathrm{slow}}&=\max\{B_{\mathrm{slow}},0.03F,0.10C,0.24E,0.55K\},\\
+R_{\mathrm{normal}}&=\max\{B_{\mathrm{normal}},0.04F,0.48C,0.82E,0.97K\},\\
+R_{\mathrm{fast}}&=\max\{B_{\mathrm{fast}},0.06F,0.88C,0.95E,K\}.
+\end{aligned}
+\]
+Finally, the exact scores used for reweighting are
+\[
+\begin{aligned}
+q(o^i,\texttt{slow})&=\operatorname{clip}(1-R_{\mathrm{slow}}),\\
+q(o^i,\texttt{normal})&=\operatorname{clip}(1-R_{\mathrm{normal}}),\\
+q(o^i,\texttt{fast})&=\operatorname{clip}(1-R_{\mathrm{fast}}),\\
+q(o^i,\texttt{stop})&=1.
+\end{aligned}
+\]
+Thus \texttt{stop} always has the maximum raw score in the standard template. The increasingly larger movement coefficients ensure that \texttt{fast} loses safety before \texttt{normal}, while \texttt{slow} remains the safest movement action.

@@ -1,0 +1,45 @@
+\chapter{Conclusion}
+\label{cha:conclusion}
+
+This thesis studied Probabilistic Logic Shielding (PLS) for safe multi-agent autonomous driving in LogiCity. The focus was not only on reducing unsafe behavior, but on understanding how shielding affects \emph{safe task completion} when multiple RL-controlled cars must coordinate under shared traffic rules. The experiments were organized around four main questions: how PLS compares with unshielded RL as the number of RL-controlled cars increases, how decentralized shield variants trade off safety against efficiency, whether centralized shielding can resolve coordination failures that remain difficult under decentralized shielding, and how shared-policy and separate-policy training differ under PLS.
+\\
+\\
+The results show that PLS changes multi-agent behavior in a meaningful way, but not in a uniformly one-dimensional manner. Relative to unshielded PPO, decentralized conservative PLS substantially reduced direct failures and improved joint trajectory success at \(K=1\) and \(K=3\). At the same time, it also introduced a clear conservatism cost: as the number of RL-controlled cars increased, part of the unsafe failure mass was shifted into timeout behavior. This means that the main role of PLS in the current benchmark is not simply to ``make the policy safer,'' but to reshape the balance between unsafe failure and cautious incompletion.
+\\
+\\
+The comparison of decentralized shield variants confirmed this interpretation. No single decentralized shield style dominated across all settings. Conservative shielding reduced failures most strongly but became increasingly vulnerable to coordination-induced timeouts, whereas aggressive shielding preserved movement better but at the cost of substantially more unsafe outcomes. The mixed \(K=2\) setting was particularly informative: it outperformed both fully conservative and fully aggressive decentralized shielding, suggesting that part of the difficulty is not only the strength of the shield itself, but also whether the resulting interaction dynamics reinforce or break symmetric waiting behavior.
+\\
+\\
+The targeted centralized analysis showed that some of these failures are fundamentally coordination failures rather than failures of local hazard detection. In representative episode-level comparisons, decentralized shielding became stuck when several RL-controlled cars reached the same intersection in near-symmetric timing, because each local shield independently increased stopping pressure without explicitly resolving which vehicle should proceed. Centralized shielding, by contrast, could treat the same interaction as a joint coordination problem and impose an ordered one-by-one passage. In this sense, centralized shielding changed not only the final outcome but the coordination mechanism itself.
+\\
+\\
+The comparison between shared-policy and separate-policy training led to a similarly structural conclusion. In the present benchmark, all RL-controlled cars have the same task, observation design, and action space. Under these conditions, shared-policy training proved more effective than separate-policy training. The separate-policy case did produce clear behavioral divergence across the three learned policies, but this specialization did not improve collective performance. Instead, it reduced coordination stability and lowered scene-level trajectory success. For homogeneous multi-agent traffic control of this kind, parameter sharing therefore appears to be the more suitable learning organization.
+\\
+\\
+Overall, the thesis shows that the value of probabilistic logic shielding in multi-agent urban navigation cannot be judged through failure reduction alone. In logic-driven traffic environments, shielding must be evaluated through the combined lens of success, failure, timeout, and coordination. The main conclusion is therefore that PLS is a useful and promising safety mechanism for multi-agent autonomous driving, but that its effectiveness depends strongly on how shielding interacts with multi-agent symmetry, coordination structure, and policy organization.
+
+\section{Limitations}
+
+Several limitations constrain the current study. First, the experiments were conducted in a stylized compact LogiCity benchmark centered around intersection scenarios. This setting is suitable for controlled analysis of multi-agent interaction, but it remains simpler than real urban traffic with richer maps, traffic lights, additional semantic vehicle classes, and more diverse interaction patterns.
+\\
+\\
+Second, the main decentralized shielding design relies on local symbolic observations. This is a natural and scalable design choice, but it also creates a coordination limitation: when several RL-controlled cars encounter the same interaction structure with near-symmetric timing, their local shields may react in similarly conservative ways without any explicit mechanism for joint release. The deadlock cases studied in the centralized analysis illustrate this limitation directly.
+\\
+\\
+Third, although the targeted centralized analysis shows that centralized shielding can resolve some decentralized deadlocks, centralized shielding also introduces its own practical disadvantages. It is more complex to design, computationally heavier at runtime, and more difficult to scale robustly as the number of interacting agents and edge cases grows. By contrast, decentralized shielding is easier to specify, modular to reuse across agents, and computationally simpler. The current thesis therefore does not treat centralized shielding as a universally superior replacement, but rather as a coordination-oriented alternative with its own costs.
+\\
+\\
+Fourth, although the thesis includes an uncertain symbolic observation model, it still operates within a simulator in which the symbolic abstraction and traffic-rule structure are known and controlled. This is valuable for studying interpretable shielding, but it remains a step away from full real-world perception pipelines and deployment conditions.
+
+\section{Future Work}
+
+Several extensions follow naturally from these results. A first direction is to investigate richer forms of multi-agent shielding. The current results suggest that decentralized local shielding is effective for many situations but struggles in symmetric coordination cases, while centralized shielding can resolve some of these deadlocks but at higher design and computational cost. Future work could therefore study stronger centralized formulations, hybrid decentralized-centralized schemes, or factored regional shields as discussed in prior multi-agent shielding work \cite{elsayedaly2021safemultiagentreinforcementlearning}.
+\\
+\\
+A second direction is to extend the current benchmark toward more realistic traffic structure. This includes larger maps, denser deployments, more traffic-participant types, and additional traffic-control elements. Since LogiCity supports richer semantic abstractions \cite{li2025logicityadvancingneurosymbolicai}, it provides a natural platform for such scaling studies.
+\\
+\\
+A third direction is to study more diverse multi-agent learning organizations. The current results indicate that shared-policy training is well suited to homogeneous traffic agents, whereas separate-policy specialization did not help in the present task. Future work could revisit this question in settings with genuinely different agent roles, capabilities, or observation regimes, where specialization may become more useful.
+\\
+\\
+Finally, a promising longer-term direction is to bring probabilistic logic shielding closer to end-to-end autonomous driving pipelines. This includes tighter integration with perception uncertainty, richer symbolic sensor extraction, and stronger coupling between learned policies and structured safety reasoning. Such work would help clarify how far the advantages of PLS in interpretable simulated traffic transfer to more realistic autonomous driving systems.

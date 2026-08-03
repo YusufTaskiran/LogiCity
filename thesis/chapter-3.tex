@@ -1,0 +1,164 @@
+\chapter{Results}
+\label{cha:results}
+
+This chapter reports the empirical findings of the thesis and is organized around the four main comparisons studied in the experimental program. First, PLS is compared with unshielded RL as the number of simultaneously active RL-controlled cars increases. Second, decentralized shield variants are compared in order to study the trade-off between direct failure and timeout. Third, centralized shielding is analyzed on representative decentralized deadlock cases. Fourth, shared-policy and separate-policy training are compared under the same shielded traffic-control setting. Across the chapter, trajectory success rate remains the main task-completion metric, but it is always interpreted together with timeout behavior and failure modes.
+
+\section{PLS Under Increasing Multi-Agent Interaction}
+\label{sec:results-rq1}
+
+The first results block addresses the most basic thesis question: whether PLS improves safe autonomous navigation relative to unshielded RL as multi-agent interaction pressure increases. The comparison is carried out across \(K=1\), \(K=2\), and \(K=3\), where larger \(K\) means that more RL-controlled cars must coordinate in the same shared traffic scene.
+
+\subsection{Main Results}
+\begin{table}[H]
+\centering
+\caption{Unshielded RL vs.\ PLS across increasing \(K\).}
+\label{tab:results-rq1-main}
+\begin{tabular}{llccc}
+\toprule
+\textbf{\(K\)} & \textbf{Method} & \textbf{TSR} & \textbf{Timeout rate} & \textbf{Failure rate} \\
+\midrule
+\(1\) & Unshielded PPO & 0.66 & 0.00 & 0.34 \\
+\(1\) & PLS (Cons.) & 1.00 & 0.00 & 0.00 \\
+\cmidrule(lr){1-5}
+\(2\) & Unshielded PPO & 0.62 & 0.00 & 0.38 \\
+\(2\) & PLS (Cons.) & 0.72 & 0.28 & 0.00 \\
+\cmidrule(lr){1-5}
+\(3\) & Unshielded PPO & 0.24 & 0.00 & 0.76 \\
+\(3\) & PLS (Cons.) & 0.42 & 0.42 & 0.16 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+The fixed-test results show that conservative decentralized PLS improves both safety and task completion relative to unshielded PPO across all three evaluated values of \(K\). At \(K=1\), TSR rises from \(0.66\) to \(1.00\), while failure drops from \(0.34\) to \(0.00\). In the single-agent case, shielding therefore eliminates failure entirely and achieves perfect completion on the test split.
+\\
+\\
+For larger \(K\), the same pattern remains visible, but the cost of conservatism becomes more pronounced. At \(K=2\), conservative PLS raises TSR from \(0.62\) to \(0.72\) and reduces failure from \(0.38\) to \(0.00\), although this comes with a timeout rate of \(0.28\). At \(K=3\), conservative PLS again improves over PPO, increasing TSR from \(0.24\) to \(0.42\) and reducing failure from \(0.76\) to \(0.16\), but now with timeout rate \(0.42\). The main conclusion is therefore that PLS is beneficial throughout the evaluated range of multi-agent interaction pressure, but that its advantage is increasingly mediated through a trade-off: direct unsafe failure is reduced strongly, while timeout becomes the main remaining limitation as the coordination problem becomes denser.
+
+\section{Decentralized Shield Variants}
+\label{sec:results-rq2}
+
+The second results block studies how different decentralized shield variants affect multi-agent behavior. Here the central question is no longer whether shielding helps in general, but how different shield styles reshape the balance between safety preservation, efficiency, and coordination.
+\\
+\\
+The comparison is carried out across \(K=1\), \(K=2\), and \(K=3\), so that the effect of conservative, aggressive, and mixed shield assignments can be interpreted under increasing multi-agent interaction pressure.
+
+\subsection{Main Results}
+\begin{table}[H]
+\centering
+\caption{Decentralized shield variants across increasing \(K\).}
+\label{tab:results-rq2-main}
+\begin{tabular}{llccc}
+\toprule
+\textbf{\(K\)} & \textbf{Shield setting} & \textbf{TSR} & \textbf{Timeout rate} & \textbf{Failure rate} \\
+\midrule
+\(1\) & Conservative & 1.00 & 0.00 & 0.00 \\
+\(1\) & Aggressive & 0.66 & 0.00 & 0.34 \\
+\cmidrule(lr){1-5}
+\(2\) & Conservative & 0.72 & 0.28 & 0.00 \\
+\(2\) & Aggressive & 0.64 & 0.00 & 0.36 \\
+\(2\) & Mixed & 0.80 & 0.10 & 0.10 \\
+\cmidrule(lr){1-5}
+\(3\) & Conservative & 0.42 & 0.42 & 0.16 \\
+\(3\) & Aggressive & 0.28 & 0.02 & 0.70 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+The decentralized shield comparison shows a clearer pattern than before: the conservative shield outperforms the aggressive shield in all reported settings. At \(K=1\), conservative shielding reaches perfect TSR and zero failure, whereas the aggressive variant remains at \(0.66\) TSR with \(0.34\) failure. At \(K=2\), conservative shielding again dominates aggressive shielding, improving TSR from \(0.64\) to \(0.72\) and reducing failure from \(0.36\) to \(0.00\), although with a non-negligible timeout rate. At \(K=3\), the same ordering remains visible: the conservative shield achieves higher TSR and much lower failure than the aggressive one. The main distinction is therefore not that aggressive shielding is preferable at some values of \(K\), but that conservative shielding is consistently stronger overall while paying for this with more waiting behavior.
+\\
+\\
+The most informative case is \(K=2\), where the mixed setting improves further over both fully conservative and fully aggressive shielding, reaching TSR \(0.80\) with timeout rate \(0.10\) and failure rate \(0.10\). A plausible explanation is that the mixed assignment partially breaks the behavioral symmetry between the two RL cars. Under fully symmetric decentralized shielding, both cars are more likely to react in the same way at the same time, which can reinforce mutual hesitation and increase deadlock-like timeout behavior. The mixed configuration weakens this symmetry by making the two cars respond somewhat differently to the same local traffic situation, which can help create staggered timing and allow one agent to progress while the other yields. In this sense, the \(K=2\) result suggests that decentralized multi-agent shielding is influenced not only by how conservative the shield is in isolation, but also by whether the resulting interaction dynamics amplify or break symmetric waiting patterns.
+
+\section{Centralized Shielding in Deadlock Cases}
+\label{sec:results-rq3}
+
+The third results block focuses on the coordination cases in which decentralized shielding becomes most challenged. In particular, the analysis considers representative multi-agent intersection episodes in which decentralized shielding exhibits deadlock-like hesitation or timeout behavior. These episodes are especially informative because they isolate the situations in which local per-agent shielding is no longer sufficient and joint coordination becomes the central issue.
+\\
+\\
+The purpose of this analysis is to study whether centralized shielding can resolve such coordination failures by treating the RL-controlled cars jointly. The main question is therefore whether centralized shielding changes the \emph{type} of multi-agent behavior by enabling ordered joint conflict resolution in cases where decentralized shielding leaves the agents in mutual waiting.
+
+\subsection{Targeted Results}
+\begin{table}[H]
+\centering
+\caption{Centralized shielding on representative decentralized deadlock cases.}
+\label{tab:results-rq3-main}
+\begin{tabular}{lcc}
+\toprule
+\textbf{Episode} & \textbf{Decentralized outcome} & \textbf{Centralized outcome} \\
+\midrule
+\texttt{ep0} & timeout / deadlock & success \\
+\texttt{ep9} & timeout / deadlock & success \\
+\texttt{ep10} & timeout / deadlock & success \\
+\texttt{ep13} & timeout / deadlock & success \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=0.50\linewidth]{figures/results_centralized_ep0_step48.png}
+    \caption{Representative coordination state from \texttt{ep0} at step 48.}
+    \label{fig:centralized-ep0-coordination-state}
+\end{figure}
+
+Across these selected cases, the centralized shield is evaluated precisely on the interaction situations for which joint coordination is most relevant. Episodes \texttt{ep0}, \texttt{ep9}, \texttt{ep10}, and \texttt{ep13} were chosen because decentralized shielding became stuck on all of them, whereas centralized shielding completed them successfully. The targeted comparison therefore isolates the coordination cases in which the difference between decentralized and centralized shielding is most visible.
+\\
+\\
+Figure~\ref{fig:centralized-ep0-coordination-state} illustrates the key coordination situation underlying this result. In \texttt{ep0}, the traffic state reaches a moment at which all three RL-controlled cars are simultaneously visible in the same local interaction region. From the viewpoint of each decentralized agent, the local observation now contains the other two RL cars as active conflict partners at or near the same intersection, together with priority and occupancy cues indicating that entering is risky. The decentralized shield reacts exactly to these local conflict signals: for each car individually, it increases the probability of \texttt{stop} and suppresses forward motion. Since all three shields perform this same conservative reaction independently, no car is explicitly released to break the symmetry, and the interaction collapses into mutual waiting.
+\\
+\\
+This does not mean that decentralized shielding always deadlocks. When the approach timing is slightly asymmetric, so that the cars arrive more sequentially, the local observations are no longer perfectly symmetric and decentralized shielding can still resolve the interaction successfully. The deadlock risk becomes especially pronounced as the number of RL-controlled cars increases and several of them reach the same intersection at nearly the same time, because then the local stop incentives become aligned across agents.
+\\
+\\
+Under centralized shielding, by contrast, the shield receives this same three-car interaction structure but does not evaluate it as three separate stop decisions. Instead, it treats the configuration as one joint coordination problem and can hold conflicting cars while releasing the currently preferred car through the intersection. In this way, the centralized shield still reacts conservatively to the shared hazard, but it converts that caution into an ordered one-by-one passage rather than a symmetric deadlock. The important result is therefore not merely that centralized shielding attains a better final outcome label on these episodes, but that it changes the coordination mechanism itself. This targeted analysis shows directly how centralized shielding can resolve a class of decentralized multi-agent deadlocks that arises when several RL-controlled cars meet at the same intersection at the same time.
+
+\section{Shared vs.\ Separate Policy Training}
+\label{sec:results-rq4}
+
+The fourth results block compares shared-policy and separate-policy multi-agent training under PLS. The central question is whether the organization of learning changes the resulting multi-agent behavior, even when the task, shield, and environment remain the same.
+\\
+\\
+This comparison also allows the thesis to study whether separately trained agents actually diverge behaviorally from one another or remain effectively interchangeable despite being optimized independently.
+
+\subsection{Main Results}
+\begin{table}[H]
+\centering
+\caption{Shared-policy vs.\ separate-policy training under PLS.}
+\label{tab:results-rq4-main}
+\begin{tabular}{lccc}
+\toprule
+\textbf{Training scheme} & \textbf{TSR} & \textbf{Timeout rate} & \textbf{Failure rate} \\
+\midrule
+Shared-policy PLS & 0.42 & 0.42 & 0.16 \\
+Separate-policy PLS & 0.14 & 0.46 & 0.40 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+For the shared-policy reference, the \(K=3\) conservative decentralized shield result is used, since this is the strongest shared-policy configuration available in the current multi-agent benchmark. The separate-policy condition is evaluated on the fixed test split with the canonical identity assignment, that is, each RL-controlled car is paired with its own trained policy rather than with permuted policy assignments.
+\\
+\\
+Under this fixed-test comparison, shared-policy PLS reaches a TSR of \(0.42\), with timeout rate \(0.42\) and failure rate \(0.16\). Separate-policy PLS performs substantially worse, reaching TSR \(0.14\), timeout rate \(0.46\), and failure rate \(0.40\). At the aggregate level, the shared-policy setup therefore yields clearly more stable multi-agent coordination and substantially better overall task completion.
+
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=0.82\linewidth]{figures/results_separate_policy_action_hist.png}
+    \caption{Per-policy action distributions for separate-policy \(K=3\).}
+    \label{fig:results-separate-policy-action-hist}
+\end{figure}
+
+\noindent This result is consistent with the structure of the task itself. In the present benchmark, all RL-controlled cars face the same control problem: they share the same action space, the same observation design, the same reward structure, and the same general traffic objective. In such a setting, parameter sharing is not a restriction but a natural inductive bias. One common policy is sufficient to represent the required behavior, and pooling experience across all cars also makes learning more data-efficient and more stable. Separate policies would be more compelling in a setting with genuinely different agent roles, capabilities, or observation regimes. Here, however, the agents are intentionally homogeneous, so forcing them to learn independently mainly removes useful regularization.
+\\
+\\
+The action distributions support exactly this interpretation. Figure~\ref{fig:results-separate-policy-action-hist} shows that separate training breaks behavioral symmetry strongly: the three policies develop visibly different action profiles, with one policy becoming much more stop-dominated and another shifting toward a slow-stop pattern. This shows that separate training does create specialization, but in the current task that specialization is not beneficial. Instead, the learned behaviors become less aligned with one another, which makes joint coordination less stable and reduces scene-level performance. The main conclusion is therefore that, for homogeneous multi-agent traffic control of this kind, shared-policy training is not only simpler but also the more effective organization of learning.
+
+\section{Summary}
+\label{sec:results-summary}
+
+The results of this chapter show that probabilistic logic shielding improves safe multi-agent navigation in LogiCity, but that its effect is best understood as a coordination trade-off rather than as a purely safety-only gain. Relative to unshielded PPO, conservative decentralized PLS consistently reduced failure and improved trajectory success, although at higher values of \(K\) part of this gain was offset by increased timeout behavior.
+\\
+\\
+Among decentralized shield variants, the conservative shield performed better than the aggressive shield across all reported settings, while the mixed \(K=2\) assignment improved further by reducing symmetric hesitation between agents. The targeted centralized analysis then showed that some remaining failures of decentralized shielding are genuine coordination deadlocks, and that centralized shielding can resolve such cases by enforcing coordinated one-by-one passage through shared intersections.
+\\
+\\
+Finally, the comparison between shared-policy and separate-policy training showed that homogeneous multi-agent traffic control is better served by parameter sharing than by separate specialization. Although separate policies developed distinct behaviors, this divergence reduced coordination quality and lowered overall scene-level performance. Taken together, the chapter therefore supports the central claim of the thesis: PLS is an effective mechanism for safe multi-agent traffic control, but its practical value depends on how shielding interacts with coordination structure, symmetry, and learning organization.
